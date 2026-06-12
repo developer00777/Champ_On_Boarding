@@ -57,7 +57,7 @@ services:
     environment:
       DATABASE_URL: postgres://champ:champ@postgres:5432/champonboard
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-deep@championsmail.com}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-champ-admin-2026}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
     depends_on:
       postgres:
         condition: service_healthy
