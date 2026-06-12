@@ -37,12 +37,12 @@ export const DOC_SLOTS: DocSlot[] = [
 	{ type: 'resume', label: 'Resume', hint: 'Updated resume (PDF preferred)', tracks: ALL, mandatory: true, maxFiles: 1 },
 	{ type: 'test_results', label: 'Test Results', hint: 'IQ, GRIT and Growth Mindset test screenshots (up to 3 files)', tracks: ALL, mandatory: true, maxFiles: 3 },
 	{ type: 'internship_cert', label: 'Last Internship Certificate', hint: 'Most recent internship certificate', tracks: ['intern'], mandatory: true, maxFiles: 1 },
-	{ type: 'relieving_letter', label: "Previous Employer's Relieving Letter", hint: 'From your most recent employer', tracks: EXP, mandatory: true, maxFiles: 1 },
+	{ type: 'relieving_letter', label: 'Relieving Letters — previous 3 employers', hint: 'One relieving letter per company, from your last 3 employers (most recent first). Up to 3 files.', tracks: EXP, mandatory: true, maxFiles: 3 },
+	{ type: 'offer_letter_prev', label: 'Offer Letters — previous employers (optional)', hint: 'Offer / appointment letters from your previous companies. Up to 3 files.', tracks: EXP, mandatory: false, maxFiles: 3 },
 	{ type: 'bank_statement', label: 'Last 3 Months Bank Statement', hint: 'Salary account statement covering the last 3 months', tracks: EXP, mandatory: true, maxFiles: 3 },
 	{ type: 'payslips', label: 'Last 3 Months Payslips', hint: 'One file per month is fine (up to 3)', tracks: EXP, mandatory: true, maxFiles: 3 },
 	{ type: 'bgc_form', label: 'BGC Form (filled)', hint: 'Completed background-check form', tracks: EXP, mandatory: true, maxFiles: 1 },
 	{ type: 'bgv_form', label: 'BGV Form (filled)', hint: 'Completed background-verification form', tracks: EXP, mandatory: true, maxFiles: 1 },
-	{ type: 'nda_signed', label: 'NDA Form (signed)', hint: 'Scan or photo of the signed NDA', tracks: ALL, mandatory: true, maxFiles: 1 },
 	{ type: 'photo_soft', label: 'Passport-size photo (soft copy)', hint: 'One recent passport-size photo, plain background', tracks: ALL, mandatory: true, maxFiles: 1 }
 ];
 
@@ -57,7 +57,8 @@ export function slotByType(type: string): DocSlot | undefined {
 // PRD §3 — physical handover items, tracked in-portal (HR decision).
 export const PHYSICAL_ITEM_TYPES = [
 	{ type: 'passport_photos_x4', label: '4 passport-size photos (physical)' },
-	{ type: 'offer_letter_signed', label: 'Offer Letter — signed hard copy' }
+	{ type: 'offer_letter_signed', label: 'Offer Letter — signed hard copy' },
+	{ type: 'nda_signed_copy', label: 'NDA — signed in person & copy handed over' }
 ] as const;
 
 export const ACCEPTED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];

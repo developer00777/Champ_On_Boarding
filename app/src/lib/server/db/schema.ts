@@ -137,7 +137,7 @@ export const physicalItems = pgTable('physical_items', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	candidateId: uuid('candidate_id').notNull().references(() => candidates.id),
 	itemType: text('item_type', {
-		enum: ['passport_photos_x4', 'offer_letter_signed']
+		enum: ['passport_photos_x4', 'offer_letter_signed', 'nda_signed_copy']
 	}).notNull(),
 	received: boolean('received').notNull().default(false),
 	receivedAt: timestamp('received_at', { withTimezone: true }),

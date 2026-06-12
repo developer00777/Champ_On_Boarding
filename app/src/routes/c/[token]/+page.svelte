@@ -110,7 +110,8 @@
 	];
 	const docsDone = $derived(
 		data.checklist.filter((s) =>
-			s.docs.some((d) => d.reviewStatus !== 'reupload_requested')
+			// Optional slots (e.g. previous offer letters) count as done so the ring can reach 100%.
+			!s.mandatory || s.docs.some((d) => d.reviewStatus !== 'reupload_requested')
 		).length
 	);
 	const sectionStates = $derived(
