@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Candidate Onboarding Portal : PRD</title>
+<style>
+  :root{
+    --orange:#F26522; --orange-dark:#d6531a; --ink:#1a1a1a; --muted:#5c5c5c;
+    --line:#e7e7e7; --bg:#ffffff; --panel:#faf8f6; --panel2:#fff5ef;
+    --green:#1d7a4d; --red:#c0392b; --amber:#b8791a;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6; font-size:16px;
+  }
+  .wrap{max-width:960px; margin:0 auto; padding:0 24px 80px;}
+  header.hero{
+    background:linear-gradient(135deg,#F26522 0%,#d6531a 100%);
+    color:#fff; padding:48px 24px 40px; margin-bottom:8px;
+  }
+  .hero-inner{max-width:960px; margin:0 auto;}
+  .kicker{font-size:13px; letter-spacing:.14em; text-transform:uppercase; opacity:.92; font-weight:700;}
+  h1{font-size:34px; margin:10px 0 6px; line-height:1.15; color:#fff;}
+  .sub{font-size:17px; opacity:.96; max-width:680px;}
+  .meta{margin-top:18px; display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{background:rgba(255,255,255,.18); color:#fff; padding:5px 12px; border-radius:999px; font-size:13px; font-weight:600;}
+  h2{font-size:24px; margin:44px 0 8px; padding-top:12px; border-top:3px solid var(--orange); color:var(--ink);}
+  h3{font-size:18px; margin:28px 0 6px; color:var(--orange-dark);}
+  p{margin:10px 0;}
+  a{color:var(--orange-dark);}
+  table{width:100%; border-collapse:collapse; margin:16px 0; font-size:14.5px;}
+  th,td{border:1px solid var(--line); padding:9px 11px; text-align:left; vertical-align:top;}
+  th{background:var(--panel2); font-weight:700;}
+  tr:nth-child(even) td{background:var(--panel);}
+  .center{text-align:center;}
+  code,pre{font-family:"SF Mono",Menlo,Consolas,monospace;}
+  code{background:var(--panel); padding:2px 6px; border-radius:5px; font-size:13.5px; color:#a23b0e;}
+  pre{background:#1e1e1e; color:#e6e6e6; padding:18px; border-radius:10px; overflow-x:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:#e6e6e6; padding:0;}
+  blockquote{margin:16px 0; padding:12px 18px; background:var(--panel2); border-left:4px solid var(--orange); border-radius:0 8px 8px 0; color:#3a3a3a;}
+  ul,ol{margin:10px 0; padding-left:22px;}
+  li{margin:5px 0;}
+  .tag{display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:5px; letter-spacing:.03em;}
+  .tag-hr{background:#fdecec; color:var(--red);}
+  .tag-stack{background:#eaf3ff; color:#1c5fb8;}
+  .callout{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 22px; margin:20px 0;}
+  .verdict{background:#eafaf1; border:1px solid #bce8cf; border-left:5px solid var(--green); border-radius:0 10px 10px 0; padding:16px 20px; margin:18px 0; font-weight:600; color:#155e3a;}
+  .toc{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 24px; margin:24px 0; columns:2; column-gap:32px;}
+  .toc a{display:block; padding:3px 0; text-decoration:none; color:#333; font-size:14.5px; break-inside:avoid;}
+  .toc a:hover{color:var(--orange-dark);}
+  .sev-high{color:var(--red); font-weight:700;}
+  .sev-med{color:var(--amber); font-weight:700;}
+  .sev-low{color:var(--green); font-weight:700;}
+  footer{margin-top:50px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13.5px;}
+  @media(max-width:680px){ .toc{columns:1;} h1{font-size:27px;} }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="hero-inner">
+    <div class="kicker">Champions Group &middot; Product Requirements Document</div>
+    <h1>Candidate Onboarding Portal</h1>
+    <div class="sub">A single-link, OCR-assisted portal that collects candidate documents and structured data in one pass. Built entirely on Cloudflare plus SvelteKit, with Gemini Flash doing OCR through OpenRouter.</div>
+    <div class="meta">
+      <span class="chip">Working name: ChampOnboard (placeholder)</span>
+      <span class="chip">Status: Draft v0.1 for HR review</span>
+      <span class="chip">2026-06-11</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="toc">
+    <a href="#s1">1. Why we are building this</a>
+    <a href="#s2">2. Users and personas</a>
+    <a href="#s3">3. Candidate tracks and document matrix</a>
+    <a href="#s4">4. Core workflow</a>
+    <a href="#s5">5. Architecture (Cloudflare + SvelteKit)</a>
+    <a href="#s6">6. Technical viability and stack</a>
+    <a href="#s7">7. MVP scope (for Monday)</a>
+    <a href="#s8">8. Open questions for HR</a>
+    <a href="#s9">9. Compliance and security</a>
+    <a href="#s10">10. Appendix: source</a>
+  </div>
+
+  <blockquote>
+    <strong>How to read this:</strong> Items marked <span class="tag tag-hr">CONFIRM W/ HR</span> are for the HR team to answer in the sit-down. Items marked <span class="tag tag-stack">CONFIRM W/ STACK</span> are technical decisions for us. The aim of the meeting is to lock the document matrix (Section 3), answer the open questions (Section 8), and sign off on data handling (Section 9), then start the MVP.
+  </blockquote>
+
+  <h2 id="s1">1. Why we are building this</h2>
+  <p>Today onboarding document collection is manual. HR sends a checklist, candidates email back a scatter of scans and photos, and someone keys the details (name, DOB, Aadhaar number, PAN, bank IFSC, addresses) into a master sheet by hand. That is slow, error prone, and it puts sensitive identity documents into inboxes and chat threads with zero access control.</p>
+  <p>The portal collapses that into one flow: HR sends <strong>one link</strong>, the candidate uploads documents, <strong>OCR auto-fills</strong> every field it can read, the candidate fills the rest, and HR reviews a clean structured record in an admin dashboard. Documents and parsed data live in one access-controlled place instead of email.</p>
+  <p><strong>Secondary goal:</strong> use this as a low-risk learning vehicle for SvelteKit and the full Cloudflare platform. The app is simple enough to experiment on. Complex apps stay on familiar frameworks.</p>
+
+  <h3>Problem statement</h3>
+  <p>HR cannot reliably or quickly collect complete, verified onboarding paperwork from candidates. Manual transcription of ID documents into the master sheet is the bottleneck and the largest source of data-entry error and PII exposure.</p>
+
+  <h3>Goals</h3>
+  <ol>
+    <li>One link per candidate. No account-creation friction for the candidate.</li>
+    <li>Document upload with durable, access-controlled storage.</li>
+    <li>OCR auto-fills master-sheet fields wherever the source document contains them.</li>
+    <li>Candidate completes the rest. HR reviews and approves in an admin portal.</li>
+    <li>Eliminate ID documents living in email and chat.</li>
+    <li>Ship a working MVP for Monday by recycling an existing repo.</li>
+  </ol>
+
+  <h3>Non-goals (MVP)</h3>
+  <ul>
+    <li>Payroll / HRMS integration. Out of scope for v1.</li>
+    <li>In-portal e-signature of NDA / Offer / BGC / BGV. v1 accepts uploads of signed copies. Strong v2 candidate. <span class="tag tag-hr">CONFIRM W/ HR</span></li>
+    <li>Automated authenticity verification (no Aadhaar/PAN government API checks in v1).</li>
+    <li>Multi-language candidate UI. English only for MVP (see Section 9).</li>
+  </ul>
+
+  <h3>Success metrics</h3>
+  <table>
+    <tr><th>Metric</th><th>Baseline (manual)</th><th>Target (v1)</th></tr>
+    <tr><td>Time from link sent to complete, reviewed record</td><td>Days</td><td>&lt; 30 min candidate effort, same-day HR review</td></tr>
+    <tr><td>Fields auto-filled by OCR vs typed by hand</td><td>0%</td><td>70%+ of master-sheet fields</td></tr>
+    <tr><td>ID documents sitting in email/chat</td><td>Default</td><td>0</td></tr>
+    <tr><td>HR transcription time per candidate</td><td>20 to 40 min</td><td>&lt; 5 min (review only)</td></tr>
+  </table>
+
+  <h2 id="s2">2. Users and personas</h2>
+  <table>
+    <tr><th>Persona</th><th>Who</th><th>Needs</th></tr>
+    <tr><td><strong>Candidate</strong></td><td>Intern, fresher, or experienced hire</td><td>Dead-simple mobile-first flow, no signup, clear instructions per document, fast</td></tr>
+    <tr><td><strong>HR admin</strong></td><td>HR team member</td><td>Generate links, track submissions, review parsed data vs the image, approve or request re-upload, export the master sheet</td></tr>
+    <tr><td><strong>Super admin</strong></td><td>HR lead / Sreedeep</td><td>Manage HR accounts, see all candidates, manage retention and deletion</td></tr>
+  </table>
+
+  <h2 id="s3">3. Candidate tracks and document matrix</h2>
+  <p>The HR document defines <strong>three tracks</strong> with different required sets. The portal branches the checklist on the track chosen when HR generates the link.</p>
+  <table>
+    <tr><th>#</th><th>Document</th><th class="center">Intern</th><th class="center">Fresher</th><th class="center">Exp.</th><th>OCR target?</th></tr>
+    <tr><td>1</td><td>Aadhaar Card (Front &amp; Back)</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td><strong>Yes</strong>: Aadhaar no., name, DOB, address</td></tr>
+    <tr><td>2</td><td>PAN Card</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td><strong>Yes</strong>: PAN no., name, father's name</td></tr>
+    <tr><td>3</td><td>Bank Passbook / Cheque front</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td><strong>Yes</strong>: bank, A/C, IFSC, branch</td></tr>
+    <tr><td>4</td><td>10th Marks Sheet</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>Partial: name, board, year</td></tr>
+    <tr><td>5</td><td>12th Marks Sheet</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>Partial</td></tr>
+    <tr><td>6</td><td>Degree Certificate</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>Partial</td></tr>
+    <tr><td>7</td><td>Resume</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>Optional: parse to summary</td></tr>
+    <tr><td>8</td><td>Test Results (IQ, GRIT, Growth Mindset)</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>No (store only)</td></tr>
+    <tr><td>9</td><td>Last Internship Certificate</td><td class="center">Yes</td><td class="center">&ndash;</td><td class="center">&ndash;</td><td>No</td></tr>
+    <tr><td>10</td><td>Previous Employer Relieving Letter</td><td class="center">&ndash;</td><td class="center">&ndash;</td><td class="center">Yes</td><td>Partial</td></tr>
+    <tr><td>11</td><td>Last 3 Months Bank Statement</td><td class="center">&ndash;</td><td class="center">&ndash;</td><td class="center">Yes</td><td>No (store only)</td></tr>
+    <tr><td>12</td><td>Last 3 Months Payslips</td><td class="center">&ndash;</td><td class="center">&ndash;</td><td class="center">Yes</td><td>No (store only)</td></tr>
+    <tr><td>13</td><td>BGC Form (filled)</td><td class="center">&ndash;</td><td class="center">&ndash;</td><td class="center">Yes</td><td>No</td></tr>
+    <tr><td>14</td><td>BGV Form (filled)</td><td class="center">&ndash;</td><td class="center">&ndash;</td><td class="center">Yes</td><td>No</td></tr>
+    <tr><td>15</td><td>NDA Form (signed)</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>No</td></tr>
+    <tr><td>16</td><td>Offer Letter (hard copy, signed)</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>No</td></tr>
+    <tr><td>17</td><td>Passport-size photos (4) / soft copy</td><td class="center">Yes</td><td class="center">Yes</td><td class="center">Yes</td><td>No</td></tr>
+  </table>
+  <blockquote>Physical-handover items (4 photos, hard-copy signed Offer/NDA) are flagged as a day-one reminder. <span class="tag tag-hr">CONFIRM W/ HR</span> whether the portal should also track physical-item handover status.</blockquote>
+
+  <h3>Master data sheet (fields to capture)</h3>
+  <p>From the <em>Master Sheet : Important Checkpoints</em> page. OCR pre-fills, candidate confirms or completes.</p>
+  <table>
+    <tr><th>Group</th><th>Fields</th><th>Source</th></tr>
+    <tr><td>Personal</td><td>Name (title case), DOB, Father name + mobile, Mother name + mobile + DOB, Spouse (if married)</td><td>Name/DOB/Father OCR from Aadhaar/PAN; rest typed</td></tr>
+    <tr><td>Address</td><td>Present + Permanent (full, PIN, house no.)</td><td>OCR from Aadhaar, candidate confirms</td></tr>
+    <tr><td>Identification</td><td>Aadhaar no., PAN no., UAN (opt), DL (opt), Passport (opt)</td><td>Aadhaar/PAN OCR; rest typed</td></tr>
+    <tr><td>Bank (mandatory)</td><td>Bank name, Account no., IFSC, Branch</td><td>OCR from passbook/cheque</td></tr>
+  </table>
+
+  <h3>Validation rules (auto-enforced)</h3>
+  <ul>
+    <li>Aadhaar: 12 digits, Verhoeff checksum &middot; PAN: <code>[A-Z]{5}[0-9]{4}[A-Z]</code> &middot; IFSC: <code>[A-Z]{4}0[A-Z0-9]{6}</code></li>
+    <li>PIN: 6 digits &middot; Mobile: 10 digits starting 6 to 9 &middot; Name: title-case ("first letter capital only")</li>
+  </ul>
+
+  <h2 id="s4">4. Core workflow</h2>
+  <pre><code>HR admin                       Candidate                    System
+  |-- pick track + email ------>|                              |
+  |-- generate single link ------------------------> create record + token
+  |                             |&lt;- receives link (email/WA) -|
+  |                             |-- opens link -------------->| validate token, show checklist
+  |                             |-- uploads Aadhaar --------->| store original in R2
+  |                             |                              |-- OCR via OpenRouter (Gemini Flash)
+  |                             |&lt;- form auto-fills ----------|   parse -> JSON + transcript
+  |                             |-- confirms / edits / adds ->| validate, save to D1
+  |                             |-- submits ----------------->| status: submitted
+  |&lt;- notified: ready --------- |                              |
+  |-- review data vs image ---->|                              |
+  |-- approve / request re-up ->|                              | approved / changes-requested
+  |-- export master sheet ----->|                              | CSV / XLSX</code></pre>
+
+  <h3>OCR sub-flow (the interesting part)</h3>
+  <ol>
+    <li>Candidate uploads a document. Original lands in R2 immediately.</li>
+    <li>Worker sends the image to <strong>OpenRouter</strong> targeting <strong>Gemini 3 Flash</strong> (or 3.1 Flash Lite for cost) with a structured prompt: extract fields as JSON, plus a clean plain-text transcript.</li>
+    <li>Model returns (a) structured field JSON mapped to master-sheet keys, (b) a transcripted/summarized version of the document.</li>
+    <li>Worker writes fields into the record as <strong>suggested values</strong> (not yet confirmed), stores the transcript, pre-fills the form.</li>
+    <li>Candidate <strong>confirms or corrects</strong> each field. Confirmed values are the source of truth. We never trust raw OCR as final.</li>
+  </ol>
+  <blockquote>Gemini Flash is multimodal, so OCR + parse + transcript happen in <strong>one model call</strong> per document. No separate OCR engine.</blockquote>
+
+  <h2 id="s5">5. Architecture (Cloudflare + SvelteKit)</h2>
+  <p>Everything runs inside the Cloudflare developer platform. One vendor, one bill, one deploy pipeline.</p>
+  <table>
+    <tr><th>Layer</th><th>Choice</th><th>Role</th></tr>
+    <tr><td>Frontend (both portals)</td><td>SvelteKit + <code>@sveltejs/adapter-cloudflare</code></td><td>Candidate portal + admin dashboard, SSR + API routes in one app</td></tr>
+    <tr><td>Hosting / compute</td><td>Cloudflare Workers (via adapter)</td><td>Serves the SvelteKit app and all <code>/api</code> routes at the edge</td></tr>
+    <tr><td>Object storage</td><td>Cloudflare R2</td><td>Original document images and PDFs, zero egress fees</td></tr>
+    <tr><td>Database</td><td>Cloudflare D1 (SQLite)</td><td>Candidate records, parsed fields, statuses, audit log</td></tr>
+    <tr><td>Sessions / tokens</td><td>Cloudflare KV</td><td>Candidate upload tokens, HR admin sessions</td></tr>
+    <tr><td>AI / OCR</td><td>OpenRouter &rarr; Gemini 3 Flash / 3.1 Flash Lite</td><td>Multimodal OCR + parse + transcript in one call</td></tr>
+    <tr><td>DNS / domain</td><td>Cloudflare DNS</td><td>Subdomain e.g. <code>onboard.&lt;domain&gt;</code></td></tr>
+    <tr><td>Secrets</td><td>Wrangler secrets / Workers env</td><td>OpenRouter key, signing secrets, never in client bundle</td></tr>
+  </table>
+  <p>SvelteKit's adapter binds R2, D1, and KV into <code>platform.env</code>, so server routes read/write storage with no extra service. R2 has no egress charges, which matters because HR repeatedly opens images during review. The whole thing recycles the existing "simple frontend, simple backend" repo pattern.</p>
+
+  <h3>Dual portal</h3>
+  <table>
+    <tr><th>Portal</th><th>Path</th><th>Auth</th></tr>
+    <tr><td>Candidate</td><td><code>onboard.&lt;domain&gt;/c/&lt;token&gt;</code></td><td>Tokenized link, no login. Token in KV, single-candidate scope, expiring.</td></tr>
+    <tr><td>Admin</td><td><code>onboard.&lt;domain&gt;/admin</code></td><td>Recommendation: <strong>Cloudflare Access</strong> (zero auth code, SSO at the edge). <span class="tag tag-stack">CONFIRM W/ STACK</span></td></tr>
+  </table>
+
+  <h3>Data model (D1, first cut)</h3>
+  <pre><code>candidates ( id, track, full_name, dob, father_name, father_mobile,
+             mother_name, mother_mobile, mother_dob, marital_status,
+             spouse_name, spouse_contact, spouse_dob,
+             present_address, present_pin, permanent_address, permanent_pin,
+             aadhaar_no, pan_no, uan_no, dl_no, passport_no,
+             bank_name, account_no, ifsc, branch,
+             status, created_at, submitted_at, reviewed_at, reviewed_by )
+
+documents  ( id, candidate_id, doc_type, r2_key, mime, ocr_status,
+             ocr_json, ocr_transcript, confirmed, uploaded_at )
+
+audit_log  ( id, candidate_id, actor, action, field, old_value,
+             new_value, ip, at )   -- DPDP processing log
+
+admins     ( id, email, role, created_at )   -- if not using Cloudflare Access</code></pre>
+
+  <h2 id="s6">6. Technical viability and stack assessment</h2>
+  <div class="verdict">Verdict: viable, low risk, well matched. Every requested capability has a first-party Cloudflare primitive plus one external AI call. Nothing here is exotic.</div>
+  <table>
+    <tr><th>Requirement</th><th>Stack answer</th><th>Confidence</th></tr>
+    <tr><td>Single-link workflow</td><td>KV expiring tokens + Worker route</td><td class="sev-low">High</td></tr>
+    <tr><td>Document upload + image storage</td><td>R2 multipart upload from Worker</td><td class="sev-low">High</td></tr>
+    <tr><td>OCR auto-fill</td><td>OpenRouter &rarr; Gemini 3 Flash (multimodal, PDF + image native)</td><td class="sev-low">High</td></tr>
+    <tr><td>Manual completion</td><td>SvelteKit form + D1</td><td class="sev-low">High</td></tr>
+    <tr><td>Admin dashboard + dual portals</td><td>SvelteKit routes + Cloudflare Access</td><td class="sev-low">High</td></tr>
+    <tr><td>Backend processing</td><td>Workers (adapter runs SvelteKit server routes)</td><td class="sev-low">High</td></tr>
+    <tr><td>DNS for the domain</td><td>Cloudflare DNS in existing account</td><td class="sev-low">High</td></tr>
+  </table>
+
+  <h3>Known risks and mitigations</h3>
+  <table>
+    <tr><th>Risk</th><th>Severity</th><th>Mitigation</th></tr>
+    <tr><td>OCR misreads Aadhaar/PAN/IFSC (wrong a/c = wrong salary)</td><td class="sev-high">High</td><td>Human-in-the-loop confirm. Checksum/regex validation. Show parsed value beside the source image.</td></tr>
+    <tr><td>Sensitive PII through a third-party model</td><td class="sev-high">High</td><td>See Section 9. Send minimum image, use no-logging / ZDR routing, document the data flow, get HR sign-off.</td></tr>
+    <tr><td>Worker CPU limits on large PDFs (statements, payslips)</td><td class="sev-med">Medium</td><td>Store-only for those, do not OCR. Stream uploads, R2 multipart.</td></tr>
+    <tr><td>SvelteKit learning curve on a deadline</td><td class="sev-med">Low/Med</td><td>Tight MVP scope, recycle existing repo, lean on <code>create-cloudflare</code>.</td></tr>
+    <tr><td>Gemini "Flash Preview" model churn</td><td class="sev-low">Low</td><td>Pin to a GA model (3.1 Flash Lite is GA), treat model id as config.</td></tr>
+  </table>
+
+  <h3>Indicative cost (MVP, low volume)</h3>
+  <p>The Cloudflare free tier covers an MVP comfortably: Workers 100K req/day, R2 10 GB-month with <strong>zero egress</strong>, D1 5 GB + 5M row-reads/day, KV 1 GB. Realistic onboarding volume is dozens of candidates a month, far under these limits.</p>
+  <p>The only metered cost is OCR. Gemini 3 Flash is roughly <strong>$0.50 / 1M input tokens, $3 / 1M output</strong>; 3.1 Flash Lite about half. A document image plus structured output is a few thousand tokens, so per-candidate OCR cost is a <strong>fraction of a cent to a few cents</strong>. Negligible at hiring volumes.</p>
+  <div class="callout"><strong>Net:</strong> MVP runs at ~$0 infra plus cents of AI. Paid Cloudflare ($5/mo Workers Paid) only if we exceed free request limits.</div>
+
+  <h2 id="s7">7. MVP scope (for Monday)</h2>
+  <p>"Nothing too crazy, simple frontend and simple backend." Recycle the existing repo. Target a thin but <strong>end-to-end</strong> slice.</p>
+  <h3>In scope for Monday</h3>
+  <ol>
+    <li>HR generates a single link for one track (start with <strong>Fresher</strong>).</li>
+    <li>Candidate uploads <strong>Aadhaar + PAN + Bank</strong> (the three high-value OCR docs).</li>
+    <li>OCR auto-fills name, DOB, Aadhaar no., PAN no., father's name, bank/IFSC/branch/account.</li>
+    <li>Candidate confirms/edits, fills remaining fields, uploads other docs (store-only).</li>
+    <li>Candidate submits.</li>
+    <li>Admin dashboard: list candidates, open one, parsed fields beside images, approve.</li>
+    <li>Export master sheet to CSV.</li>
+  </ol>
+  <h3>Deferred past Monday</h3>
+  <ul>
+    <li>All three tracks branching (MVP demos one, design supports all).</li>
+    <li>In-portal e-signature, re-upload loop, notifications.</li>
+    <li>Cloudflare Access hardening (shared admin login for the demo if needed).</li>
+    <li>Full DPDP consent-notice flow (stub the checkbox, build the full notice for launch).</li>
+  </ul>
+  <h3>Build sequence</h3>
+  <ol>
+    <li>Scaffold SvelteKit + adapter, wire R2 + D1 + KV, deploy hello-world to the subdomain (de-risk the pipeline first).</li>
+    <li>Candidate upload route &rarr; R2 &rarr; OpenRouter OCR &rarr; return JSON.</li>
+    <li>Form pre-fill + confirm + D1 save.</li>
+    <li>Admin list + detail + approve + CSV.</li>
+    <li>Demo polish.</li>
+  </ol>
+
+  <h2 id="s8">8. Open questions for the HR sit-down</h2>
+  <h3>For HR <span class="tag tag-hr">CONFIRM W/ HR</span></h3>
+  <ol>
+    <li>Is the document matrix in Section 3 complete and current for all three tracks?</li>
+    <li>Should the portal track <strong>physical handover</strong> items, or only soft copies?</li>
+    <li>Is in-portal <strong>e-signature</strong> wanted in v1, or is upload-of-signed-copy fine?</li>
+    <li>Who are the HR admin users, and do they need different permission levels?</li>
+    <li>What is the <strong>retention policy</strong> after onboarding (how long to keep Aadhaar/PAN/bank, when to delete)?</li>
+    <li>Which companies use this, and do they need per-company branding?</li>
+    <li>Preferred link delivery channel: email, WhatsApp, both?</li>
+  </ol>
+  <h3>For us <span class="tag tag-stack">CONFIRM W/ STACK</span></h3>
+  <ol start="8">
+    <li>Single Worker vs split candidate/admin Workers.</li>
+    <li>Cloudflare Access vs custom admin auth.</li>
+    <li>OpenRouter data-retention / ZDR routing confirmation before any real Aadhaar passes through.</li>
+    <li>Final domain/subdomain.</li>
+    <li>Default Gemini Flash tier (3 Flash for accuracy vs 3.1 Flash Lite for cost).</li>
+  </ol>
+
+  <h2 id="s9">9. Compliance and security</h2>
+  <p>This portal collects government IDs (Aadhaar, PAN, passport), financial data (bank account, payslips, statements), and family contacts. That is the most sensitive data the org handles. Compliance is a first-class requirement.</p>
+  <h3>Regulatory context: DPDP Act 2023 + DPDP Rules 2025</h3>
+  <ul>
+    <li>The <strong>Digital Personal Data Protection Act, 2023</strong> governs. The <strong>DPDP Rules, 2025</strong> were notified <strong>13 Nov 2025</strong>. Core consent/notice/rights obligations enforce from <strong>13 May 2027</strong>; consent-manager provisions from 13 Nov 2026. Build to the standard now, do not retrofit.</li>
+    <li>The Act does <strong>not</strong> carve out a separate "sensitive personal data" class. All personal data is treated uniformly, so we hold IDs and financials at the highest bar regardless.</li>
+    <li><strong>Purpose limitation on Aadhaar:</strong> data collected for onboarding cannot be reused for another purpose (e.g. attendance) without fresh, separate consent.</li>
+  </ul>
+  <h3>Consent and notice</h3>
+  <ul>
+    <li>Candidate sees a <strong>clear, plain-language privacy notice</strong> before upload: what we collect, why, how long, who sees it, how to request deletion.</li>
+    <li>Consent must be <strong>free, specific, informed, unconditional, affirmative action</strong> (an unticked checkbox the candidate actively ticks).</li>
+    <li>Launch should provide the notice in English plus relevant scheduled language(s). MVP can stub this. <span class="tag tag-hr">CONFIRM W/ HR</span></li>
+  </ul>
+  <h3>Data handling matrix</h3>
+  <table>
+    <tr><th>Control</th><th>Implementation</th></tr>
+    <tr><td>Encryption in transit</td><td>TLS everywhere (Cloudflare default)</td></tr>
+    <tr><td>Encryption at rest</td><td>R2 and D1 encrypt at rest by default</td></tr>
+    <tr><td>Access control</td><td>Candidate token scoped to one candidate, expiring, single-purpose. Admin behind Cloudflare Access. No public bucket. R2 served only via signed, short-lived URLs through the Worker.</td></tr>
+    <tr><td>Least exposure to AI</td><td>Send only the specific image needed. Confirm OpenRouter/Gemini no-retention routing before real data flows. Document the path.</td></tr>
+    <tr><td>Audit log</td><td>Every read/edit/approve/export/delete logged (actor, action, field, old/new, IP, time). Doubles as the DPDP processing log.</td></tr>
+    <tr><td>Retention + erasure</td><td>Purpose-bound retention agreed with HR. Notify before erasure where required. Admin "delete candidate + all R2 objects + rows". Keep processing logs at least one year.</td></tr>
+    <tr><td>Data-principal rights</td><td>Candidate can request access, correction, erasure. v1 exposes a contact path, later self-serve.</td></tr>
+    <tr><td>PII in logs</td><td>Never log raw Aadhaar/PAN/account numbers. Mask (last 4).</td></tr>
+  </table>
+  <h3>Hard security rules for the build</h3>
+  <ol>
+    <li>OpenRouter key and all secrets live in Workers secrets, never in the client bundle or repo.</li>
+    <li>No R2 bucket is public. All access through the Worker with a signed, expiring URL.</li>
+    <li>Raw OCR is "suggested", never authoritative until a human confirms.</li>
+    <li>Mask sensitive numbers in every UI surface except the explicit confirm step.</li>
+    <li>Verify OpenRouter + Gemini data-retention terms in writing before the first real Aadhaar. If zero-retention cannot be confirmed, fall back to <strong>Cloudflare Workers AI</strong> (in-network) or an on-platform OCR path. <span class="tag tag-stack">CONFIRM W/ STACK</span></li>
+  </ol>
+
+  <h2 id="s10">10. Appendix: source</h2>
+  <ul>
+    <li>HR requirements: <em>Onboarding Required Documents</em> (3 tracks + master sheet + general instructions), supplied by HR.</li>
+    <li>Stack research: Cloudflare Workers/R2/D1/KV pricing &amp; free tiers, SvelteKit <code>adapter-cloudflare</code>, OpenRouter Gemini 3/3.1/3.5 Flash model cards, India DPDP Act 2023 + DPDP Rules 2025.</li>
+  </ul>
+
+  <footer>
+    Draft v0.1 &middot; 2026-06-11 &middot; Prepared for Sreedeep Surapaneni, Champions Group. Next step: walk HR through Sections 3, 8, and 9, lock the matrix, then start the MVP build.
+  </footer>
+</div>
+</body>
+</html>

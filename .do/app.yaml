@@ -1,0 +1,60 @@
+# DigitalOcean App Platform spec — starting point (doctl apps create --spec .do/app.yaml)
+name: champonboard
+region: blr
+services:
+  - name: web
+    source_dir: app
+    github:
+      repo: CHANGE_ME/HR_Automation_tool
+      branch: main
+      deploy_on_push: true
+    build_command: npm ci && npm run build
+    run_command: node build/index.js
+    http_port: 3000
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    health_check:
+      http_path: /admin/login
+    envs:
+      - key: ORIGIN
+        scope: RUN_TIME
+        value: https://onboard.example.com
+      - key: PUBLIC_BASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: https://onboard.example.com
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: OPENROUTER_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: OPENROUTER_MODEL
+        scope: RUN_TIME
+        value: google/gemini-3.5-flash
+      - key: S3_ENDPOINT
+        scope: RUN_TIME
+        value: https://blr1.digitaloceanspaces.com
+      - key: S3_REGION
+        scope: RUN_TIME
+        value: blr1
+      - key: S3_BUCKET
+        scope: RUN_TIME
+        value: champ-onboard-docs
+      - key: S3_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_FORCE_PATH_STYLE
+        scope: RUN_TIME
+        value: 'false'
+      - key: ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: RESEND_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: MAIL_FROM
+        scope: RUN_TIME
+        value: 'ChampOnboard <onboard@example.com>'
