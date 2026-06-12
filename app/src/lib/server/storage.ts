@@ -16,6 +16,18 @@ const s3 = new S3Client({
 	forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true'
 });
 
+// Presigned URLs are fetched by the browser, which may reach storage on a different
+// host than the server does (Docker: server→minio:9000, browser→localhost:9000).
+// In prod (Spaces) both are the same URL and S3_PUBLIC_ENDPOINT stays unset.
+const s3Public = env.S3_PUBLIC_ENDPOINT
+	? new S3Client({
+			endpoint: env.S3_PUBLIC_ENDPOINT,
+			region: env.S3_REGION ?? 'blr1',
+			credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
+			forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true'
+		})
+	: s3;
+
 const BUCKET = env.S3_BUCKET ?? 'champ-onboard-docs';
 const PRESIGN_SECONDS = 600; // 10 min (PRD §9)
 
@@ -24,13 +36,15 @@ export function objectKey(candidateId: string, docType: string, ext: string): st
 }
 
 export function presignPut(key: string, mime: string) {
-	return getSignedUrl(s3, new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime }), {
-		expiresIn: PRESIGN_SECONDS
-	});
+	return getSignedUrl(
+		s3Public,
+		new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime }),
+		{ expiresIn: PRESIGN_SECONDS }
+	);
 }
 
 export function presignGet(key: string) {
-	return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
+	return getSignedUrl(s3Public, new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
 		expiresIn: PRESIGN_SECONDS
 	});
 }

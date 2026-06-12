@@ -46,6 +46,50 @@ services:
       exit 0
       "
 
+  # One-shot: apply schema + seed company/super admin, then exit.
+  migrate:
+    build:
+      context: ./app
+      target: builder
+    command: sh -c "npx drizzle-kit push --force && node scripts/seed.ts"
+    environment:
+      DATABASE_URL: postgres://champ:champ@postgres:5432/champonboard
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-deep@championsmail.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-champ-admin-2026}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: ./app
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgres://champ:champ@postgres:5432/champonboard
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-3.5-flash}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_REGION: blr1
+      S3_BUCKET: champ-onboard-docs
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_FORCE_PATH_STYLE: 'true'
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ORIGIN: http://localhost:3000
+      PUBLIC_BASE_URL: http://localhost:3000
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: 'ChampOnboard <onboard@championsgroup.example>'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:
   miniodata:

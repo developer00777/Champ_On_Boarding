@@ -5,21 +5,33 @@ candidate portal (`/c/<token>`) and the HR admin dashboard (`/admin`). Documents
 S3-compatible object storage, structured data to Postgres, OCR via OpenRouter → Gemini Flash.
 See `prd.md` for the full product spec.
 
-## Local development
+## Run the whole stack locally (dockerised)
 
 ```bash
-docker compose up -d              # Postgres :5432 + MinIO :9000 (console :9001)
-cd app
-cp .env.example .env              # fill OPENROUTER_API_KEY + ENCRYPTION_KEY (openssl rand -hex 32)
-npm install
-npm run db:push                   # apply schema (drizzle-kit push; needs DATABASE_URL exported)
-npm run db:seed                   # creates company + super admin (prints the password once)
-npm run dev                       # http://localhost:5173
+# root .env must contain OPENROUTER_API_KEY and ENCRYPTION_KEY (openssl rand -hex 32)
+docker compose up -d --build
 ```
 
-Seed overrides: `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` env vars.
+That brings up Postgres (:5432), MinIO (:9000, console :9001 — `minioadmin`/`minioadmin`),
+a one-shot migrate+seed job, and the app at **http://localhost:3000**.
+Default admin: `deep@championsmail.com` / `champ-admin-2026` (override with
+`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` in the root `.env` before first start).
 
-With `RESEND_API_KEY` empty, outgoing email (incl. candidate links) is printed to the console.
+MinIO stands in for DO Spaces locally — same S3 API, so storage code is identical in
+dev and prod; only `S3_ENDPOINT` changes. With `RESEND_API_KEY` empty, outgoing email
+(incl. candidate links) is printed to the app logs: `docker compose logs app | grep /c/`.
+
+## Local development (hot reload)
+
+```bash
+docker compose up -d postgres minio createbucket
+cd app
+cp .env.example .env              # fill OPENROUTER_API_KEY + ENCRYPTION_KEY
+npm install
+export $(grep -v '^#' .env | xargs) && npm run db:push
+npm run db:seed
+npm run dev                       # http://localhost:5173
+```
 
 ## Deploying to DigitalOcean
 
