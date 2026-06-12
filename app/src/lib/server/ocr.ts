@@ -111,7 +111,12 @@ export async function runOcr(ocrKey: string, spacesKey: string, mime: string): P
 
 	const fields: Record<string, string> = {};
 	for (const [modelField, candidateField] of Object.entries(schema.fieldMap)) {
-		const value = String(parsed[modelField] ?? '').trim();
+		let value = String(parsed[modelField] ?? '').trim();
+		if (candidateField === 'gender' && value) {
+			// form select expects Female / Male / Other
+			const g = value.toLowerCase();
+			value = g.startsWith('f') ? 'Female' : g.startsWith('m') ? 'Male' : 'Other';
+		}
 		if (value && candidateField) fields[candidateField] = value;
 	}
 
