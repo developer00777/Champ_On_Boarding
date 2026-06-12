@@ -2,16 +2,22 @@
 	let { data, children } = $props();
 </script>
 
-<div class="shell">
+<div>
 	{#if data.admin}
-		<nav>
-			<a href="/admin" class="brand">ChampOnboard</a>
-			<span class="muted">{data.admin.email} · {data.admin.role === 'super_admin' ? 'Super admin' : 'HR admin'}</span>
-			<span style="flex:1"></span>
-			<a href="/admin/export" data-sveltekit-preload-data="off">Export CSV</a>
-			<form method="POST" action="/admin/logout">
-				<button class="secondary">Log out</button>
-			</form>
+		<nav class="topnav">
+			<div class="topnav-inner">
+				<a href="/admin" class="brand">
+					<span class="logo-mark">C</span>
+					<span style="font-weight:800;font-size:16px;color:var(--ink)">ChampOnboard</span>
+				</a>
+				<span class="role-tag">HR Admin</span>
+				<div style="flex:1"></div>
+				<span class="who">{data.admin.email} · {data.admin.role === 'super_admin' ? 'Super admin' : 'HR admin'}</span>
+				<a href="/admin/export" class="btn ghost small" data-sveltekit-preload-data="off">Export CSV</a>
+				<form method="POST" action="/admin/logout" style="display:contents">
+					<button class="btn ghost small">Log out</button>
+				</form>
+			</div>
 		</nav>
 	{/if}
 	<div class="content">
@@ -20,24 +26,43 @@
 </div>
 
 <style>
-	nav {
+	.topnav {
+		background: #fff;
+		border-bottom: 1px solid var(--border);
+	}
+	.topnav-inner {
+		max-width: 1180px;
+		margin: 0 auto;
+		padding: 14px 24px;
 		display: flex;
 		align-items: center;
-		gap: 1rem;
-		background: #fff;
-		border-bottom: 1px solid #e2e8f0;
-		padding: 0.6rem 1.25rem;
+		gap: 12px;
 		flex-wrap: wrap;
 	}
 	.brand {
-		font-weight: 700;
-		color: #1a202c;
+		display: flex;
+		align-items: center;
+		gap: 10px;
 		text-decoration: none;
-		font-size: 1.05rem;
+	}
+	.role-tag {
+		font-size: 12px;
+		color: var(--smoke);
+		font-weight: 600;
+		margin-left: 4px;
+	}
+	.who {
+		font-size: 12.5px;
+		color: var(--smoke);
 	}
 	.content {
-		max-width: 1100px;
+		max-width: 1180px;
 		margin: 0 auto;
-		padding: 1.25rem 1rem;
+		padding: 28px 24px 80px;
+	}
+	@media (max-width: 640px) {
+		.who {
+			display: none;
+		}
 	}
 </style>

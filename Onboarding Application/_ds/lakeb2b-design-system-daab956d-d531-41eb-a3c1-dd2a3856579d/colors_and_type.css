@@ -1,0 +1,260 @@
+/* =====================================================================
+   LakeB2B Design System — Color & Typography Tokens
+   Source of truth: uploads/lake_b2b_brand_book.pdf + LakeB2B Design
+   System Brief (2026-04-19).
+   ---------------------------------------------------------------------
+   Loading pattern:
+     <link rel="stylesheet" href="./colors_and_type.css">
+   Montserrat + Alata are pulled from Google Fonts. Arial is fallback.
+   ===================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;700;800&family=Alata&display=swap");
+
+:root {
+  /* ---------- Brand colors: Primary (80% of the design) ------------- */
+  /* Anchor brand color. Use for hero, primary surfaces, headers.      */
+  --lakeb2b-purple: #6D08BE;   /* 60% */
+  --lakeb2b-gold:   #FFB703;   /* 20% · accent, highlights, callouts  */
+  --lakeb2b-red:    #E8033A;   /* 20% · emphasis, primary CTA         */
+
+  /* ---------- Brand colors: Secondary (purpose-driven trio) --------- */
+  --lakeb2b-teal:     #0095A0;  /* Data & insights · cool counterweight */
+  --lakeb2b-navy:     #011A6B;  /* Professional anchor                  */
+  --lakeb2b-lavender: #7A76DA;  /* Tonal variant of purple · UI support */
+
+  /* ---------- Neutrals (derived; not in brand book, but required) --- */
+  --lakeb2b-ink:       #0B0718;  /* near-black with a purple warmth     */
+  --lakeb2b-ink-2:     #1E1433;  /* card backgrounds on dark            */
+  --lakeb2b-graphite:  #3A2E55;  /* secondary text on dark              */
+  --lakeb2b-slate:     #5C5470;  /* tertiary / captions on dark         */
+  --lakeb2b-smoke:     #9A93A8;  /* muted text on light                 */
+  --lakeb2b-fog:       #D9D4E3;  /* dividers, disabled surfaces         */
+  --lakeb2b-mist:      #F3F0F7;  /* light card background, section bg   */
+  --lakeb2b-paper:     #FBFAFD;  /* app background                      */
+  --lakeb2b-white:     #FFFFFF;
+
+  /* ---------- Semantic foreground / background --------------------- */
+  --bg:          var(--lakeb2b-white);
+  --bg-muted:    var(--lakeb2b-mist);
+  --bg-inverse:  var(--lakeb2b-navy);
+  --bg-brand:    var(--lakeb2b-purple);
+
+  --fg:          var(--lakeb2b-ink);     /* primary text on light       */
+  --fg-2:        #3F355A;                /* secondary text              */
+  --fg-3:        var(--lakeb2b-smoke);   /* captions, helper text       */
+  --fg-on-brand: var(--lakeb2b-white);   /* text on purple / navy / red */
+  --fg-on-gold:  var(--lakeb2b-ink);     /* NEVER use white on gold     */
+
+  --border:      var(--lakeb2b-fog);
+  --border-2:    #E6E1EE;
+  --divider:     #ECE7F3;
+
+  /* ---------- Accent + state --------------------------------------- */
+  --accent:           var(--lakeb2b-red);
+  --accent-2:         var(--lakeb2b-gold);
+  --focus-ring:       rgba(109, 8, 190, 0.32);
+  --success:          var(--lakeb2b-teal);
+  --warning:          var(--lakeb2b-gold);
+  --danger:           var(--lakeb2b-red);
+
+  /* ---------- Signature gradients ---------------------------------- */
+  /* Composed from the tightened palette only.                         */
+  --gradient-logo:     linear-gradient(90deg, #FFB703 0%, #E8033A 50%, #6D08BE 100%);
+  --gradient-hero:     linear-gradient(135deg, #6D08BE 0%, #7A76DA 55%, #E8033A 100%);
+  --gradient-brand:    linear-gradient(135deg, #6D08BE 0%, #E8033A 60%, #FFB703 100%);
+  --gradient-data:     linear-gradient(135deg, #011A6B 0%, #0095A0 55%, #6D08BE 100%);
+  --gradient-tech:     linear-gradient(135deg, #0095A0 0%, #6D08BE 100%);
+  --gradient-lavender: linear-gradient(180deg, #F6F2FC 0%, #E7DFF6 100%);
+  --gradient-soft:     linear-gradient(180deg, #FBFAFD 0%, #F3F0F7 100%);
+  --gradient-cta:      linear-gradient(135deg, #6D08BE 0%, #E8033A 100%);
+
+  /* ---------- Elevation / shadow ----------------------------------- */
+  --shadow-1: 0 1px 2px rgba(11, 7, 24, 0.04), 0 1px 3px rgba(11, 7, 24, 0.06);
+  --shadow-2: 0 4px 12px rgba(11, 7, 24, 0.06), 0 2px 4px rgba(11, 7, 24, 0.04);
+  --shadow-3: 0 12px 32px rgba(11, 7, 24, 0.10), 0 4px 8px rgba(11, 7, 24, 0.04);
+  --shadow-4: 0 24px 60px rgba(11, 7, 24, 0.18), 0 8px 20px rgba(11, 7, 24, 0.08);
+  --shadow-brand: 0 16px 48px -12px rgba(109, 8, 190, 0.45);
+  --shadow-cta:   0 10px 28px -8px rgba(232, 3, 58, 0.55);
+
+  /* ---------- Radii ------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* ---------- Spacing (4pt scale) ---------------------------------- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+  --space-9:  96px;
+  --space-10: 128px;
+
+  /* ---------- Typography families ---------------------------------- */
+  --font-sans:    "Montserrat", "Arial", system-ui, -apple-system, Segoe UI, sans-serif;
+  --font-display: "Montserrat", "Arial", system-ui, sans-serif;  /* Extra Bold for H1 */
+  --font-accent:  "Alata", "Montserrat", Georgia, serif;          /* pull quotes, display copy */
+  --font-fallback:"Arial", Helvetica, sans-serif;
+
+  /* ---------- Type scale (desktop) --------------------------------- */
+  --fs-display: clamp(56px, 7vw, 96px);
+  --fs-h1:      clamp(40px, 4.5vw, 64px);
+  --fs-h2:      clamp(32px, 3.2vw, 44px);
+  --fs-h3:      28px;
+  --fs-h4:      22px;
+  --fs-h5:      18px;
+  --fs-body:    16px;
+  --fs-small:   14px;
+  --fs-xsmall:  12px;
+  --fs-eyebrow: 13px;
+
+  --lh-tight:   1.05;
+  --lh-snug:    1.2;
+  --lh-normal:  1.45;
+  --lh-relaxed: 1.6;
+
+  --tracking-tight:  -0.02em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.04em;
+  --tracking-widest:  0.18em;  /* Used on ENABLING GROWTH + eyebrows */
+
+  /* ---------- Motion ----------------------------------------------- */
+  --ease-out:     cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-xs:  120ms;
+  --duration-sm:  200ms;
+  --duration-md:  320ms;
+  --duration-lg:  600ms;
+}
+
+/* =====================================================================
+   Semantic element defaults
+   ===================================================================== */
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, .h1 {
+  font-family: var(--font-display);
+  font-weight: 800;            /* Montserrat Extra Bold */
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+h2, .h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
+}
+
+h3, .h3 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--fs-h3);
+  line-height: var(--lh-snug);
+}
+
+h4, .h4 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--fs-h4);
+  line-height: var(--lh-snug);
+}
+
+h5, .h5 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--fs-h5);
+  line-height: var(--lh-snug);
+}
+
+p, .body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: var(--fs-body);
+  line-height: var(--lh-relaxed);
+  color: var(--fg-2);
+  text-wrap: pretty;
+}
+
+small, .caption {
+  font-size: var(--fs-small);
+  line-height: var(--lh-normal);
+  color: var(--fg-3);
+}
+
+.eyebrow {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--fs-eyebrow);
+  line-height: 1;
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--lakeb2b-purple);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--fs-display);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.pullquote {
+  font-family: var(--font-accent);      /* Alata — accent display copy */
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.35;
+  color: var(--fg);
+}
+
+/* Signature brand promise — ALWAYS uppercase, wide tracking */
+.brand-promise {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--lakeb2b-purple);
+}
+
+code, .mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--lakeb2b-mist);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+}
+
+a {
+  color: var(--lakeb2b-purple);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  transition: color var(--duration-sm) var(--ease-out);
+}
+a:hover { color: var(--lakeb2b-magenta); }
+
+::selection {
+  background: var(--lakeb2b-purple);
+  color: var(--lakeb2b-white);
+}
