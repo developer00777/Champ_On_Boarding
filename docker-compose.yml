@@ -79,7 +79,7 @@ services:
       ORIGIN: http://localhost:3000
       PUBLIC_BASE_URL: http://localhost:3000
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      MAIL_FROM: 'ChampOnboard <onboard@championsgroup.example>'
+      MAIL_FROM: ${MAIL_FROM:-ChampOnboard <onboarding@resend.dev>}
     depends_on:
       postgres:
         condition: service_healthy
