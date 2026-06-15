@@ -10,9 +10,12 @@
 					<span class="logo-mark">C</span>
 					<span style="font-weight:800;font-size:16px;color:var(--ink)">ChampOnboard</span>
 				</a>
-				<span class="role-tag">HR Admin</span>
+				<span class="role-tag">{data.admin.role === 'super_admin' ? 'Super admin' : 'HR Admin'}</span>
 				<div style="flex:1"></div>
 				<span class="who">{data.admin.email} · {data.admin.role === 'super_admin' ? 'Super admin' : 'HR admin'}</span>
+				{#if data.admin.role === 'super_admin'}
+					<a href="/admin/team" class="btn ghost small">Team</a>
+				{/if}
 				<a href="/admin/export" class="btn ghost small" data-sveltekit-preload-data="off">Export CSV</a>
 				<form method="POST" action="/admin/logout" style="display:contents">
 					<button class="btn ghost small">Log out</button>
