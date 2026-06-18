@@ -5,8 +5,10 @@ import {
 	boolean,
 	integer,
 	jsonb,
-	uuid
+	uuid,
+	uniqueIndex
 } from 'drizzle-orm/pg-core';
+import type { FieldResult } from '../../shared/match';
 
 export const companies = pgTable('companies', {
 	id: uuid('id').primaryKey().defaultRandom(),
@@ -145,6 +147,30 @@ export const physicalItems = pgTable('physical_items', {
 	note: text('note')
 });
 
+// Document verification results — one row per (candidate, source, document kind).
+// `source` distinguishes high-trust government pulls from the OCR cross-check fallback.
+export const verifications = pgTable(
+	'verifications',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		candidateId: uuid('candidate_id').notNull().references(() => candidates.id),
+		source: text('source', { enum: ['digilocker', 'ocr_crosscheck'] }).notNull(),
+		docKind: text('doc_kind').notNull(), // aadhaar | pan | marksheet_10 | marksheet_12
+		status: text('status', { enum: ['verified', 'review', 'mismatch', 'error'] }).notNull(),
+		score: integer('score').notNull().default(0),
+		fieldResults: jsonb('field_results').$type<FieldResult[]>().notNull().default([]),
+		note: text('note'),
+		verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	(table) => ({
+		uniq: uniqueIndex('verifications_candidate_source_kind_uniq').on(
+			table.candidateId,
+			table.source,
+			table.docKind
+		)
+	})
+);
+
 export const auditLog = pgTable('audit_log', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	candidateId: uuid('candidate_id'),
@@ -161,3 +187,4 @@ export type Candidate = typeof candidates.$inferSelect;
 export type Doc = typeof documents.$inferSelect;
 export type Admin = typeof admins.$inferSelect;
 export type PhysicalItem = typeof physicalItems.$inferSelect;
+export type Verification = typeof verifications.$inferSelect;

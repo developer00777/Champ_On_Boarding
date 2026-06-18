@@ -11,7 +11,6 @@ import { slotByType, ACCEPTED_MIMES, MAX_FILE_BYTES } from '$lib/shared/matrix';
 const EXT: Record<string, string> = {
 	'image/jpeg': 'jpg',
 	'image/png': 'png',
-	'image/webp': 'webp',
 	'application/pdf': 'pdf'
 };
 
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		const slot = slotByType(String(body.docType ?? ''));
 		if (!slot || !slot.tracks.includes(candidate.track as never)) error(400, 'Unknown document type');
 		const mime = String(body.mime ?? '');
-		if (!ACCEPTED_MIMES.includes(mime)) error(400, 'Only JPG, PNG, WEBP or PDF files are accepted');
+		if (!ACCEPTED_MIMES.includes(mime)) error(400, 'Only JPG, PNG or PDF files are accepted');
 		if (Number(body.size) > MAX_FILE_BYTES) error(400, 'File is larger than 10 MB');
 
 		const existing = await db

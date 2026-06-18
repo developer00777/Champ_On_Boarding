@@ -130,6 +130,15 @@
 	const RING = 213.6;
 
 	const firstName = $derived((fields.fullName || '').split(' ')[0]);
+
+	// DigiLocker verification outcome, surfaced via ?dl= on return from the consent flow.
+	const dlStatus = $derived(page.url.searchParams.get('dl'));
+	const dlChip: Record<string, { text: string; cls: string }> = {
+		verified: { text: 'Verified', cls: 'teal' },
+		review: { text: 'Needs review', cls: 'gold' },
+		mismatch: { text: 'Mismatch', cls: 'red' },
+		error: { text: 'Error', cls: 'red' }
+	};
 </script>
 
 {#if isSubmitted}
@@ -345,7 +354,7 @@
 						<div class="eyebrow">Upload documents</div>
 					</div>
 					<p class="muted" style="margin:0 0 20px;line-height:1.55">
-						JPG, PNG, WEBP or PDF, max 10&nbsp;MB each. Cards marked
+						JPG, PNG or PDF, max 10&nbsp;MB each. Cards marked
 						<span style="color:#E6A700">✨</span> are read automatically and fill the form below.
 						Photograph on a flat surface, good light, all corners visible.
 					</p>
@@ -387,7 +396,7 @@
 										<label class="upload-btn">
 											<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 20h14" /></svg>
 											{active.length ? 'Add another file' : 'Click to upload'}
-											<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onchange={(e) => uploadFile(slot.type, e.currentTarget)} style="display:none" />
+											<input type="file" accept="image/jpeg,image/png,application/pdf" onchange={(e) => uploadFile(slot.type, e.currentTarget)} style="display:none" />
 										</label>
 									{/if}
 									{#if slotMessages[slot.type]}<div class="error">{slotMessages[slot.type]}</div>{/if}
@@ -397,6 +406,48 @@
 						{/each}
 					</div>
 				</section>
+
+				<!-- DigiLocker verification -->
+				{#if data.digilocker.enabled}
+					<section class="card" style="padding:26px">
+						<div class="section-head">
+							<span class="section-num">✓</span>
+							<div class="eyebrow">Verify with DigiLocker</div>
+						</div>
+						<p class="muted" style="margin:0 0 16px;line-height:1.55">
+							Optionally link your DigiLocker to instantly verify your Aadhaar and PAN against the
+							details you entered — straight from the source. We only store the verification result,
+							never your full Aadhaar number.
+						</p>
+						{#if dlStatus === 'denied'}
+							<div class="dl-banner warn">DigiLocker access was cancelled. You can try again any time.</div>
+						{:else if dlStatus === 'empty'}
+							<div class="dl-banner warn">No verifiable documents were found in your DigiLocker.</div>
+						{:else if dlStatus === 'error'}
+							<div class="dl-banner warn">We couldn't reach DigiLocker just now. Please try again.</div>
+						{:else if dlStatus === 'ok'}
+							<div class="dl-banner ok">DigiLocker verification complete.</div>
+						{/if}
+						{#if data.digilocker.results.length}
+							<div class="dl-results">
+								{#each data.digilocker.results as r}
+									<div class="dl-row">
+										<span class="dl-name">{r.label}</span>
+										<span class="chip {dlChip[r.status]?.cls ?? 'mist'}" style="flex:0 0 auto">
+											{dlChip[r.status]?.text ?? r.status} · {r.score}%
+										</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						{#if data.editable}
+							<a class="upload-btn" style="margin-top:14px;text-decoration:none" href={`/c/${page.params.token}/digilocker/start`}>
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z" /><path d="M9 12l2 2 4-4" /></svg>
+								{data.digilocker.results.length ? 'Re-verify with DigiLocker' : 'Verify with DigiLocker'}
+							</a>
+						{/if}
+					</section>
+				{/if}
 
 				<form method="POST" action="?/submit" use:enhance={() => {
 					saving = true;
@@ -1079,6 +1130,41 @@
 	}
 	.save-ghost:hover {
 		background: rgba(255, 255, 255, 0.1);
+	}
+
+	/* ---------- digilocker ---------- */
+	.dl-banner {
+		border-radius: 12px;
+		padding: 11px 14px;
+		font-size: 13px;
+		font-weight: 600;
+		margin-bottom: 14px;
+	}
+	.dl-banner.ok {
+		background: rgba(0, 149, 160, 0.12);
+		color: #00666e;
+	}
+	.dl-banner.warn {
+		background: rgba(255, 183, 3, 0.16);
+		color: #7a5800;
+	}
+	.dl-results {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.dl-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 9px 12px;
+		border: 1px solid var(--border);
+		border-radius: 11px;
+	}
+	.dl-name {
+		flex: 1;
+		font-weight: 700;
+		font-size: 13.5px;
 	}
 
 	/* ---------- success ---------- */

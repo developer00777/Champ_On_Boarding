@@ -33,7 +33,7 @@ export const DOC_SLOTS: DocSlot[] = [
 	{ type: 'bank_proof', label: 'Bank Passbook / Cheque front', hint: 'Name, IFSC, branch, bank name and account number must be visible', tracks: ALL, mandatory: true, ocr: 'bank_proof', maxFiles: 1 },
 	{ type: 'marksheet_10', label: '10th Marks Sheet', hint: 'Clear and fully visible', tracks: ALL, mandatory: true, maxFiles: 1 },
 	{ type: 'marksheet_12', label: '12th Marks Sheet', hint: 'Clear and fully visible', tracks: ALL, mandatory: true, maxFiles: 1 },
-	{ type: 'degree_cert', label: 'Degree Certificate', hint: 'Clear and fully visible', tracks: ALL, mandatory: true, maxFiles: 1 },
+	{ type: 'degree_cert', label: 'Degree / MBA Certificate (optional)', hint: 'Clear and fully visible', tracks: ALL, mandatory: false, maxFiles: 1 },
 	{ type: 'resume', label: 'Resume', hint: 'Updated resume (PDF preferred)', tracks: ALL, mandatory: true, maxFiles: 1 },
 	{ type: 'test_results', label: 'Test Results', hint: 'IQ, GRIT and Growth Mindset test screenshots (up to 3 files)', tracks: ALL, mandatory: true, maxFiles: 3 },
 	{ type: 'internship_cert', label: 'Last Internship Certificate', hint: 'Most recent internship certificate', tracks: ['intern'], mandatory: true, maxFiles: 1 },
@@ -61,5 +61,6 @@ export const PHYSICAL_ITEM_TYPES = [
 	{ type: 'nda_signed_copy', label: 'NDA — signed in person & copy handed over' }
 ] as const;
 
-export const ACCEPTED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+// HR decision (18 Jun 2026): uploads restricted to JPG / PNG / PDF only.
+export const ACCEPTED_MIMES = ['image/jpeg', 'image/png', 'application/pdf'];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB

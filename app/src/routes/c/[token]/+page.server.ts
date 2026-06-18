@@ -8,6 +8,9 @@ import { audit } from '$lib/server/audit';
 import { encrypt } from '$lib/server/crypto';
 import { validateMasterSheet, titleCase, maskAadhaar } from '$lib/shared/validation';
 import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { isConfigured as digilockerConfigured } from '$lib/server/verify/digilocker';
+import { verificationsFor } from '$lib/server/verify/engine';
+import { VERIFY_SPECS } from '$lib/shared/match';
 
 const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
@@ -72,8 +75,20 @@ export const load: PageServerLoad = async ({ params }) => {
 		.from(t.companies)
 		.where(eq(t.companies.id, candidate.companyId));
 	const checklist = await checklistFor(candidate.id, candidate.track as Track);
+	const dlVerifications = (await verificationsFor(candidate.id))
+		.filter((v) => v.source === 'digilocker')
+		.map((v) => ({
+			docKind: v.docKind,
+			label: VERIFY_SPECS[v.docKind]?.label ?? v.docKind,
+			status: v.status,
+			score: v.score
+		}));
 
 	return {
+		digilocker: {
+			enabled: digilockerConfigured(),
+			results: dlVerifications
+		},
 		candidate: {
 			id: candidate.id,
 			track: candidate.track,

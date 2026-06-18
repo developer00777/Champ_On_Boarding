@@ -8,6 +8,9 @@ import { sendMail } from '$lib/server/mailer';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { VERIFY_SPECS } from '$lib/shared/match';
+import { verificationsFor, runVerification } from '$lib/server/verify/engine';
+import { isConfigured as digilockerConfigured } from '$lib/server/verify/digilocker';
 
 async function getCandidate(id: string) {
 	const [row] = await db
@@ -41,7 +44,20 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
 
+	const verifications = (await verificationsFor(candidate.id)).map((v) => ({
+		source: v.source,
+		docKind: v.docKind,
+		label: VERIFY_SPECS[v.docKind]?.label ?? v.docKind,
+		status: v.status,
+		score: v.score,
+		note: v.note,
+		fieldResults: v.fieldResults,
+		verifiedAt: v.verifiedAt.toISOString()
+	}));
+
 	return {
+		verifications,
+		digilockerEnabled: digilockerConfigured(),
 		candidate: {
 			...candidate,
 			aadhaarNoEncrypted: undefined,
@@ -80,6 +96,31 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
+	// Cross-check OCR-extracted values against the typed master sheet. Works without DigiLocker;
+	// a high-trust DigiLocker pull (source 'digilocker') uses the same engine when configured.
+	crosscheck: async ({ params, locals }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const { candidate } = row;
+
+		const sugg = candidate.ocrSuggestions ?? {};
+		const found: Record<string, string> = { ...sugg };
+		if (sugg.aadhaarNo) found.aadhaarLast4 = sugg.aadhaarNo.replace(/\D/g, '').slice(-4);
+
+		let count = 0;
+		for (const docKind of ['aadhaar', 'pan']) {
+			const result = await runVerification(
+				candidate,
+				'ocr_crosscheck',
+				docKind,
+				found,
+				locals.admin!.email
+			);
+			if (result) count++;
+		}
+		return { crosschecked: count };
+	},
+
 	approve: async ({ params, locals, getClientAddress }) => {
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
