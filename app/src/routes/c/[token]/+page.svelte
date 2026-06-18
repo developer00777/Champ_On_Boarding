@@ -2,8 +2,13 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
+	import { brandCssVars, brandFontsHref } from '$lib/shared/brands';
 
 	let { data, form } = $props();
+
+	const brand = $derived(data.brand);
+	const brandStyle = $derived(brandCssVars(brand));
+	const fontsHref = $derived(brandFontsHref(brand));
 
 	let fields: Record<string, string> = $state({ ...data.candidate.fields, aadhaarNo: '' });
 	let suggestions: Record<string, string> = $state({ ...data.candidate.suggestions });
@@ -141,8 +146,15 @@
 	};
 </script>
 
+<svelte:head>
+	<title>{brand.name} — Onboarding</title>
+	<link rel="icon" href={brand.logo.src} />
+	{#if fontsHref}<link rel="stylesheet" href={fontsHref} />{/if}
+</svelte:head>
+
 {#if isSubmitted}
 	<!-- ============ SUCCESS ============ -->
+	<div class="brand-scope" style={brandStyle}>
 	<main class="success">
 		<div class="success-inner">
 			<div class="success-mark">
@@ -176,12 +188,13 @@
 			</div>
 		</div>
 	</main>
+	</div>
 {:else if !data.candidate.consented}
 	<!-- ============ WELCOME / CONSENT ============ -->
+	<div class="brand-scope" style={brandStyle}>
 	<main class="welcome">
 		<div class="brand-row">
-			<div class="logo-mark" style="width:34px;height:34px;border-radius:9px;font-size:17px">C</div>
-			<div style="font-weight:800;font-size:18px">ChampOnboard</div>
+			<img class="brand-logo" src={brand.logo.src} alt={brand.name} />
 		</div>
 
 		<div class="hero-card">
@@ -271,12 +284,13 @@
 			</div>
 		</div>
 	</main>
+	</div>
 {:else}
 	<!-- ============ PORTAL ============ -->
+	<div class="brand-scope" style={brandStyle}>
 	<div class="appbar">
 		<div class="appbar-inner">
-			<div class="logo-mark">C</div>
-			<div style="font-weight:800;font-size:16px">ChampOnboard</div>
+			<img class="brand-logo small" src={brand.logo.src} alt={brand.name} />
 			<div style="flex:1"></div>
 			<span class="pill purple" style="text-transform:uppercase;letter-spacing:.1em">{data.candidate.trackLabel}</span>
 			<span class="appbar-name">{fields.fullName || data.candidate.email}</span>
@@ -306,7 +320,7 @@
 							<svg width="78" height="78" viewBox="0 0 78 78" style="transform:rotate(-90deg)">
 								<circle cx="39" cy="39" r="34" fill="none" stroke="#F0ECF6" stroke-width="8" />
 								<circle cx="39" cy="39" r="34" fill="none" stroke="url(#cograd)" stroke-width="8" stroke-linecap="round" stroke-dasharray={RING} stroke-dashoffset={(RING * (1 - pct / 100)).toFixed(1)} style="transition:stroke-dashoffset .5s ease" />
-								<defs><linearGradient id="cograd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6D08BE" /><stop offset="1" stop-color="#E8033A" /></linearGradient></defs>
+								<defs><linearGradient id="cograd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color={brand.colors.primary} /><stop offset="1" stop-color={brand.colors.accent} /></linearGradient></defs>
 							</svg>
 							<div class="ring-pct">{pct}%</div>
 						</div>
@@ -616,9 +630,33 @@
 			</div>
 		</div>
 	</main>
+	</div>
 {/if}
 
 <style>
+	/* ---------- brand theming ---------- */
+	.brand-logo {
+		height: 40px;
+		width: auto;
+		max-width: 230px;
+		object-fit: contain;
+		display: block;
+		/* White logos sit on the brand's dark surface so they stay legible. */
+		background: var(--brand-logo-bg, transparent);
+		padding: var(--brand-logo-pad, 0);
+		border-radius: 10px;
+		box-sizing: content-box;
+	}
+	.brand-logo.small {
+		height: 26px;
+		max-width: 180px;
+	}
+	/* Paint the full page in the brand colour on every candidate view. */
+	.brand-scope {
+		background: var(--brand-bg, var(--paper));
+		min-height: 100vh;
+	}
+
 	/* ---------- welcome ---------- */
 	.welcome {
 		max-width: 960px;
@@ -640,7 +678,7 @@
 	.hero {
 		position: relative;
 		padding: 54px 48px 60px;
-		background: linear-gradient(135deg, #6d08be 0%, #7a2bd0 42%, #e8033a 100%);
+		background: var(--brand-hero, linear-gradient(135deg, #6d08be 0%, #7a2bd0 42%, #e8033a 100%));
 		overflow: hidden;
 	}
 	.hero-dots {
@@ -785,7 +823,7 @@
 	.consent-box {
 		width: 20px;
 		height: 20px;
-		accent-color: var(--purple);
+		accent-color: var(--brand-primary, var(--purple));
 		cursor: pointer;
 		margin-top: 1px;
 		flex-shrink: 0;
@@ -815,7 +853,7 @@
 	}
 	.appbar-line {
 		height: 3px;
-		background: linear-gradient(90deg, #ffb703 0%, #e8033a 50%, #6d08be 100%);
+		background: var(--brand-hero, linear-gradient(90deg, #ffb703 0%, #e8033a 50%, #6d08be 100%));
 	}
 	.saved {
 		display: flex;
@@ -994,12 +1032,12 @@
 		gap: 8px;
 		font-weight: 700;
 		font-size: 12.5px;
-		color: var(--purple);
+		color: var(--brand-primary, var(--purple));
 		transition: all 0.18s;
 		margin: 0;
 	}
 	.upload-btn:hover {
-		border-color: var(--purple);
+		border-color: var(--brand-primary, var(--purple));
 		background: #faf6fe;
 	}
 	.uploading {
@@ -1098,7 +1136,7 @@
 	.same-box {
 		width: 18px;
 		height: 18px;
-		accent-color: var(--purple);
+		accent-color: var(--brand-primary, var(--purple));
 		cursor: pointer;
 	}
 	.lock-hint {
@@ -1110,7 +1148,7 @@
 		gap: 5px;
 	}
 	.submit-bar {
-		background: linear-gradient(135deg, #1e1433 0%, #2a1840 100%);
+		background: var(--brand-ink, #1e1433);
 		border-radius: 20px;
 		padding: 26px;
 		display: flex;
@@ -1190,8 +1228,8 @@
 		position: absolute;
 		inset: 0;
 		border-radius: 50%;
-		background: var(--grad-brand);
-		box-shadow: 0 16px 48px -12px rgba(109, 8, 190, 0.5);
+		background: var(--brand-hero, var(--grad-brand));
+		box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.28);
 		display: flex;
 		align-items: center;
 		justify-content: center;

@@ -11,6 +11,7 @@ import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matri
 import { isConfigured as digilockerConfigured } from '$lib/server/verify/digilocker';
 import { verificationsFor } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
+import { brandBySlug } from '$lib/shared/brands';
 
 const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
@@ -83,8 +84,10 @@ export const load: PageServerLoad = async ({ params }) => {
 			status: v.status,
 			score: v.score
 		}));
+	const brand = brandBySlug(company?.brandSlug);
 
 	return {
+		brand,
 		digilocker: {
 			enabled: digilockerConfigured(),
 			results: dlVerifications
@@ -103,7 +106,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			),
 			suggestions: candidate.ocrSuggestions ?? {}
 		},
-		companyName: company?.name ?? 'Champions Group',
+		companyName: company?.name ?? brand.name,
 		checklist: checklist.map((s) => ({
 			...s,
 			docs: s.docs.map((d) => ({

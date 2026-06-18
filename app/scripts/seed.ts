@@ -6,11 +6,23 @@ import { hash } from '@node-rs/argon2';
 
 const sql = postgres(process.env.DATABASE_URL ?? 'postgres://champ:champ@localhost:5432/champonboard');
 
-const COMPANIES = ['Champions Group'];
+// Each Champions Group property → its brand theme slug (see src/lib/shared/brands.ts).
+// Keep names/slugs in sync with that registry. Idempotent: inserts missing rows and
+// backfills brand_slug on rows that already exist (e.g. a legacy "Champions Group").
+const COMPANIES: { name: string; brandSlug: string }[] = [
+	{ name: 'Champion Infratech', brandSlug: 'champion-infratech' },
+	{ name: 'Champions Club', brandSlug: 'champions-club' },
+	{ name: 'IP Momentum', brandSlug: 'ip-momentum' },
+	{ name: 'Champion Products', brandSlug: 'champion-products' },
+	{ name: 'Champion Infometrics', brandSlug: 'champion-infometrics' },
+	{ name: 'Champions Yacht Club', brandSlug: 'champions-yacht-club' },
+	{ name: 'Cirrologix', brandSlug: 'cirrologix' }
+];
 const SUPER_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
 
-for (const name of COMPANIES) {
-	await sql`INSERT INTO companies (name) VALUES (${name}) ON CONFLICT (name) DO NOTHING`;
+for (const { name, brandSlug } of COMPANIES) {
+	await sql`INSERT INTO companies (name, brand_slug) VALUES (${name}, ${brandSlug})
+	          ON CONFLICT (name) DO UPDATE SET brand_slug = EXCLUDED.brand_slug`;
 }
 
 const existing = await sql`SELECT id FROM admins WHERE email = ${SUPER_ADMIN_EMAIL}`;

@@ -13,6 +13,8 @@ import type { FieldResult } from '../../shared/match';
 export const companies = pgTable('companies', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	name: text('name').notNull().unique(),
+	// Selects the brand theme (colours, fonts, logo) from src/lib/shared/brands.ts.
+	brandSlug: text('brand_slug'),
 	active: boolean('active').notNull().default(true)
 });
 
