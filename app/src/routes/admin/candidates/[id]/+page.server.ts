@@ -4,10 +4,11 @@ import type { Actions, PageServerLoad } from './$types';
 import { db, t } from '$lib/server/db';
 import { audit } from '$lib/server/audit';
 import { decrypt } from '$lib/server/crypto';
-import { sendMail } from '$lib/server/mailer';
+import { sendMail, brandSignoff } from '$lib/server/mailer';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { brandBySlug } from '$lib/shared/brands';
 
 async function getCandidate(id: string) {
 	const [row] = await db
@@ -52,6 +53,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			consentAt: candidate.consentAt?.toISOString() ?? null
 		},
 		companyName: company.name,
+		brand: brandBySlug(company.brandSlug),
 		checklist: checklist.map((s) => ({
 			...s,
 			docs: s.docs.map((d) => ({
@@ -84,6 +86,7 @@ export const actions: Actions = {
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const { candidate } = row;
+		const brand = brandBySlug(row.company.brandSlug);
 		if (candidate.status !== 'submitted')
 			return fail(409, { message: 'Only submitted candidates can be approved.' });
 
@@ -115,7 +118,7 @@ export const actions: Actions = {
 			candidate.email,
 			'Your onboarding is approved',
 			`Hello,\n\nYour onboarding submission has been reviewed and approved by HR.\n` +
-				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n— HR, Champions Group`
+				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n${brandSignoff(brand)}`
 		);
 		return { ok: true };
 	},
@@ -154,7 +157,7 @@ export const actions: Actions = {
 			'Action needed on your onboarding documents',
 			`Hello,\n\nHR has requested a re-upload of one of your documents (${doc.docType.replace(/_/g, ' ')})` +
 				(note ? `:\n"${note}"` : '.') +
-				`\n\nPlease open your onboarding link again, replace the document, and resubmit.\n\n— HR, Champions Group`
+				`\n\nPlease open your onboarding link again, replace the document, and resubmit.\n\n${brandSignoff(brandBySlug(row.company.brandSlug))}`
 		);
 		return { ok: true };
 	},

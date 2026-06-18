@@ -5,8 +5,9 @@ import { env } from '$env/dynamic/public';
 import { db, t } from '$lib/server/db';
 import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
-import { sendMail } from '$lib/server/mailer';
+import { sendMail, brandSignoff } from '$lib/server/mailer';
 import { TRACKS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { brandBySlug } from '$lib/shared/brands';
 
 export const load: PageServerLoad = async () => {
 	const rows = await db
@@ -46,6 +47,10 @@ export const actions: Actions = {
 		if (!TRACKS.includes(track)) return fail(400, { message: 'Pick a track.' });
 		if (!companyId) return fail(400, { message: 'Pick a company.' });
 
+		const [company] = await db.select().from(t.companies).where(eq(t.companies.id, companyId));
+		if (!company) return fail(400, { message: 'Pick a company.' });
+		const brand = brandBySlug(company.brandSlug);
+
 		const [candidate] = await db
 			.insert(t.candidates)
 			.values({
@@ -76,15 +81,15 @@ export const actions: Actions = {
 
 		await sendMail(
 			email,
-			'Your Champions Group onboarding link',
+			`Your ${brand.name} onboarding link`,
 			`Hello${candidateName ? ' ' + candidateName : ''},\n\n` +
 				`Welcome aboard! Please complete your onboarding here (the link expires in 7 days):\n\n${link}\n\n` +
 				`Keep your Aadhaar card, PAN card, bank passbook and education documents handy — ` +
-				`photograph them on a flat surface in good light.\n\n— HR, Champions Group`
+				`photograph them on a flat surface in good light.\n\n${brandSignoff(brand)}`
 		);
 
 		const waText = encodeURIComponent(
-			`Welcome to Champions Group! Please complete your onboarding here (expires in 7 days): ${link}`
+			`Welcome to ${brand.name}! Please complete your onboarding here (expires in 7 days): ${link}`
 		);
 		return { link, waUrl: `https://wa.me/?text=${waText}`, email };
 	}

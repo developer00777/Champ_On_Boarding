@@ -96,6 +96,12 @@
 		<div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
 			<h1 style="font-size:26px;font-weight:800;margin:0">{c.fullName || c.email}</h1>
 			<span class="pill {statusMeta[c.status]?.cls}">{statusMeta[c.status]?.label ?? c.status}</span>
+			<img
+				src={data.brand.logo.src}
+				alt={data.brand.name}
+				title="Recruiting for {data.brand.name}"
+				style="height:26px;width:auto;max-width:200px;object-fit:contain;margin-left:auto;border-radius:8px;{data.brand.logo.onDark ? `background:${data.brand.colors.ink};padding:6px 10px` : ''}"
+			/>
 		</div>
 		<div class="muted" style="margin-top:4px;font-size:13.5px">
 			{c.email} · <span style="text-transform:capitalize">{c.track}</span> · {data.companyName}

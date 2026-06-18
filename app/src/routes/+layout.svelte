@@ -34,18 +34,19 @@
 	}
 	:global(body) {
 		margin: 0;
-		font-family: 'Montserrat', Arial, sans-serif;
+		font-family: var(--brand-font-body, 'Montserrat', Arial, sans-serif);
 		background: var(--paper);
 		color: var(--ink);
 		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
 	}
 	:global(h1, h2, h3) {
+		font-family: var(--brand-font-heading, 'Montserrat', Arial, sans-serif);
 		line-height: 1.15;
 		letter-spacing: -0.02em;
 	}
 	:global(a) {
-		color: var(--purple);
+		color: var(--brand-primary, var(--purple));
 	}
 	:global(input, select, textarea) {
 		width: 100%;
@@ -62,8 +63,8 @@
 			box-shadow 0.16s;
 	}
 	:global(input:focus, select:focus, textarea:focus) {
-		border-color: var(--purple);
-		box-shadow: 0 0 0 4px rgba(109, 8, 190, 0.16);
+		border-color: var(--brand-primary, var(--purple));
+		box-shadow: 0 0 0 4px var(--brand-focus-ring, rgba(109, 8, 190, 0.16));
 	}
 	:global(button) {
 		font-family: 'Montserrat', Arial, sans-serif;
@@ -84,14 +85,15 @@
 		justify-content: center;
 		gap: 8px;
 		border: none;
-		background: var(--red);
-		color: #fff;
+		background: var(--brand-primary, var(--red));
+		color: var(--brand-on-primary, #fff);
 		font-weight: 700;
 		font-size: 13.5px;
 		letter-spacing: 0.02em;
+		text-transform: var(--brand-cta-transform, none);
 		padding: 12px 22px;
-		border-radius: 999px;
-		box-shadow: 0 10px 28px -8px rgba(232, 3, 58, 0.55);
+		border-radius: var(--brand-btn-radius, 999px);
+		box-shadow: var(--brand-btn-shadow, 0 10px 28px -8px rgba(232, 3, 58, 0.55));
 		transition:
 			transform 0.18s,
 			box-shadow 0.18s,
@@ -122,8 +124,8 @@
 		box-shadow: 0 10px 28px -8px rgba(0, 149, 160, 0.5);
 	}
 	:global(.btn.grad) {
-		background: var(--grad-brand);
-		box-shadow: 0 12px 32px -8px rgba(109, 8, 190, 0.55);
+		background: var(--brand-hero, var(--grad-brand));
+		box-shadow: var(--brand-btn-shadow, 0 12px 32px -8px rgba(109, 8, 190, 0.55));
 	}
 	:global(.btn.small) {
 		padding: 6px 13px;
@@ -142,7 +144,7 @@
 		font-size: 12px;
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
-		color: var(--purple);
+		color: var(--brand-primary, var(--purple));
 	}
 	:global(.muted) {
 		color: var(--smoke);

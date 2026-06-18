@@ -8,6 +8,7 @@ import { audit } from '$lib/server/audit';
 import { encrypt } from '$lib/server/crypto';
 import { validateMasterSheet, titleCase, maskAadhaar } from '$lib/shared/validation';
 import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { brandBySlug } from '$lib/shared/brands';
 
 const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
@@ -72,8 +73,10 @@ export const load: PageServerLoad = async ({ params }) => {
 		.from(t.companies)
 		.where(eq(t.companies.id, candidate.companyId));
 	const checklist = await checklistFor(candidate.id, candidate.track as Track);
+	const brand = brandBySlug(company?.brandSlug);
 
 	return {
+		brand,
 		candidate: {
 			id: candidate.id,
 			track: candidate.track,
@@ -88,7 +91,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			),
 			suggestions: candidate.ocrSuggestions ?? {}
 		},
-		companyName: company?.name ?? 'Champions Group',
+		companyName: company?.name ?? brand.name,
 		checklist: checklist.map((s) => ({
 			...s,
 			docs: s.docs.map((d) => ({
