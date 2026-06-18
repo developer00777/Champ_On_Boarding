@@ -7,9 +7,9 @@ import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { sendMail, brandSignoff } from '$lib/server/mailer';
 import { TRACKS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
-import { brandBySlug } from '$lib/shared/brands';
+import { brandBySlug, BRANDS } from '$lib/shared/brands';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
 	const rows = await db
 		.select({ candidate: t.candidates, company: t.companies })
 		.from(t.candidates)
@@ -29,12 +29,64 @@ export const load: PageServerLoad = async () => {
 			createdAt: r.candidate.createdAt.toISOString(),
 			submittedAt: r.candidate.submittedAt?.toISOString() ?? null
 		})),
-		companies: companies.map((c) => ({ id: c.id, name: c.name })),
+		companies: companies.map((c) => ({ id: c.id, name: c.name, brandSlug: c.brandSlug })),
+		// Brand theme options for the company section (slug + label + a colour swatch).
+		brandOptions: BRANDS.map((b) => ({ slug: b.slug, name: b.name, primary: b.colors.primary })),
+		isSuperAdmin: locals.admin?.role === 'super_admin',
 		tracks: TRACKS
 	};
 };
 
 export const actions: Actions = {
+	// Assign/clear a company's brand theme. Super-admin only (structural config).
+	setCompanyBrand: async ({ request, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { companyError: 'Only super admins can manage companies.' });
+		const form = await request.formData();
+		const companyId = String(form.get('companyId') ?? '');
+		const brandSlug = String(form.get('brandSlug') ?? '').trim();
+
+		const [company] = await db.select().from(t.companies).where(eq(t.companies.id, companyId));
+		if (!company) return fail(400, { companyError: 'Unknown company.' });
+
+		await db
+			.update(t.companies)
+			.set({ brandSlug: brandSlug || null })
+			.where(eq(t.companies.id, companyId));
+		await audit({
+			actor: locals.admin!.email,
+			action: 'company_brand_set',
+			field: company.name,
+			oldValue: company.brandSlug,
+			newValue: brandSlug || '(none)',
+			ip: getClientAddress()
+		});
+		return { brandSaved: companyId };
+	},
+
+	createCompany: async ({ request, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { companyError: 'Only super admins can manage companies.' });
+		const form = await request.formData();
+		const name = String(form.get('name') ?? '').trim();
+		const brandSlug = String(form.get('brandSlug') ?? '').trim();
+		if (!name) return fail(400, { companyError: 'Company name is required.' });
+
+		try {
+			await db.insert(t.companies).values({ name, brandSlug: brandSlug || null });
+		} catch {
+			return fail(400, { companyError: `A company named "${name}" already exists.` });
+		}
+		await audit({
+			actor: locals.admin!.email,
+			action: 'company_created',
+			field: name,
+			newValue: brandSlug || '(none)',
+			ip: getClientAddress()
+		});
+		return { companyCreated: name };
+	},
+
 	generateLink: async ({ request, locals, getClientAddress }) => {
 		const form = await request.formData();
 		const email = String(form.get('email') ?? '').trim().toLowerCase();

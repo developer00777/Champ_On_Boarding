@@ -36,6 +36,9 @@
 	function copyLink(link: string) {
 		navigator.clipboard.writeText(link);
 	}
+
+	const brandColor = (slug: string | null) =>
+		data.brandOptions.find((b) => b.slug === slug)?.primary ?? 'var(--fog)';
 </script>
 
 <h1 class="page-title">Candidates</h1>
@@ -95,6 +98,51 @@
 		</div>
 	{/if}
 </section>
+
+{#if data.isSuperAdmin}
+	<section class="card" style="margin-bottom:22px">
+		<div style="font-weight:700;font-size:18px;margin-bottom:4px">Companies &amp; brands</div>
+		<p class="muted" style="margin:0 0 16px;font-size:13px">
+			Each company's brand theme styles the candidate portal, onboarding pages and emails.
+		</p>
+		{#if form?.companyError}<p class="error">{form.companyError}</p>{/if}
+
+		<div class="co-list">
+			{#each data.companies as company}
+				<form method="POST" action="?/setCompanyBrand" use:enhance class="co-row">
+					<input type="hidden" name="companyId" value={company.id} />
+					<div class="co-name">
+						<span class="co-swatch" style:background={brandColor(company.brandSlug)}></span>
+						{company.name}
+					</div>
+					<select name="brandSlug" value={company.brandSlug ?? ''}>
+						<option value="">— No brand (default) —</option>
+						{#each data.brandOptions as b}
+							<option value={b.slug}>{b.name}</option>
+						{/each}
+					</select>
+					<button class="btn" style="padding:9px 16px;font-size:13px">Save</button>
+					{#if form?.brandSaved === company.id}<span class="saved-chip">Saved ✓</span>{/if}
+				</form>
+			{/each}
+		</div>
+
+		<div style="font-weight:700;font-size:14px;margin:20px 0 10px">Add a company</div>
+		<form method="POST" action="?/createCompany" use:enhance class="add-co-grid">
+			<input name="name" placeholder="Company name" required />
+			<select name="brandSlug">
+				<option value="">— No brand (default) —</option>
+				{#each data.brandOptions as b}
+					<option value={b.slug}>{b.name}</option>
+				{/each}
+			</select>
+			<button class="btn">Add company</button>
+		</form>
+		{#if form?.companyCreated}
+			<p class="muted" style="margin-top:8px">Added <strong>{form.companyCreated}</strong>.</p>
+		{/if}
+	</section>
+{/if}
 
 <section class="table-card">
 	<div class="thead">
@@ -195,6 +243,42 @@
 		cursor: pointer;
 		text-decoration: none;
 	}
+	.co-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.co-row {
+		display: grid;
+		grid-template-columns: 1.5fr 1fr auto auto;
+		gap: 12px;
+		align-items: center;
+	}
+	.co-name {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		font-weight: 700;
+		font-size: 14px;
+	}
+	.co-swatch {
+		width: 14px;
+		height: 14px;
+		border-radius: 4px;
+		flex-shrink: 0;
+		border: 1px solid var(--border);
+	}
+	.saved-chip {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--teal);
+	}
+	.add-co-grid {
+		display: grid;
+		grid-template-columns: 1.5fr 1fr auto;
+		gap: 12px;
+		align-items: end;
+	}
 	.table-card {
 		background: #fff;
 		border: 1px solid var(--border);
@@ -246,6 +330,10 @@
 		}
 		.gen-grid {
 			grid-template-columns: 1fr 1fr;
+		}
+		.co-row,
+		.add-co-grid {
+			grid-template-columns: 1fr;
 		}
 		.thead {
 			display: none;
