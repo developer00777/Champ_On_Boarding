@@ -80,6 +80,11 @@ export const load: PageServerLoad = async ({ params }) => {
 				reviewStatus: d.reviewStatus,
 				reviewNote: d.reviewNote,
 				ocrTranscript: d.ocrTranscript,
+				standardStatus: d.standardStatus,
+				standardReasons:
+					((d.standardCheck as { reasons?: string[] } | null)?.reasons ?? []) as string[],
+				standardDetected:
+					((d.standardCheck as { detectedType?: string } | null)?.detectedType ?? '') as string,
 				uploadedAt: d.uploadedAt.toISOString()
 			}))
 		})),

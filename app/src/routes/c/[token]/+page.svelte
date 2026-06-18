@@ -70,11 +70,17 @@
 			if (!complete.ok) throw new Error((await complete.json()).message ?? 'Processing failed');
 			const result = await complete.json();
 
-			if (result.ocrStatus === 'unreadable') {
-				slotMessages[slotType] = result.message;
+			// Always keep extracted suggestions; the message reflects the standards check.
+			if (result.suggestions) suggestions = { ...suggestions, ...result.suggestions };
+			const c = result.conformance;
+			if (result.ocrStatus === 'unreadable' || c?.status === 'fail') {
+				slotMessages[slotType] = c?.reasons?.length
+					? c.reasons.join(' ')
+					: 'We could not read this image. Please retake it: flat surface, good light, all corners visible.';
+			} else if (c?.status === 'warn') {
+				slotMessages[slotType] = '⚠ ' + (c.reasons?.join(' ') ?? '');
 			} else {
 				slotMessages[slotType] = '';
-				suggestions = { ...suggestions, ...result.suggestions };
 			}
 			await invalidateAll();
 		} catch (e) {
@@ -100,6 +106,13 @@
 		pending: { text: 'Processing…', cls: 'mist' },
 		unreadable: { text: 'Unreadable — replace', cls: 'red' },
 		failed: { text: 'Uploaded · fill manually', cls: 'gold' }
+	};
+
+	// Standards-conformance chip (Indian govt document check).
+	const stdChip: Record<string, { text: string; cls: string }> = {
+		pass: { text: 'Standard ✓', cls: 'teal' },
+		warn: { text: 'Please double-check', cls: 'gold' },
+		fail: { text: "Doesn't meet standard", cls: 'red' }
 	};
 
 	const isSubmitted = $derived(
@@ -400,6 +413,12 @@
 												</button>
 											{/if}
 										</div>
+										{#if stdChip[doc.standardStatus]}
+											<span class="chip {stdChip[doc.standardStatus].cls}">{stdChip[doc.standardStatus].text}</span>
+											{#if doc.standardStatus !== 'pass' && doc.standardReasons?.length}
+												<div class="error">{doc.standardReasons.join(' ')}</div>
+											{/if}
+										{/if}
 									{/each}
 									{#if uploading[slot.type]}
 										<div class="uploading">

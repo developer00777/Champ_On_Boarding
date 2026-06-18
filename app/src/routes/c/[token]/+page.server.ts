@@ -114,7 +114,10 @@ export const load: PageServerLoad = async ({ params }) => {
 				ocrStatus: d.ocrStatus,
 				reviewStatus: d.reviewStatus,
 				reviewNote: d.reviewNote,
-				mime: d.mime
+				mime: d.mime,
+				standardStatus: d.standardStatus,
+				standardReasons:
+					((d.standardCheck as { reasons?: string[] } | null)?.reasons ?? []) as string[]
 			}))
 		})),
 		physicalItems: PHYSICAL_ITEM_TYPES.map((p) => p.label),

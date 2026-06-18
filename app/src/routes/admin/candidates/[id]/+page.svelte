@@ -18,6 +18,12 @@
 		revoked: { label: 'REVOKED', cls: 'red' }
 	};
 
+	const stdPill: Record<string, { label: string; cls: string }> = {
+		pass: { label: 'STANDARD ✓', cls: 'teal' },
+		warn: { label: 'STANDARD ⚠', cls: 'gold' },
+		fail: { label: 'NOT TO STANDARD', cls: 'red' }
+	};
+
 	const docPill: Record<string, { label: string; cls: string }> = {
 		parsed: { label: 'AUTO-READ', cls: 'teal' },
 		store_only: { label: 'STORED', cls: '' },
@@ -192,6 +198,14 @@
 									{doc.mime === 'application/pdf' ? 'PDF' : 'Image'} · {(doc.sizeBytes / 1024).toFixed(0)} KB
 									{#if doc.reviewNote}· {doc.reviewNote}{/if}
 								</div>
+								{#if stdPill[doc.standardStatus]}
+									<div style="margin-top:5px">
+										<span class="pill {stdPill[doc.standardStatus].cls}">{stdPill[doc.standardStatus].label}</span>
+										{#if doc.standardStatus !== 'pass' && doc.standardReasons?.length}
+											<span class="muted" style="font-size:11.5px"> {doc.standardReasons.join(' ')}</span>
+										{/if}
+									</div>
+								{/if}
 								{#if doc.ocrTranscript}
 									<details>
 										<summary class="muted" style="cursor:pointer;font-size:11.5px">OCR transcript</summary>

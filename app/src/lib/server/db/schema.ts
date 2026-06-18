@@ -127,6 +127,13 @@ export const documents = pgTable('documents', {
 		.default('pending'),
 	ocrJson: jsonb('ocr_json').$type<Record<string, unknown>>(),
 	ocrTranscript: text('ocr_transcript'),
+	// Standards-conformance check against the Indian document standard (see ocr.ts).
+	standardStatus: text('standard_status', {
+		enum: ['pending', 'pass', 'warn', 'fail', 'skipped']
+	})
+		.notNull()
+		.default('pending'),
+	standardCheck: jsonb('standard_check').$type<Record<string, unknown>>(),
 	confirmed: boolean('confirmed').notNull().default(false),
 	reviewStatus: text('review_status', {
 		enum: ['uploaded', 'flagged', 'accepted', 'reupload_requested']

@@ -5,8 +5,9 @@ import { db, t } from '$lib/server/db';
 import { resolveCandidateToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { objectKey, presignPut, objectExists, deleteObject } from '$lib/server/storage';
-import { runOcr, hasOcrSchema } from '$lib/server/ocr';
+import { inspectDocument } from '$lib/server/ocr';
 import { slotByType, ACCEPTED_MIMES, MAX_FILE_BYTES } from '$lib/shared/matrix';
+import { standardFor } from '$lib/shared/doc-standards';
 
 const EXT: Record<string, string> = {
 	'image/jpeg': 'jpg',
@@ -40,6 +41,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		if (active.length >= slot.maxFiles) error(400, `Maximum ${slot.maxFiles} file(s) for this slot`);
 
 		const key = objectKey(candidate.id, slot.type, EXT[mime]);
+		const std = standardFor(slot.type);
 		const [doc] = await db
 			.insert(t.documents)
 			.values({
@@ -48,7 +50,8 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 				spacesKey: key,
 				mime,
 				sizeBytes: Number(body.size) || 0,
-				ocrStatus: hasOcrSchema(slot.ocr) ? 'pending' : 'store_only'
+				ocrStatus: std?.fields.length ? 'pending' : 'store_only',
+				standardStatus: std ? 'pending' : 'skipped'
 			})
 			.returning();
 
@@ -78,54 +81,64 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 			ip: getClientAddress()
 		});
 
-		const slot = slotByType(doc.docType);
-		if (!hasOcrSchema(slot?.ocr)) {
-			return json({ ocrStatus: 'store_only', suggestions: {} });
+		const std = standardFor(doc.docType);
+		if (!std) {
+			await db
+				.update(t.documents)
+				.set({ ocrStatus: 'store_only', standardStatus: 'skipped' })
+				.where(eq(t.documents.id, doc.id));
+			return json({ ocrStatus: 'store_only', suggestions: {}, conformance: null });
 		}
 
 		try {
-			const result = await runOcr(slot.ocr, doc.spacesKey, doc.mime);
-			if (result.unreadable) {
-				await db
-					.update(t.documents)
-					.set({ ocrStatus: 'unreadable', ocrJson: result.raw, ocrTranscript: result.transcript })
-					.where(eq(t.documents.id, doc.id));
-				return json({
-					ocrStatus: 'unreadable',
-					suggestions: {},
-					message: 'We could not read this image. Please retake it: flat surface, good light, all corners visible.'
-				});
-			}
+			const result = await inspectDocument(doc.docType, doc.spacesKey, doc.mime);
+			const c = result.conformance;
 
-			// Merge suggestions; aadhaar_back fills permanent address too if still empty.
+			// Merge field suggestions; aadhaar_back fills permanent address too if still empty.
 			const suggestions: Record<string, string> = { ...result.fields };
-			if (slot.ocr === 'aadhaar_back') {
+			if (doc.docType === 'aadhaar_back') {
 				if (suggestions.presentAddress) suggestions.permanentAddress = suggestions.presentAddress;
 				if (suggestions.presentPin) suggestions.permanentPin = suggestions.presentPin;
 			}
+			if (Object.keys(suggestions).length) {
+				await db
+					.update(t.candidates)
+					.set({ ocrSuggestions: { ...(candidate.ocrSuggestions ?? {}), ...suggestions } })
+					.where(eq(t.candidates.id, candidate.id));
+			}
 
-			const merged = { ...(candidate.ocrSuggestions ?? {}), ...suggestions };
-			await db
-				.update(t.candidates)
-				.set({ ocrSuggestions: merged })
-				.where(eq(t.candidates.id, candidate.id));
+			const ocrStatus = result.unreadable ? 'unreadable' : std.fields.length ? 'parsed' : 'store_only';
 			await db
 				.update(t.documents)
-				.set({ ocrStatus: 'parsed', ocrJson: result.raw, ocrTranscript: result.transcript })
+				.set({
+					ocrStatus,
+					ocrJson: result.raw,
+					ocrTranscript: result.transcript,
+					standardStatus: c.status,
+					standardCheck: c as unknown as Record<string, unknown>
+				})
 				.where(eq(t.documents.id, doc.id));
 			await audit({
 				candidateId: candidate.id,
 				actor: 'system',
-				action: 'ocr_parsed',
-				field: doc.docType
+				action: 'standard_checked',
+				field: doc.docType,
+				newValue: c.status
 			});
 
-			return json({ ocrStatus: 'parsed', suggestions });
+			return json({
+				ocrStatus,
+				suggestions,
+				conformance: { status: c.status, reasons: c.reasons, detectedType: c.detectedType }
+			});
 		} catch (e) {
-			console.error('[ocr] failed:', e);
-			await db.update(t.documents).set({ ocrStatus: 'failed' }).where(eq(t.documents.id, doc.id));
-			// OCR failure is never fatal — the candidate types the fields instead (PRD §6 risk table).
-			return json({ ocrStatus: 'failed', suggestions: {} });
+			console.error('[inspect] failed:', e);
+			// Never fatal — the candidate types fields manually; HR reviews the document (PRD §6).
+			await db
+				.update(t.documents)
+				.set({ ocrStatus: 'failed', standardStatus: 'skipped' })
+				.where(eq(t.documents.id, doc.id));
+			return json({ ocrStatus: 'failed', suggestions: {}, conformance: null });
 		}
 	}
 
