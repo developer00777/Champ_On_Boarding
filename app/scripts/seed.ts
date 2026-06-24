@@ -7,7 +7,9 @@ import { hash } from '@node-rs/argon2';
 const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017';
 const MONGODB_DB = process.env.MONGODB_DB ?? 'champonboard';
 
+console.log(`[seed] connecting to MongoDB db="${MONGODB_DB}"`);
 await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB });
+console.log(`[seed] connected`);
 const db = mongoose.connection.db!;
 
 const companies = db.collection('companies');
@@ -26,10 +28,12 @@ const COMPANIES = [
 for (const { name, brandSlug } of COMPANIES) {
 	await companies.updateOne({ name }, { $set: { name, brandSlug, active: true } }, { upsert: true });
 }
-console.log('Companies seeded.');
+console.log('[seed] companies seeded');
 
 const SUPER_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
 const SUPER_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+
+console.log(`[seed] admin email="${SUPER_ADMIN_EMAIL}" password_set=${!!SUPER_ADMIN_PASSWORD}`);
 
 const existing = await admins.findOne({ email: SUPER_ADMIN_EMAIL });
 
@@ -43,18 +47,17 @@ if (!existing) {
 		status: 'active',
 		createdAt: new Date()
 	});
-	console.log(`Super admin created: ${SUPER_ADMIN_EMAIL}`);
-	console.log(`Password: ${password}`);
+	console.log(`[seed] super admin created: ${SUPER_ADMIN_EMAIL}`);
 } else if (SUPER_ADMIN_PASSWORD) {
-	// Env var explicitly set — always sync the password so deploys stay consistent.
 	const passwordHash = await hash(SUPER_ADMIN_PASSWORD);
 	await admins.updateOne(
 		{ email: SUPER_ADMIN_EMAIL },
 		{ $set: { passwordHash, role: 'super_admin', status: 'active' } }
 	);
-	console.log(`Super admin password synced: ${SUPER_ADMIN_EMAIL}`);
+	console.log(`[seed] super admin password synced: ${SUPER_ADMIN_EMAIL}`);
 } else {
-	console.log(`Super admin already exists: ${SUPER_ADMIN_EMAIL}`);
+	console.log(`[seed] super admin already exists, no password env set — skipping: ${SUPER_ADMIN_EMAIL}`);
 }
 
 await mongoose.disconnect();
+console.log('[seed] done');
