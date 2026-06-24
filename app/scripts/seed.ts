@@ -29,10 +29,12 @@ for (const { name, brandSlug } of COMPANIES) {
 console.log('Companies seeded.');
 
 const SUPER_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
+const SUPER_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+
 const existing = await admins.findOne({ email: SUPER_ADMIN_EMAIL });
 
 if (!existing) {
-	const password = process.env.SEED_ADMIN_PASSWORD ?? randomBytes(9).toString('base64url');
+	const password = SUPER_ADMIN_PASSWORD ?? randomBytes(9).toString('base64url');
 	const passwordHash = await hash(password);
 	await admins.insertOne({
 		email: SUPER_ADMIN_EMAIL,
@@ -43,7 +45,14 @@ if (!existing) {
 	});
 	console.log(`Super admin created: ${SUPER_ADMIN_EMAIL}`);
 	console.log(`Password: ${password}`);
-	console.log('Store this password now — it is not shown again.');
+} else if (SUPER_ADMIN_PASSWORD) {
+	// Env var explicitly set — always sync the password so deploys stay consistent.
+	const passwordHash = await hash(SUPER_ADMIN_PASSWORD);
+	await admins.updateOne(
+		{ email: SUPER_ADMIN_EMAIL },
+		{ $set: { passwordHash, role: 'super_admin', status: 'active' } }
+	);
+	console.log(`Super admin password synced: ${SUPER_ADMIN_EMAIL}`);
 } else {
 	console.log(`Super admin already exists: ${SUPER_ADMIN_EMAIL}`);
 }
