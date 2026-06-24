@@ -117,12 +117,9 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		}
 
 		const existing = await Candidate.findById(candidate.id).lean();
-		const merged = {
-			...Object.fromEntries(
-				(existing?.ocrSuggestions as Map<string, string> | undefined) ?? new Map()
-			),
-			...suggestions
-		};
+		const s = existing?.ocrSuggestions;
+		const prev = s instanceof Map ? Object.fromEntries(s) : ((s as Record<string, string>) ?? {});
+		const merged = { ...prev, ...suggestions };
 		await Candidate.findByIdAndUpdate(candidate.id, { ocrSuggestions: merged });
 		await Document.findByIdAndUpdate(doc._id, {
 			ocrStatus: 'parsed',
