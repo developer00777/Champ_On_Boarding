@@ -37,8 +37,11 @@ export async function resolveCandidateToken(token: string) {
 		id: String(candidate._id),
 		companyId: String(candidate.companyId),
 		createdBy: candidate.createdBy ? String(candidate.createdBy) : null,
-		ocrSuggestions: Object.fromEntries(
-			(candidate.ocrSuggestions as Map<string, string> | undefined) ?? new Map()
-		)
+		ocrSuggestions: (() => {
+			const s = candidate.ocrSuggestions;
+			if (!s) return {};
+			if (s instanceof Map) return Object.fromEntries(s);
+			return s as Record<string, string>;
+		})()
 	};
 }
