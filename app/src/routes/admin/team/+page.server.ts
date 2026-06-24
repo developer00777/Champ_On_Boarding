@@ -1,48 +1,36 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { asc, eq, and, ne, count } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import { db, t } from '$lib/server/db';
+import { Admin } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/auth';
 import { randomToken } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
+import { getRedis } from '$lib/server/redis';
 
 const ROLES = ['hr_admin', 'super_admin'] as const;
 type Role = (typeof ROLES)[number];
 
-// Only super admins may manage team logins (PRD §2 — least privilege).
 function requireSuperAdmin(locals: App.Locals) {
 	if (!locals.admin) redirect(303, '/admin/login');
 	if (locals.admin.role !== 'super_admin') redirect(303, '/admin');
 }
 
-// Generate a readable temporary password when the admin doesn't supply one.
 function generatePassword(): string {
-	// ~13 chars, URL-safe, no ambiguous separators.
 	return randomToken(9).replace(/[-_]/g, '');
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireSuperAdmin(locals);
 
-	const admins = await db
-		.select({
-			id: t.admins.id,
-			email: t.admins.email,
-			role: t.admins.role,
-			status: t.admins.status,
-			createdAt: t.admins.createdAt
-		})
-		.from(t.admins)
-		.orderBy(asc(t.admins.createdAt));
+	const admins = await Admin.find({}).sort({ createdAt: 1 }).lean();
 
 	return {
 		admins: admins.map((a) => ({
-			id: a.id,
+			id: String(a._id),
 			email: a.email,
 			role: a.role,
 			status: a.status,
-			createdAt: a.createdAt.toISOString(),
-			isSelf: a.id === locals.admin!.id
+			createdAt: (a.createdAt as Date).toISOString(),
+			isSelf: String(a._id) === locals.admin!.id
 		}))
 	};
 };
@@ -59,10 +47,7 @@ export const actions: Actions = {
 			return fail(400, { message: 'A valid email is required.' });
 		if (!ROLES.includes(role)) return fail(400, { message: 'Pick a role.' });
 
-		const [existing] = await db
-			.select({ id: t.admins.id })
-			.from(t.admins)
-			.where(eq(t.admins.email, email));
+		const existing = await Admin.findOne({ email }).lean();
 		if (existing) return fail(409, { message: `A login already exists for ${email}.` });
 
 		let generated = false;
@@ -74,7 +59,7 @@ export const actions: Actions = {
 		}
 
 		const passwordHash = await hashPassword(password);
-		await db.insert(t.admins).values({ email, role, passwordHash });
+		await Admin.create({ email, role, passwordHash });
 
 		await audit({
 			actor: locals.admin!.email,
@@ -88,7 +73,6 @@ export const actions: Actions = {
 			created: true,
 			email,
 			role,
-			// Show the password once so the super admin can hand it over.
 			password: generated ? password : null
 		};
 	},
@@ -104,35 +88,37 @@ export const actions: Actions = {
 		if (id === locals.admin!.id)
 			return fail(400, { message: 'You cannot disable your own login.' });
 
-		// Never leave the system without an active super admin.
 		if (status === 'disabled') {
-			const [target] = await db.select().from(t.admins).where(eq(t.admins.id, id));
+			const target = await Admin.findById(id).lean();
 			if (!target) return fail(404, { message: 'Login not found.' });
 			if (target.role === 'super_admin') {
-				const [{ value: activeSupers }] = await db
-					.select({ value: count() })
-					.from(t.admins)
-					.where(
-						and(
-							eq(t.admins.role, 'super_admin'),
-							eq(t.admins.status, 'active'),
-							ne(t.admins.id, id)
-						)
-					);
+				const activeSupers = await Admin.countDocuments({
+					role: 'super_admin',
+					status: 'active',
+					_id: { $ne: id }
+				});
 				if (activeSupers === 0)
 					return fail(400, { message: 'Cannot disable the last active super admin.' });
 			}
 		}
 
-		const [updated] = await db
-			.update(t.admins)
-			.set({ status })
-			.where(eq(t.admins.id, id))
-			.returning({ email: t.admins.email });
+		const updated = await Admin.findByIdAndUpdate(id, { status }, { new: true }).lean();
 		if (!updated) return fail(404, { message: 'Login not found.' });
 
-		// Disabling a login should also revoke its active sessions immediately.
-		if (status === 'disabled') await db.delete(t.sessions).where(eq(t.sessions.adminId, id));
+		if (status === 'disabled') {
+			// Revoke all active sessions for this admin from Redis
+			const redis = getRedis();
+			const pattern = `sess:*`;
+			let cursor = '0';
+			do {
+				const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+				cursor = next;
+				for (const key of keys) {
+					const val = await redis.get(key);
+					if (val === id) await redis.del(key);
+				}
+			} while (cursor !== '0');
+		}
 
 		await audit({
 			actor: locals.admin!.email,
@@ -150,20 +136,24 @@ export const actions: Actions = {
 		const id = String(form.get('id') ?? '');
 		if (!id) return fail(400, { message: 'Bad request.' });
 
-		const [target] = await db
-			.select({ email: t.admins.email })
-			.from(t.admins)
-			.where(eq(t.admins.id, id));
+		const target = await Admin.findById(id).lean();
 		if (!target) return fail(404, { message: 'Login not found.' });
 
 		const password = generatePassword();
-		await db
-			.update(t.admins)
-			.set({ passwordHash: await hashPassword(password) })
-			.where(eq(t.admins.id, id));
+		await Admin.findByIdAndUpdate(id, { passwordHash: await hashPassword(password) });
 
-		// Force re-login everywhere with the new password.
-		await db.delete(t.sessions).where(eq(t.sessions.adminId, id));
+		// Force re-login everywhere
+		const redis = getRedis();
+		const pattern = `sess:*`;
+		let cursor = '0';
+		do {
+			const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+			cursor = next;
+			for (const key of keys) {
+				const val = await redis.get(key);
+				if (val === id) await redis.del(key);
+			}
+		} while (cursor !== '0');
 
 		await audit({
 			actor: locals.admin!.email,

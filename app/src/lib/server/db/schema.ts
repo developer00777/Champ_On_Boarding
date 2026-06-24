@@ -150,6 +150,23 @@ const auditLogSchema = new Schema(
 );
 export const AuditLog = models.AuditLog ?? model('AuditLog', auditLogSchema);
 
+// ── Verifications ─────────────────────────────────────────────────────────────
+const verificationSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
+		source: { type: String, enum: ['digilocker', 'ocr_crosscheck'], required: true },
+		docKind: { type: String, required: true },
+		status: { type: String, required: true },
+		score: { type: Number, required: true },
+		fieldResults: { type: Schema.Types.Mixed, default: [] },
+		note: { type: String, default: null },
+		verifiedAt: { type: Date, default: () => new Date() }
+	},
+	{ timestamps: true }
+);
+verificationSchema.index({ candidateId: 1, source: 1, docKind: 1 }, { unique: true });
+export const Verification = models.Verification ?? model('Verification', verificationSchema);
+
 // ── Shared types ──────────────────────────────────────────────────────────────
 export type CandidateDoc = InstanceType<typeof Candidate> & { _id: Types.ObjectId };
 export type DocumentDoc = InstanceType<typeof Document> & { _id: Types.ObjectId };

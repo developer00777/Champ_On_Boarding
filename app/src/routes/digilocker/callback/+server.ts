@@ -1,8 +1,7 @@
 import { redirect, error } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/public';
-import { db, t } from '$lib/server/db';
+import { Candidate } from '$lib/server/db/schema';
 import { decrypt } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 import { exchangeCode, pullVerifiableDocs } from '$lib/server/verify/digilocker';
@@ -18,8 +17,6 @@ interface OAuthState {
 	exp: number;
 }
 
-// DigiLocker redirects here after consent. We verify state, exchange the code, pull the
-// issued documents, and run verification against the candidate's typed details.
 export const GET: RequestHandler = async ({ url, cookies, getClientAddress }) => {
 	const raw = cookies.get(COOKIE);
 	cookies.delete(COOKIE, { path: '/' });
@@ -41,20 +38,16 @@ export const GET: RequestHandler = async ({ url, cookies, getClientAddress }) =>
 	if (url.searchParams.get('error') || !code) redirect(302, `${back}?dl=denied`);
 	if (returnedState !== s.state) error(400, 'DigiLocker state mismatch — please retry.');
 
-	const [candidate] = await db
-		.select()
-		.from(t.candidates)
-		.where(eq(t.candidates.id, s.candidateId));
+	const candidate = await Candidate.findById(s.candidateId).lean();
 	if (!candidate) error(404, 'Candidate not found.');
 
-	// redirect() throws, so the outcome is computed here and the redirect is issued after.
 	let outcome = 'ok';
 	try {
 		const redirectUri = `${env.PUBLIC_BASE_URL}/digilocker/callback`;
 		const accessToken = await exchangeCode(code, s.verifier, redirectUri);
 		const docs = await pullVerifiableDocs(accessToken);
 		await audit({
-			candidateId: candidate.id,
+			candidateId: String(candidate._id),
 			actor: 'candidate',
 			action: 'digilocker_linked',
 			ip: getClientAddress()
@@ -63,12 +56,12 @@ export const GET: RequestHandler = async ({ url, cookies, getClientAddress }) =>
 		let verified = 0;
 		for (const [docKind, found] of Object.entries(docs)) {
 			if (!found) continue;
-			await runVerification(candidate, 'digilocker', docKind, found, 'candidate');
+			await runVerification(candidate as Record<string, unknown>, 'digilocker', docKind, found, 'candidate');
 			verified++;
 		}
 		if (!verified) {
 			await recordVerificationError(
-				candidate.id,
+				String(candidate._id),
 				'digilocker',
 				'aadhaar',
 				'DigiLocker returned no verifiable documents'
