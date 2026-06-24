@@ -3,7 +3,9 @@ import adapterNode from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
-const adapter = process.env.RAILWAY ? adapterNode() : adapterVercel();
+const adapter = process.env.RAILWAY
+	? adapterNode({ bodySize: '50mb' })
+	: adapterVercel();
 
 export default defineConfig({
 	plugins: [

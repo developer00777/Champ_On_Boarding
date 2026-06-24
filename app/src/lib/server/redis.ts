@@ -6,12 +6,13 @@ let _client: Redis | null = null;
 export function getRedis(): Redis {
 	if (!_client) {
 		_client = new Redis(env.REDIS_URL, {
-			lazyConnect: true,
+			lazyConnect: false,
 			maxRetriesPerRequest: 1,
-			enableOfflineQueue: false,
-			connectTimeout: 5000
+			enableOfflineQueue: true,
+			connectTimeout: 5000,
+			retryStrategy: (times) => (times > 3 ? null : Math.min(times * 200, 1000))
 		});
-		_client.on('error', (e) => console.error('[redis] connection error:', e.message));
+		_client.on('error', (e) => console.error('[redis] error:', e.message));
 	}
 	return _client;
 }
