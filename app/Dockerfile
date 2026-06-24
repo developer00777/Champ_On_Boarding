@@ -14,5 +14,6 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/scripts ./scripts
+RUN chmod +x scripts/start.sh
 EXPOSE 3000
-CMD ["node", "build/index.js"]
+CMD ["sh", "scripts/start.sh"]
