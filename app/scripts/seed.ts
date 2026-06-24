@@ -8,7 +8,7 @@ const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017';
 const MONGODB_DB = process.env.MONGODB_DB ?? 'champonboard';
 
 console.log(`[seed] connecting to MongoDB db="${MONGODB_DB}"`);
-await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB });
+await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB, authSource: 'admin' });
 console.log(`[seed] connected`);
 const db = mongoose.connection.db!;
 

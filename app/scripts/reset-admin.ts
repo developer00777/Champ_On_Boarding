@@ -9,7 +9,7 @@ const EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
 const PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'champ-admin-2026';
 
 console.log(`Connecting to MongoDB...`);
-await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB });
+await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB, authSource: 'admin' });
 const admins = mongoose.connection.db!.collection('admins');
 
 const passwordHash = await hash(PASSWORD);

@@ -5,7 +5,13 @@ let connected = false;
 
 export async function connectDb() {
 	if (connected || mongoose.connection.readyState === 1) return;
-	await mongoose.connect(env.MONGODB_URI, { dbName: env.MONGODB_DB ?? 'champonboard' });
+	// Strip any database path from the URI — we set dbName explicitly.
+	// This handles Railway's ${{MongoDB.MONGO_URL}} which appends /railway.
+	const uri = (env.MONGODB_URI ?? '').replace(/\/[^/?]+(\?|$)/, '$1');
+	await mongoose.connect(uri, {
+		dbName: env.MONGODB_DB ?? 'champonboard',
+		authSource: 'admin'
+	});
 	connected = true;
 }
 
