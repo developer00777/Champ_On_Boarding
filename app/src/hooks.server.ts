@@ -3,17 +3,26 @@ import { connectDb } from '$lib/server/db';
 import { getRedis } from '$lib/server/redis';
 import { resolveSession } from '$lib/server/auth';
 
-// Redis-backed rate limiter — works correctly across serverless invocations.
+// Redis-backed rate limiter — fails open so a Redis outage never blocks the app.
 async function rateLimited(key: string, limit: number, windowSec: number): Promise<boolean> {
-	const redis = getRedis();
-	const rKey = `rl:${key}`;
-	const count = await redis.incr(rKey);
-	if (count === 1) await redis.expire(rKey, windowSec);
-	return count > limit;
+	try {
+		const redis = getRedis();
+		const rKey = `rl:${key}`;
+		const count = await redis.incr(rKey);
+		if (count === 1) await redis.expire(rKey, windowSec);
+		return count > limit;
+	} catch (e) {
+		console.error('[rate-limit] Redis error, failing open:', e);
+		return false;
+	}
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
-	await connectDb();
+	try {
+		await connectDb();
+	} catch (e) {
+		console.error('[hooks] MongoDB connect error:', e);
+	}
 
 	const ip = event.getClientAddress();
 
@@ -28,7 +37,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	event.locals.admin = await resolveSession(event.cookies);
+	try {
+		event.locals.admin = await resolveSession(event.cookies);
+	} catch (e) {
+		console.error('[hooks] resolveSession error:', e);
+		event.locals.admin = null;
+	}
 
 	if (
 		event.url.pathname.startsWith('/admin') &&

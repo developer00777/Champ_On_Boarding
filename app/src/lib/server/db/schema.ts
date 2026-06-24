@@ -123,7 +123,7 @@ const physicalItemSchema = new Schema(
 		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
 		itemType: {
 			type: String,
-			enum: ['passport_photos_x4', 'offer_letter_signed'],
+			enum: ['passport_photos_x4', 'offer_letter_signed', 'nda_signed_copy'],
 			required: true
 		},
 		received: { type: Boolean, default: false },

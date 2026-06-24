@@ -8,6 +8,7 @@ import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
+import { runVerification } from '$lib/server/verify/engine';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -234,5 +235,44 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { ok: true };
+	},
+
+	crosscheck: async ({ params, locals, getClientAddress }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const { candidate } = row;
+
+		const docs = await Document.find({
+			candidateId: params.id,
+			ocrStatus: { $in: ['parsed', 'pending'] }
+		}).lean();
+
+		let crosschecked = 0;
+		for (const doc of docs) {
+			if (!doc.ocrJson) continue;
+			try {
+				const found = doc.ocrJson as Record<string, string>;
+				await runVerification(
+					candidate as unknown as Record<string, unknown>,
+					'ocr_crosscheck',
+					doc.docType,
+					found,
+					locals.admin!.email
+				);
+				crosschecked++;
+			} catch (e) {
+				console.error('[crosscheck] doc', doc._id, e);
+			}
+		}
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'ocr_crosscheck_run',
+			newValue: String(crosschecked),
+			ip: getClientAddress()
+		});
+
+		return { crosschecked };
 	}
 };
