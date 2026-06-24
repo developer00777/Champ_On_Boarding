@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Candidate, Company, Document, PhysicalItem, LinkToken } from '$lib/server/db/schema';
+import { Candidate, Company, Document, PhysicalItem, LinkToken, Verification } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { decrypt } from '$lib/server/crypto';
 import { sendMail, brandSignoff } from '$lib/server/mailer';
@@ -9,6 +9,7 @@ import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { runVerification } from '$lib/server/verify/engine';
+import { VERIFY_SPECS } from '$lib/shared/match';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -33,6 +34,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const checklist = await checklistFor(String(candidate._id), candidate.track as Track);
 	const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
+	const verificationDocs = await Verification.find({ candidateId: candidate._id }).lean();
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
 
@@ -103,7 +105,18 @@ export const load: PageServerLoad = async ({ params }) => {
 		flags:
 			candidate.status === 'submitted'
 				? reviewFlags(candidate as unknown as Record<string, unknown>, aadhaarPlain)
-				: []
+				: [],
+		verifications: verificationDocs.map((v) => {
+			const spec = VERIFY_SPECS[v.docKind];
+			return {
+				label: spec?.label ?? v.docKind,
+				source: v.source,
+				status: v.status as string,
+				score: v.score,
+				note: v.note ?? null,
+				fieldResults: (v.fieldResults as Array<{ label: string; expected: string; found: string; verdict: string }>) ?? []
+			};
+		})
 	};
 };
 

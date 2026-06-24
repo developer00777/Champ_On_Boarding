@@ -6,9 +6,9 @@ import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { sendMail, brandSignoff } from '$lib/server/mailer';
 import { TRACKS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
-import { brandBySlug } from '$lib/shared/brands';
+import { brandBySlug, BRANDS } from '$lib/shared/brands';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
 	const candidateDocs = await Candidate.find()
 		.populate('companyId')
 		.sort({ createdAt: -1 })
@@ -30,12 +30,33 @@ export const load: PageServerLoad = async () => {
 				submittedAt: c.submittedAt?.toISOString() ?? null
 			};
 		}),
-		companies: companies.map((c) => ({ id: String(c._id), name: c.name })),
-		tracks: TRACKS
+		companies: companies.map((c) => ({ id: String(c._id), name: c.name, brandSlug: c.brandSlug ?? null })),
+		tracks: TRACKS,
+		isSuperAdmin: locals.admin?.role === 'super_admin',
+		brandOptions: BRANDS.map((b) => ({ slug: b.slug, name: b.name, primary: b.colors.primary }))
 	};
 };
 
 export const actions: Actions = {
+	setCompanyBrand: async ({ request, locals }) => {
+		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const form = await request.formData();
+		const companyId = String(form.get('companyId') ?? '');
+		const brandSlug = String(form.get('brandSlug') ?? '') || null;
+		await Company.findByIdAndUpdate(companyId, { brandSlug });
+		return { brandSaved: companyId };
+	},
+
+	createCompany: async ({ request, locals }) => {
+		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const form = await request.formData();
+		const name = String(form.get('name') ?? '').trim();
+		const brandSlug = String(form.get('brandSlug') ?? '') || null;
+		if (!name) return fail(400, { companyError: 'Company name is required.' });
+		await Company.create({ name, brandSlug });
+		return { companyCreated: name };
+	},
+
 	generateLink: async ({ request, locals, getClientAddress }) => {
 		const form = await request.formData();
 		const email = String(form.get('email') ?? '').trim().toLowerCase();
