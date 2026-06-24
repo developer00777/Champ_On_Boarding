@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	const slot = slotByType(docType);
 	if (!slot || !slot.tracks.includes(candidate.track as never)) error(400, 'Unknown document type');
 	if (!ACCEPTED_MIMES.includes(mime)) error(400, 'Only JPG, PNG, WEBP or PDF files are accepted');
-	if (size > MAX_FILE_BYTES) error(400, 'File is larger than 10 MB');
+	if (size > MAX_FILE_BYTES) error(400, 'File is larger than 150 MB');
 
 	const existingDocs = await Document.find({
 		candidateId: candidate.id,

@@ -4,7 +4,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 const adapter = process.env.RAILWAY
-	? adapterNode({ bodySize: '50mb' })
+	? adapterNode()
 	: adapterVercel();
 
 export default defineConfig({

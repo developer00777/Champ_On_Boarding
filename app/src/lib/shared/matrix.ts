@@ -63,4 +63,4 @@ export const PHYSICAL_ITEM_TYPES = [
 
 // HR decision (18 Jun 2026): uploads restricted to JPG / PNG / PDF only.
 export const ACCEPTED_MIMES = ['image/jpeg', 'image/png', 'application/pdf'];
-export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_FILE_BYTES = 150 * 1024 * 1024; // 150 MB
