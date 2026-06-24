@@ -53,7 +53,6 @@
 		'missing-expected': 'not entered'
 	};
 	const sourceLabel: Record<string, string> = {
-		digilocker: 'DigiLocker',
 		ocr_crosscheck: 'OCR cross-check'
 	};
 
@@ -250,13 +249,7 @@
 				</form>
 			</div>
 			<p class="muted" style="font-size:11.5px;margin:0 0 12px">
-				{#if data.digilockerEnabled}
-					Candidate can self-verify via DigiLocker (authoritative). OCR cross-check compares read
-					values against the typed master sheet.
-				{:else}
-					DigiLocker not configured — cross-check compares OCR-read values against the typed master
-					sheet. Names use fuzzy matching; treat 60–82% as a manual-review band.
-				{/if}
+				Cross-check compares OCR-read values against the typed master sheet. Names use fuzzy matching; treat 60–82% as a manual-review band.
 			</p>
 			{#if form?.crosschecked !== undefined}
 				<p class="muted" style="font-size:12px;margin:0 0 12px">

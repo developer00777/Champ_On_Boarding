@@ -154,7 +154,7 @@ export const AuditLog = models.AuditLog ?? model('AuditLog', auditLogSchema);
 const verificationSchema = new Schema(
 	{
 		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
-		source: { type: String, enum: ['digilocker', 'ocr_crosscheck'], required: true },
+		source: { type: String, enum: ['ocr_crosscheck'], required: true },
 		docKind: { type: String, required: true },
 		status: { type: String, required: true },
 		score: { type: Number, required: true },

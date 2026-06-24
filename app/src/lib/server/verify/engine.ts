@@ -8,7 +8,7 @@ import {
 	type VerifyStatus
 } from '$lib/shared/match';
 
-export type VerifySource = 'digilocker' | 'ocr_crosscheck';
+export type VerifySource = 'ocr_crosscheck';
 
 function maskLong(value: string): string {
 	return value.replace(/\d{8,}/g, (m) => `${'X'.repeat(m.length - 4)}${m.slice(-4)}`);

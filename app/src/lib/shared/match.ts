@@ -1,6 +1,6 @@
 // Document verification matching — pure, individually testable (like validation.ts).
-// Compares an AUTHORITATIVE value set (DigiLocker pull, or OCR extraction) against the
-// candidate's typed master-sheet fields and produces a per-field + overall verdict.
+// Compares OCR-extracted values against the candidate's typed master-sheet fields
+// and produces a per-field + overall verdict.
 //
 // Indian names defeat exact comparison (expanded vs initialled, surname ordering,
 // transliteration spellings) so names use token-aware Jaro-Winkler with thresholds and
