@@ -28,7 +28,7 @@ const EXP: Track[] = ['experienced'];
 
 export const DOC_SLOTS: DocSlot[] = [
 	{ type: 'aadhaar_front', label: 'Aadhaar Card — Front', hint: 'Full Aadhaar number and name clearly visible, all 4 corners in frame', tracks: ALL, mandatory: true, ocr: 'aadhaar_front', maxFiles: 1 },
-	{ type: 'aadhaar_back', label: 'Aadhaar Card — Back', hint: 'Address fully visible, no glare', tracks: ALL, mandatory: true, ocr: 'aadhaar_back', maxFiles: 1 },
+	{ type: 'aadhaar_back', label: 'Aadhaar Card — Back (optional)', hint: 'Address fully visible, no glare', tracks: ALL, mandatory: false, ocr: 'aadhaar_back', maxFiles: 1 },
 	{ type: 'pan', label: 'PAN Card', hint: "Name, PAN number and father's name must be visible", tracks: ALL, mandatory: true, ocr: 'pan', maxFiles: 1 },
 	{ type: 'bank_proof', label: 'Bank Passbook / Cheque front', hint: 'Name, IFSC, branch, bank name and account number must be visible', tracks: ALL, mandatory: true, ocr: 'bank_proof', maxFiles: 1 },
 	{ type: 'marksheet_10', label: '10th Marks Sheet', hint: 'Clear and fully visible', tracks: ALL, mandatory: true, maxFiles: 1 },
