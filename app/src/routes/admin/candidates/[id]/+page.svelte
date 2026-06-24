@@ -18,12 +18,43 @@
 		revoked: { label: 'REVOKED', cls: 'red' }
 	};
 
+	const stdPill: Record<string, { label: string; cls: string }> = {
+		pass: { label: 'STANDARD ✓', cls: 'teal' },
+		warn: { label: 'STANDARD ⚠', cls: 'gold' },
+		fail: { label: 'NOT TO STANDARD', cls: 'red' }
+	};
+
 	const docPill: Record<string, { label: string; cls: string }> = {
 		parsed: { label: 'AUTO-READ', cls: 'teal' },
 		store_only: { label: 'STORED', cls: '' },
 		pending: { label: 'PROCESSING', cls: '' },
 		unreadable: { label: 'UNREADABLE', cls: 'red' },
 		failed: { label: 'OCR FAILED', cls: 'gold' }
+	};
+
+	const verifStatusPill: Record<string, string> = {
+		verified: 'teal',
+		review: 'gold',
+		mismatch: 'red',
+		error: 'red'
+	};
+	const verdictPill: Record<string, string> = {
+		match: 'teal',
+		review: 'gold',
+		mismatch: 'red',
+		missing: 'gold',
+		'missing-expected': ''
+	};
+	const verdictLabel: Record<string, string> = {
+		match: 'match',
+		review: 'review',
+		mismatch: 'mismatch',
+		missing: 'not found',
+		'missing-expected': 'not entered'
+	};
+	const sourceLabel: Record<string, string> = {
+		digilocker: 'DigiLocker',
+		ocr_crosscheck: 'OCR cross-check'
 	};
 
 	const detailGroups = $derived([
@@ -167,6 +198,14 @@
 									{doc.mime === 'application/pdf' ? 'PDF' : 'Image'} · {(doc.sizeBytes / 1024).toFixed(0)} KB
 									{#if doc.reviewNote}· {doc.reviewNote}{/if}
 								</div>
+								{#if stdPill[doc.standardStatus]}
+									<div style="margin-top:5px">
+										<span class="pill {stdPill[doc.standardStatus].cls}">{stdPill[doc.standardStatus].label}</span>
+										{#if doc.standardStatus !== 'pass' && doc.standardReasons?.length}
+											<span class="muted" style="font-size:11.5px"> {doc.standardReasons.join(' ')}</span>
+										{/if}
+									</div>
+								{/if}
 								{#if doc.ocrTranscript}
 									<details>
 										<summary class="muted" style="cursor:pointer;font-size:11.5px">OCR transcript</summary>
@@ -201,6 +240,61 @@
 
 	<!-- details -->
 	<div style="display:flex;flex-direction:column;gap:18px">
+		<!-- verification -->
+		<section class="card">
+			<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+				<div class="eyebrow">Document verification</div>
+				<div style="flex:1"></div>
+				<form method="POST" action="?/crosscheck" use:enhance>
+					<button class="btn ghost small">Run OCR cross-check</button>
+				</form>
+			</div>
+			<p class="muted" style="font-size:11.5px;margin:0 0 12px">
+				{#if data.digilockerEnabled}
+					Candidate can self-verify via DigiLocker (authoritative). OCR cross-check compares read
+					values against the typed master sheet.
+				{:else}
+					DigiLocker not configured — cross-check compares OCR-read values against the typed master
+					sheet. Names use fuzzy matching; treat 60–82% as a manual-review band.
+				{/if}
+			</p>
+			{#if form?.crosschecked !== undefined}
+				<p class="muted" style="font-size:12px;margin:0 0 12px">
+					Cross-check complete ({form.crosschecked} document{form.crosschecked === 1 ? '' : 's'}).
+				</p>
+			{/if}
+			{#if data.verifications.length === 0}
+				<p class="muted" style="font-size:13px;margin:0">No verifications yet.</p>
+			{:else}
+				{#each data.verifications as v}
+					<div class="verif">
+						<div class="verif-head">
+							<span class="verif-name">{v.label}</span>
+							<span class="src-badge">{sourceLabel[v.source] ?? v.source}</span>
+							<div style="flex:1"></div>
+							<span class="pill {verifStatusPill[v.status] ?? ''}">{v.status.toUpperCase()} · {v.score}%</span>
+						</div>
+						{#if v.note}
+							<div class="muted" style="font-size:11.5px;margin-top:4px">{v.note}</div>
+						{/if}
+						{#each v.fieldResults as f}
+							<div class="frow" style="padding:6px 0">
+								<span class="flabel">{f.label}</span>
+								<span class="fvalue" style="max-width:42%">
+									<span class="muted" style="font-weight:400">typed:</span> {f.expected || '—'}
+									&nbsp;·&nbsp;
+									<span class="muted" style="font-weight:400">found:</span> {f.found || '—'}
+								</span>
+								<span class="pill {verdictPill[f.verdict] ?? ''}" style="flex:0 0 auto">
+									{verdictLabel[f.verdict] ?? f.verdict}
+								</span>
+							</div>
+						{/each}
+					</div>
+				{/each}
+			{/if}
+		</section>
+
 		<section class="card">
 			<div class="eyebrow" style="margin-bottom:10px">Extracted details</div>
 			{#each detailGroups as group}
@@ -388,6 +482,31 @@
 	}
 	.red-eyebrow {
 		color: var(--red);
+	}
+	.verif {
+		border: 1px solid var(--mist);
+		border-radius: 12px;
+		padding: 12px 14px;
+		margin-bottom: 12px;
+	}
+	.verif-head {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+	}
+	.verif-name {
+		font-weight: 700;
+		font-size: 13.5px;
+	}
+	.src-badge {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--smoke);
+		background: var(--mist);
+		padding: 2px 7px;
+		border-radius: 999px;
 	}
 	.physrow {
 		display: flex;

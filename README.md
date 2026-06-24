@@ -14,8 +14,9 @@ docker compose up -d --build
 
 That brings up Postgres (:5432), MinIO (:9000, console :9001 — `minioadmin`/`minioadmin`),
 a one-shot migrate+seed job, and the app at **http://localhost:3000**.
-Default admin: `deep@championsmail.com` / `champ-admin-2026` (override with
-`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` in the root `.env` before first start).
+Default admin email: `deep@championsmail.com`. Set the password via
+`SEED_ADMIN_PASSWORD` (and optionally `SEED_ADMIN_EMAIL`) in the root `.env`
+before first start — credentials are not stored in this repo.
 
 MinIO stands in for DO Spaces locally — same S3 API, so storage code is identical in
 dev and prod; only `S3_ENDPOINT` changes. With `RESEND_API_KEY` empty, outgoing email
