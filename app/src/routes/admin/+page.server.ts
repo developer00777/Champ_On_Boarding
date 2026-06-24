@@ -1,8 +1,7 @@
 import { fail } from '@sveltejs/kit';
-import { desc, eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import { env } from '$env/dynamic/public';
-import { db, t } from '$lib/server/db';
+import { Candidate, Company, PhysicalItem } from '$lib/server/db/schema';
 import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { sendMail, brandSignoff } from '$lib/server/mailer';
@@ -10,26 +9,28 @@ import { TRACKS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 
 export const load: PageServerLoad = async () => {
-	const rows = await db
-		.select({ candidate: t.candidates, company: t.companies })
-		.from(t.candidates)
-		.innerJoin(t.companies, eq(t.candidates.companyId, t.companies.id))
-		.orderBy(desc(t.candidates.createdAt));
+	const candidateDocs = await Candidate.find()
+		.populate('companyId')
+		.sort({ createdAt: -1 })
+		.lean();
 
-	const companies = await db.select().from(t.companies).where(eq(t.companies.active, true));
+	const companies = await Company.find({ active: true }).lean();
 
 	return {
-		candidates: rows.map((r) => ({
-			id: r.candidate.id,
-			email: r.candidate.email,
-			fullName: r.candidate.fullName,
-			track: r.candidate.track,
-			status: r.candidate.status,
-			company: r.company.name,
-			createdAt: r.candidate.createdAt.toISOString(),
-			submittedAt: r.candidate.submittedAt?.toISOString() ?? null
-		})),
-		companies: companies.map((c) => ({ id: c.id, name: c.name })),
+		candidates: candidateDocs.map((c) => {
+			const company = c.companyId as unknown as { name: string };
+			return {
+				id: String(c._id),
+				email: c.email,
+				fullName: c.fullName ?? null,
+				track: c.track,
+				status: c.status,
+				company: company?.name ?? '',
+				createdAt: (c as { createdAt: Date }).createdAt.toISOString(),
+				submittedAt: c.submittedAt?.toISOString() ?? null
+			};
+		}),
+		companies: companies.map((c) => ({ id: String(c._id), name: c.name })),
 		tracks: TRACKS
 	};
 };
@@ -47,32 +48,28 @@ export const actions: Actions = {
 		if (!TRACKS.includes(track)) return fail(400, { message: 'Pick a track.' });
 		if (!companyId) return fail(400, { message: 'Pick a company.' });
 
-		const [company] = await db.select().from(t.companies).where(eq(t.companies.id, companyId));
+		const company = await Company.findById(companyId).lean();
 		if (!company) return fail(400, { message: 'Pick a company.' });
-		const brand = brandBySlug(company.brandSlug);
+		const brand = brandBySlug(company.brandSlug ?? undefined);
 
-		const [candidate] = await db
-			.insert(t.candidates)
-			.values({
-				email,
-				track,
-				companyId,
-				fullName: candidateName || null,
-				createdBy: locals.admin!.id
-			})
-			.returning();
+		const candidate = await Candidate.create({
+			email,
+			track,
+			companyId,
+			fullName: candidateName || null,
+			createdBy: locals.admin!.id
+		});
 
-		// PRD §3 — physical handover items tracked from day one.
-		await db.insert(t.physicalItems).values(
-			PHYSICAL_ITEM_TYPES.map((p) => ({ candidateId: candidate.id, itemType: p.type }))
+		await PhysicalItem.insertMany(
+			PHYSICAL_ITEM_TYPES.map((p) => ({ candidateId: candidate._id, itemType: p.type }))
 		);
 
-		const token = await createLinkToken(candidate.id);
+		const token = await createLinkToken(String(candidate._id));
 		const base = env.PUBLIC_BASE_URL ?? 'http://localhost:5173';
 		const link = `${base}/c/${token}`;
 
 		await audit({
-			candidateId: candidate.id,
+			candidateId: String(candidate._id),
 			actor: locals.admin!.email,
 			action: 'link_generated',
 			field: track,

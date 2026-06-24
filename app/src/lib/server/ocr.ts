@@ -1,23 +1,21 @@
-// OcrProvider — OpenRouter → Gemini Flash. One multimodal call per document:
-// structured field JSON + plain-text transcript. Raw OCR is always "suggested",
-// never authoritative (PRD §4).
+// OcrProvider — OpenRouter → Gemini Flash. One multimodal call per document.
+// Raw OCR is always "suggested", never authoritative (PRD §4).
 import { env } from '$env/dynamic/private';
-import { getObjectBytes } from './storage';
+import { ObjectId } from 'mongodb';
+import { getGridFSBytes } from './storage';
 
 export interface OcrResult {
-	fields: Record<string, string>; // candidate-field-keyed suggestions
+	fields: Record<string, string>;
 	transcript: string;
 	raw: Record<string, unknown>;
 	unreadable: boolean;
 }
 
 interface OcrSchema {
-	/** model-facing field name → candidate column it suggests into ('' = keep in ocr_json only) */
 	fieldMap: Record<string, string>;
 	docDescription: string;
 }
 
-// Extraction registry — adding an OCR target = one entry here + `ocr:` key in matrix.ts.
 const OCR_SCHEMAS: Record<string, OcrSchema> = {
 	aadhaar_front: {
 		docDescription: 'the front side of an Indian Aadhaar card',
@@ -57,9 +55,9 @@ export function hasOcrSchema(key: string | undefined): key is string {
 	return !!key && key in OCR_SCHEMAS;
 }
 
-export async function runOcr(ocrKey: string, spacesKey: string, mime: string): Promise<OcrResult> {
+export async function runOcr(ocrKey: string, gridfsId: ObjectId, mime: string): Promise<OcrResult> {
 	const schema = OCR_SCHEMAS[ocrKey];
-	const bytes = await getObjectBytes(spacesKey);
+	const bytes = await getGridFSBytes(gridfsId);
 	const dataUrl = `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
 
 	const modelFields = Object.keys(schema.fieldMap);
@@ -92,7 +90,6 @@ export async function runOcr(ocrKey: string, spacesKey: string, mime: string): P
 		body: JSON.stringify({
 			model: env.OPENROUTER_MODEL ?? 'google/gemini-3.5-flash',
 			messages: [{ role: 'user', content }],
-			// PRD §9: least exposure — opt out of provider data collection on every call
 			provider: { data_collection: 'deny' },
 			temperature: 0
 		})
@@ -113,7 +110,6 @@ export async function runOcr(ocrKey: string, spacesKey: string, mime: string): P
 	for (const [modelField, candidateField] of Object.entries(schema.fieldMap)) {
 		let value = String(parsed[modelField] ?? '').trim();
 		if (candidateField === 'gender' && value) {
-			// form select expects Female / Male / Other
 			const g = value.toLowerCase();
 			value = g.startsWith('f') ? 'Female' : g.startsWith('m') ? 'Male' : 'Other';
 		}

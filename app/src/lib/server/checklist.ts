@@ -1,7 +1,5 @@
-import { eq } from 'drizzle-orm';
-import { db, t } from './db';
+import { Document } from './db/schema';
 import { slotsForTrack, type Track } from '$lib/shared/matrix';
-import type { Doc } from './db/schema';
 
 export interface SlotStatus {
 	type: string;
@@ -10,15 +8,23 @@ export interface SlotStatus {
 	mandatory: boolean;
 	maxFiles: number;
 	ocr: boolean;
-	docs: Doc[];
+	docs: Array<{ id: string; docType: string; reviewStatus: string; ocrStatus: string; reviewNote: string | null; mime: string }>;
 	satisfied: boolean;
 }
 
-/** Per-slot upload status for a candidate, derived from the track matrix. */
 export async function checklistFor(candidateId: string, track: Track): Promise<SlotStatus[]> {
-	const docs = await db.select().from(t.documents).where(eq(t.documents.candidateId, candidateId));
+	const docs = await Document.find({ candidateId }).lean();
 	return slotsForTrack(track).map((slot) => {
-		const slotDocs = docs.filter((d) => d.docType === slot.type);
+		const slotDocs = docs
+			.filter((d) => d.docType === slot.type)
+			.map((d) => ({
+				id: String(d._id),
+				docType: d.docType,
+				reviewStatus: d.reviewStatus,
+				ocrStatus: d.ocrStatus,
+				reviewNote: d.reviewNote ?? null,
+				mime: d.mime
+			}));
 		const usable = slotDocs.filter((d) => d.reviewStatus !== 'reupload_requested');
 		return {
 			type: slot.type,

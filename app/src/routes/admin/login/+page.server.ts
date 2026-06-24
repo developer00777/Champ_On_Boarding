@@ -1,7 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import { db, t } from '$lib/server/db';
+import { Admin } from '$lib/server/db/schema';
 import { verifyPassword, createSession } from '$lib/server/auth';
 import { audit } from '$lib/server/audit';
 
@@ -16,15 +15,16 @@ export const actions: Actions = {
 		const password = String(form.get('password') ?? '');
 		if (!email || !password) return fail(400, { message: 'Email and password are required.' });
 
-		const [admin] = await db.select().from(t.admins).where(eq(t.admins.email, email));
-		const ok = admin && admin.status === 'active' && (await verifyPassword(admin.passwordHash, password));
+		const admin = await Admin.findOne({ email }).lean();
+		const ok =
+			admin && admin.status === 'active' && (await verifyPassword(admin.passwordHash, password));
 		if (!ok) {
 			await audit({ actor: email, action: 'login_failed', ip: getClientAddress() });
 			return fail(401, { message: 'Invalid email or password.' });
 		}
 
-		await createSession(cookies, admin.id);
-		await audit({ actor: admin.email, action: 'login', ip: getClientAddress() });
+		await createSession(cookies, String(admin!._id));
+		await audit({ actor: admin!.email, action: 'login', ip: getClientAddress() });
 		redirect(303, '/admin');
 	}
 };

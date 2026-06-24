@@ -1,7 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import { db, t } from '$lib/server/db';
+import { Candidate, Company } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
 import { checklistFor } from '$lib/server/checklist';
 import { audit } from '$lib/server/audit';
@@ -12,44 +11,18 @@ import { brandBySlug } from '$lib/shared/brands';
 
 const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
-// Master-sheet fields the candidate may write (PRD §3). Aadhaar handled separately.
 const FIELDS = [
-	'fullName',
-	'dob',
-	'gender',
-	'mobile',
-	'fatherName',
-	'fatherMobile',
-	'motherName',
-	'motherMobile',
-	'motherDob',
-	'maritalStatus',
-	'spouseName',
-	'spouseContact',
-	'spouseDob',
-	'presentAddress',
-	'presentPin',
-	'presentHouseNo',
-	'permanentAddress',
-	'permanentPin',
-	'permanentHouseNo',
-	'panNo',
-	'uanNo',
-	'dlNo',
-	'passportNo',
-	'bankName',
-	'accountNo',
-	'ifsc',
-	'branch'
+	'fullName', 'dob', 'gender', 'mobile',
+	'fatherName', 'fatherMobile', 'motherName', 'motherMobile', 'motherDob',
+	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
+	'presentAddress', 'presentPin', 'presentHouseNo',
+	'permanentAddress', 'permanentPin', 'permanentHouseNo',
+	'panNo', 'uanNo', 'dlNo', 'passportNo',
+	'bankName', 'accountNo', 'ifsc', 'branch'
 ] as const;
 
 const TITLE_CASE_FIELDS = new Set([
-	'fullName',
-	'fatherName',
-	'motherName',
-	'spouseName',
-	'bankName',
-	'branch'
+	'fullName', 'fatherName', 'motherName', 'spouseName', 'bankName', 'branch'
 ]);
 
 function formToFields(form: FormData): Record<string, string> {
@@ -68,12 +41,9 @@ export const load: PageServerLoad = async ({ params }) => {
 	const candidate = await resolveCandidateToken(params.token);
 	if (!candidate) error(404, 'This onboarding link is invalid, expired, or revoked.');
 
-	const [company] = await db
-		.select()
-		.from(t.companies)
-		.where(eq(t.companies.id, candidate.companyId));
+	const company = await Company.findById(candidate.companyId).lean();
 	const checklist = await checklistFor(candidate.id, candidate.track as Track);
-	const brand = brandBySlug(company?.brandSlug);
+	const brand = brandBySlug(company?.brandSlug ?? undefined);
 
 	return {
 		brand,
@@ -84,7 +54,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			status: candidate.status,
 			consented: !!candidate.consentAt,
 			email: candidate.email,
-			aadhaarMasked: maskAadhaar(candidate.aadhaarLast4),
+			aadhaarMasked: maskAadhaar(candidate.aadhaarLast4 ?? null),
 			hasAadhaar: !!candidate.aadhaarNoEncrypted,
 			fields: Object.fromEntries(
 				FIELDS.map((f) => [f, (candidate as unknown as Record<string, string | null>)[f] ?? ''])
@@ -112,16 +82,11 @@ export const actions: Actions = {
 		const candidate = await resolveCandidateToken(params.token);
 		if (!candidate) return fail(404);
 		if (!candidate.consentAt) {
-			await db
-				.update(t.candidates)
-				.set({ consentAt: new Date(), consentIp: getClientAddress() })
-				.where(eq(t.candidates.id, candidate.id));
-			await audit({
-				candidateId: candidate.id,
-				actor: 'candidate',
-				action: 'consent_given',
-				ip: getClientAddress()
+			await Candidate.findByIdAndUpdate(candidate.id, {
+				consentAt: new Date(),
+				consentIp: getClientAddress()
 			});
+			await audit({ candidateId: candidate.id, actor: 'candidate', action: 'consent_given', ip: getClientAddress() });
 		}
 		return { ok: true };
 	},
@@ -141,13 +106,8 @@ export const actions: Actions = {
 		}
 		if (candidate.status === 'opened') update.status = 'in_progress';
 
-		await db.update(t.candidates).set(update).where(eq(t.candidates.id, candidate.id));
-		await audit({
-			candidateId: candidate.id,
-			actor: 'candidate',
-			action: 'fields_saved',
-			ip: getClientAddress()
-		});
+		await Candidate.findByIdAndUpdate(candidate.id, update);
+		await audit({ candidateId: candidate.id, actor: 'candidate', action: 'fields_saved', ip: getClientAddress() });
 		return { saved: true };
 	},
 
@@ -175,13 +135,8 @@ export const actions: Actions = {
 		update.status = 'submitted';
 		update.submittedAt = new Date();
 
-		await db.update(t.candidates).set(update).where(eq(t.candidates.id, candidate.id));
-		await audit({
-			candidateId: candidate.id,
-			actor: 'candidate',
-			action: 'submitted',
-			ip: getClientAddress()
-		});
+		await Candidate.findByIdAndUpdate(candidate.id, update);
+		await audit({ candidateId: candidate.id, actor: 'candidate', action: 'submitted', ip: getClientAddress() });
 		return { submitted: true };
 	}
 };

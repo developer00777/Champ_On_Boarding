@@ -1,12 +1,11 @@
-import { and, eq, gt } from 'drizzle-orm';
-import { db, t } from './db';
+import { Candidate, LinkToken } from './db/schema';
 import { randomToken, sha256 } from './crypto';
 
 const LINK_DAYS = 7;
 
 export async function createLinkToken(candidateId: string) {
 	const token = randomToken();
-	await db.insert(t.linkTokens).values({
+	await LinkToken.create({
 		candidateId,
 		tokenHash: sha256(token),
 		expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000)
@@ -14,33 +13,32 @@ export async function createLinkToken(candidateId: string) {
 	return token;
 }
 
-/** Resolve a candidate from a raw link token; null if missing/expired/revoked. */
 export async function resolveCandidateToken(token: string) {
-	const rows = await db
-		.select({ link: t.linkTokens, candidate: t.candidates })
-		.from(t.linkTokens)
-		.innerJoin(t.candidates, eq(t.linkTokens.candidateId, t.candidates.id))
-		.where(
-			and(
-				eq(t.linkTokens.tokenHash, sha256(token)),
-				eq(t.linkTokens.revoked, false),
-				gt(t.linkTokens.expiresAt, new Date())
-			)
-		);
-	const row = rows[0];
-	if (!row || row.candidate.status === 'revoked') return null;
-	if (!row.link.openedAt) {
-		await db
-			.update(t.linkTokens)
-			.set({ openedAt: new Date() })
-			.where(eq(t.linkTokens.id, row.link.id));
-		if (row.candidate.status === 'created') {
-			await db
-				.update(t.candidates)
-				.set({ status: 'opened' })
-				.where(eq(t.candidates.id, row.candidate.id));
-			row.candidate.status = 'opened';
+	const link = await LinkToken.findOne({
+		tokenHash: sha256(token),
+		revoked: false,
+		expiresAt: { $gt: new Date() }
+	}).lean();
+	if (!link) return null;
+
+	const candidate = await Candidate.findById(link.candidateId).lean();
+	if (!candidate || candidate.status === 'revoked') return null;
+
+	if (!link.openedAt) {
+		await LinkToken.findByIdAndUpdate(link._id, { openedAt: new Date() });
+		if (candidate.status === 'created') {
+			await Candidate.findByIdAndUpdate(candidate._id, { status: 'opened' });
+			candidate.status = 'opened';
 		}
 	}
-	return row.candidate;
+
+	return {
+		...candidate,
+		id: String(candidate._id),
+		companyId: String(candidate.companyId),
+		createdBy: candidate.createdBy ? String(candidate.createdBy) : null,
+		ocrSuggestions: Object.fromEntries(
+			(candidate.ocrSuggestions as Map<string, string> | undefined) ?? new Map()
+		)
+	};
 }

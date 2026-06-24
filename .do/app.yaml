@@ -1,4 +1,5 @@
-# DigitalOcean App Platform spec — starting point (doctl apps create --spec .do/app.yaml)
+# Superseded by Railway + Vercel deployment — kept for reference only.
+# Stack: MongoDB (GridFS for file storage) + Redis (sessions + rate limiting).
 name: champonboard
 region: blr
 services:
@@ -22,7 +23,13 @@ services:
       - key: PUBLIC_BASE_URL
         scope: RUN_AND_BUILD_TIME
         value: https://onboard.example.com
-      - key: DATABASE_URL
+      - key: MONGODB_URI
+        scope: RUN_TIME
+        type: SECRET
+      - key: MONGODB_DB
+        scope: RUN_TIME
+        value: champonboard
+      - key: REDIS_URL
         scope: RUN_TIME
         type: SECRET
       - key: OPENROUTER_API_KEY
@@ -31,24 +38,6 @@ services:
       - key: OPENROUTER_MODEL
         scope: RUN_TIME
         value: google/gemini-3.5-flash
-      - key: S3_ENDPOINT
-        scope: RUN_TIME
-        value: https://blr1.digitaloceanspaces.com
-      - key: S3_REGION
-        scope: RUN_TIME
-        value: blr1
-      - key: S3_BUCKET
-        scope: RUN_TIME
-        value: champ-onboard-docs
-      - key: S3_ACCESS_KEY
-        scope: RUN_TIME
-        type: SECRET
-      - key: S3_SECRET_KEY
-        scope: RUN_TIME
-        type: SECRET
-      - key: S3_FORCE_PATH_STYLE
-        scope: RUN_TIME
-        value: 'false'
       - key: ENCRYPTION_KEY
         scope: RUN_TIME
         type: SECRET

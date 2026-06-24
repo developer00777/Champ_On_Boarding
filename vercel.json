@@ -2,6 +2,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".vercel/output",
   "installCommand": "npm ci",
-  "framework": "sveltekit",
-  "rootDirectory": "app"
+  "framework": "sveltekit"
 }

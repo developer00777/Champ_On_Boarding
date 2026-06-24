@@ -1,15 +1,19 @@
 // Seed: group companies + the bootstrap super admin.
 // Run: npm run db:seed  (idempotent — skips anything that already exists)
-import postgres from 'postgres';
+import mongoose from 'mongoose';
 import { randomBytes } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
 
-const sql = postgres(process.env.DATABASE_URL ?? 'postgres://champ:champ@localhost:5432/champonboard');
+const MONGODB_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017';
+const MONGODB_DB = process.env.MONGODB_DB ?? 'champonboard';
 
-// Each Champions Group property → its brand theme slug (see src/lib/shared/brands.ts).
-// Keep names/slugs in sync with that registry. Idempotent: inserts missing rows and
-// backfills brand_slug on rows that already exist (e.g. a legacy "Champions Group").
-const COMPANIES: { name: string; brandSlug: string }[] = [
+await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB });
+const db = mongoose.connection.db!;
+
+const companies = db.collection('companies');
+const admins = db.collection('admins');
+
+const COMPANIES = [
 	{ name: 'Champion Infratech', brandSlug: 'champion-infratech' },
 	{ name: 'Champions Club', brandSlug: 'champions-club' },
 	{ name: 'IP Momentum', brandSlug: 'ip-momentum' },
@@ -18,19 +22,25 @@ const COMPANIES: { name: string; brandSlug: string }[] = [
 	{ name: 'Champions Yacht Club', brandSlug: 'champions-yacht-club' },
 	{ name: 'Cirrologix', brandSlug: 'cirrologix' }
 ];
-const SUPER_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
 
 for (const { name, brandSlug } of COMPANIES) {
-	await sql`INSERT INTO companies (name, brand_slug) VALUES (${name}, ${brandSlug})
-	          ON CONFLICT (name) DO UPDATE SET brand_slug = EXCLUDED.brand_slug`;
+	await companies.updateOne({ name }, { $set: { name, brandSlug, active: true } }, { upsert: true });
 }
+console.log('Companies seeded.');
 
-const existing = await sql`SELECT id FROM admins WHERE email = ${SUPER_ADMIN_EMAIL}`;
-if (existing.length === 0) {
+const SUPER_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
+const existing = await admins.findOne({ email: SUPER_ADMIN_EMAIL });
+
+if (!existing) {
 	const password = process.env.SEED_ADMIN_PASSWORD ?? randomBytes(9).toString('base64url');
 	const passwordHash = await hash(password);
-	await sql`INSERT INTO admins (email, password_hash, role)
-	          VALUES (${SUPER_ADMIN_EMAIL}, ${passwordHash}, 'super_admin')`;
+	await admins.insertOne({
+		email: SUPER_ADMIN_EMAIL,
+		passwordHash,
+		role: 'super_admin',
+		status: 'active',
+		createdAt: new Date()
+	});
 	console.log(`Super admin created: ${SUPER_ADMIN_EMAIL}`);
 	console.log(`Password: ${password}`);
 	console.log('Store this password now — it is not shown again.');
@@ -38,4 +48,4 @@ if (existing.length === 0) {
 	console.log(`Super admin already exists: ${SUPER_ADMIN_EMAIL}`);
 }
 
-await sql.end();
+await mongoose.disconnect();

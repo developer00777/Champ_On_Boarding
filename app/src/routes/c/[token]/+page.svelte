@@ -42,33 +42,16 @@
 		uploading[slotType] = true;
 		slotMessages[slotType] = '';
 		try {
-			const presign = await fetch(`/c/${page.params.token}/upload`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					action: 'presign',
-					docType: slotType,
-					mime: file.type,
-					size: file.size
-				})
-			});
-			if (!presign.ok) throw new Error((await presign.json()).message ?? 'Upload rejected');
-			const { docId, putUrl } = await presign.json();
+			const body = new FormData();
+			body.append('docType', slotType);
+			body.append('file', file);
 
-			const put = await fetch(putUrl, {
-				method: 'PUT',
-				headers: { 'Content-Type': file.type },
-				body: file
-			});
-			if (!put.ok) throw new Error('Storage upload failed — please retry');
-
-			const complete = await fetch(`/c/${page.params.token}/upload`, {
+			const res = await fetch(`/c/${page.params.token}/upload`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ action: 'complete', docId })
+				body
 			});
-			if (!complete.ok) throw new Error((await complete.json()).message ?? 'Processing failed');
-			const result = await complete.json();
+			if (!res.ok) throw new Error((await res.json()).message ?? 'Upload failed');
+			const result = await res.json();
 
 			if (result.ocrStatus === 'unreadable') {
 				slotMessages[slotType] = result.message;

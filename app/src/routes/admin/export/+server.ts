@@ -1,24 +1,20 @@
-import { desc, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
-import { db, t } from '$lib/server/db';
+import { Candidate, Company } from '$lib/server/db/schema';
 import { decrypt } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 
 const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
-// Master-sheet CSV — replaces the manual master sheet, so it carries full values.
-// The export itself is audit-logged (PRD §9).
 export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
-	const rows = await db
-		.select({ c: t.candidates, company: t.companies })
-		.from(t.candidates)
-		.innerJoin(t.companies, eq(t.candidates.companyId, t.companies.id))
-		.orderBy(desc(t.candidates.createdAt));
+	const candidates = await Candidate.find().sort({ createdAt: -1 }).lean();
+	const companyIds = [...new Set(candidates.map((c) => String(c.companyId)))];
+	const companies = await Company.find({ _id: { $in: companyIds } }).lean();
+	const companyMap = Object.fromEntries(companies.map((c) => [String(c._id), c.name]));
 
 	await audit({
 		actor: locals.admin!.email,
 		action: 'master_sheet_exported',
-		newValue: `${rows.length} rows`,
+		newValue: `${candidates.length} rows`,
 		ip: getClientAddress()
 	});
 
@@ -33,9 +29,10 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 		'Submitted At', 'Reviewed At'
 	];
 
-	const lines = rows.map(({ c, company }) =>
+	const lines = candidates.map((c) =>
 		[
-			company.name, c.track, c.status, c.fullName, c.dob, c.gender, c.email, c.mobile,
+			companyMap[String(c.companyId)] ?? '',
+			c.track, c.status, c.fullName, c.dob, c.gender, c.email, c.mobile,
 			c.fatherName, c.fatherMobile, c.motherName, c.motherMobile, c.motherDob,
 			c.maritalStatus, c.spouseName, c.spouseContact, c.spouseDob,
 			c.presentAddress, c.presentHouseNo, c.presentPin,
@@ -43,7 +40,8 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 			c.aadhaarNoEncrypted ? decrypt(c.aadhaarNoEncrypted) : '',
 			c.panNo, c.uanNo, c.dlNo, c.passportNo,
 			c.bankName, c.accountNo, c.ifsc, c.branch,
-			c.submittedAt?.toISOString() ?? '', c.reviewedAt?.toISOString() ?? ''
+			c.submittedAt?.toISOString() ?? '',
+			c.reviewedAt?.toISOString() ?? ''
 		]
 			.map(esc)
 			.join(',')

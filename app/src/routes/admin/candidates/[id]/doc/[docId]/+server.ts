@@ -1,16 +1,13 @@
-import { error, redirect } from '@sveltejs/kit';
-import { and, eq } from 'drizzle-orm';
+import { error } from '@sveltejs/kit';
+import { ObjectId } from 'mongodb';
 import type { RequestHandler } from './$types';
-import { db, t } from '$lib/server/db';
-import { presignGet } from '$lib/server/storage';
+import { Document } from '$lib/server/db/schema';
+import { getGridFSStream } from '$lib/server/storage';
 import { audit } from '$lib/server/audit';
 
-// Documents are never public — this issues a short-lived presigned URL after RBAC (PRD §9).
+// Documents are never public — streamed directly from GridFS after RBAC check (PRD §9).
 export const GET: RequestHandler = async ({ params, locals, getClientAddress }) => {
-	const [doc] = await db
-		.select()
-		.from(t.documents)
-		.where(and(eq(t.documents.id, params.docId), eq(t.documents.candidateId, params.id)));
+	const doc = await Document.findOne({ _id: params.docId, candidateId: params.id }).lean();
 	if (!doc) error(404, 'Document not found');
 
 	await audit({
@@ -20,5 +17,16 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 		field: doc.docType,
 		ip: getClientAddress()
 	});
-	redirect(302, await presignGet(doc.spacesKey));
+
+	const stream = await getGridFSStream(doc.gridfsId as ObjectId);
+	const { Readable } = await import('node:stream');
+	const nodeReadable = stream as unknown as NodeJS.ReadableStream;
+
+	return new Response(Readable.toWeb(nodeReadable as import('node:stream').Readable) as ReadableStream, {
+		headers: {
+			'Content-Type': doc.mime,
+			'Content-Disposition': `inline; filename="document.${doc.mime.split('/')[1]}"`,
+			'Cache-Control': 'private, no-store'
+		}
+	});
 };

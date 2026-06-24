@@ -1,68 +1,63 @@
-// StorageProvider — DO Spaces in prod, MinIO in dev. Both speak S3.
-import {
-	S3Client,
-	PutObjectCommand,
-	GetObjectCommand,
-	HeadObjectCommand,
-	DeleteObjectCommand
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { env } from '$env/dynamic/private';
+// StorageProvider — MongoDB GridFS. Files are stored directly in the Railway MongoDB instance.
+import { GridFSBucket, ObjectId } from 'mongodb';
+import { mongoose } from './db';
+import type { Readable } from 'node:stream';
 
-const s3 = new S3Client({
-	endpoint: env.S3_ENDPOINT,
-	region: env.S3_REGION ?? 'blr1',
-	credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
-	forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true'
-});
-
-// Presigned URLs are fetched by the browser, which may reach storage on a different
-// host than the server does (Docker: server→minio:9000, browser→localhost:9000).
-// In prod (Spaces) both are the same URL and S3_PUBLIC_ENDPOINT stays unset.
-const s3Public = env.S3_PUBLIC_ENDPOINT
-	? new S3Client({
-			endpoint: env.S3_PUBLIC_ENDPOINT,
-			region: env.S3_REGION ?? 'blr1',
-			credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
-			forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true'
-		})
-	: s3;
-
-const BUCKET = env.S3_BUCKET ?? 'champ-onboard-docs';
-const PRESIGN_SECONDS = 600; // 10 min (PRD §9)
-
-export function objectKey(candidateId: string, docType: string, ext: string): string {
-	return `candidates/${candidateId}/${docType}/${crypto.randomUUID()}.${ext}`;
+function bucket(): GridFSBucket {
+	const db = mongoose.connection.db;
+	if (!db) throw new Error('MongoDB not connected');
+	return new GridFSBucket(db, { bucketName: 'documents' });
 }
 
-export function presignPut(key: string, mime: string) {
-	return getSignedUrl(
-		s3Public,
-		new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: mime }),
-		{ expiresIn: PRESIGN_SECONDS }
-	);
-}
-
-export function presignGet(key: string) {
-	return getSignedUrl(s3Public, new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
-		expiresIn: PRESIGN_SECONDS
+export async function uploadToGridFS(
+	stream: Readable,
+	filename: string,
+	mime: string
+): Promise<ObjectId> {
+	return new Promise((resolve, reject) => {
+		const uploadStream = bucket().openUploadStream(filename, {
+			contentType: mime
+		});
+		stream.pipe(uploadStream);
+		uploadStream.on('finish', () => resolve(uploadStream.id as ObjectId));
+		uploadStream.on('error', reject);
+		stream.on('error', reject);
 	});
 }
 
-export async function objectExists(key: string): Promise<number | null> {
+export async function uploadBytesToGridFS(
+	bytes: Uint8Array,
+	filename: string,
+	mime: string
+): Promise<ObjectId> {
+	const { Readable } = await import('node:stream');
+	const stream = Readable.from(Buffer.from(bytes));
+	return uploadToGridFS(stream, filename, mime);
+}
+
+export async function getGridFSBytes(id: ObjectId): Promise<Uint8Array> {
+	const chunks: Buffer[] = [];
+	const downloadStream = bucket().openDownloadStream(id);
+	return new Promise((resolve, reject) => {
+		downloadStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+		downloadStream.on('end', () => resolve(new Uint8Array(Buffer.concat(chunks))));
+		downloadStream.on('error', reject);
+	});
+}
+
+export async function getGridFSStream(id: ObjectId) {
+	return bucket().openDownloadStream(id);
+}
+
+export async function deleteFromGridFS(id: ObjectId): Promise<void> {
+	await bucket().delete(id);
+}
+
+export async function gridFSFileSize(id: ObjectId): Promise<number | null> {
 	try {
-		const head = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
-		return head.ContentLength ?? 0;
+		const files = await bucket().find({ _id: id }).toArray();
+		return files[0]?.length ?? null;
 	} catch {
 		return null;
 	}
-}
-
-export async function getObjectBytes(key: string): Promise<Uint8Array> {
-	const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-	return res.Body!.transformToByteArray();
-}
-
-export async function deleteObject(key: string) {
-	await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 }

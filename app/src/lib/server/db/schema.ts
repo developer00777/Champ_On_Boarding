@@ -1,165 +1,157 @@
-import {
-	pgTable,
-	text,
-	timestamp,
-	boolean,
-	integer,
-	jsonb,
-	uuid
-} from 'drizzle-orm/pg-core';
+import mongoose, { Schema } from 'mongoose';
+import type { Types } from 'mongoose';
 
-export const companies = pgTable('companies', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	name: text('name').notNull().unique(),
-	// Selects the brand theme (colours, fonts, logo) from src/lib/shared/brands.ts.
-	brandSlug: text('brand_slug'),
-	active: boolean('active').notNull().default(true)
-});
+const { model, models } = mongoose;
 
-export const admins = pgTable('admins', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	email: text('email').notNull().unique(),
-	passwordHash: text('password_hash').notNull(),
-	role: text('role', { enum: ['hr_admin', 'super_admin'] }).notNull(),
-	status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
-	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-});
+// ── Companies ────────────────────────────────────────────────────────────────
+const companySchema = new Schema(
+	{
+		name: { type: String, required: true, unique: true },
+		brandSlug: { type: String, default: null },
+		active: { type: Boolean, default: true }
+	},
+	{ timestamps: true }
+);
+export const Company = models.Company ?? model('Company', companySchema);
 
-export const sessions = pgTable('sessions', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	adminId: uuid('admin_id').notNull().references(() => admins.id),
-	tokenHash: text('token_hash').notNull().unique(),
-	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-});
+// ── Admins ───────────────────────────────────────────────────────────────────
+const adminSchema = new Schema(
+	{
+		email: { type: String, required: true, unique: true },
+		passwordHash: { type: String, required: true },
+		role: { type: String, enum: ['hr_admin', 'super_admin'], required: true },
+		status: { type: String, enum: ['active', 'disabled'], default: 'active' }
+	},
+	{ timestamps: true }
+);
+export const Admin = models.Admin ?? model('Admin', adminSchema);
 
-export const candidates = pgTable('candidates', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	companyId: uuid('company_id').notNull().references(() => companies.id),
-	track: text('track', { enum: ['intern', 'fresher', 'experienced'] }).notNull(),
+// ── Candidates ───────────────────────────────────────────────────────────────
+const candidateSchema = new Schema(
+	{
+		companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
+		track: { type: String, enum: ['intern', 'fresher', 'experienced'], required: true },
+		fullName: String,
+		dob: String,
+		gender: String,
+		email: { type: String, required: true },
+		mobile: String,
+		fatherName: String,
+		fatherMobile: String,
+		motherName: String,
+		motherMobile: String,
+		motherDob: String,
+		maritalStatus: { type: String, enum: ['single', 'married'], default: null },
+		spouseName: String,
+		spouseContact: String,
+		spouseDob: String,
+		presentAddress: String,
+		presentPin: String,
+		presentHouseNo: String,
+		permanentAddress: String,
+		permanentPin: String,
+		permanentHouseNo: String,
+		aadhaarNoEncrypted: String,
+		aadhaarLast4: String,
+		panNo: String,
+		uanNo: String,
+		dlNo: String,
+		passportNo: String,
+		bankName: String,
+		accountNo: String,
+		ifsc: String,
+		branch: String,
+		ocrSuggestions: { type: Map, of: String, default: {} },
+		consentAt: Date,
+		consentIp: String,
+		status: {
+			type: String,
+			enum: ['created', 'opened', 'in_progress', 'submitted', 'changes_requested', 'approved', 'complete', 'revoked'],
+			default: 'created'
+		},
+		createdBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		submittedAt: Date,
+		reviewedAt: Date,
+		reviewedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
+	},
+	{ timestamps: true }
+);
+export const Candidate = models.Candidate ?? model('Candidate', candidateSchema);
 
-	fullName: text('full_name'),
-	dob: text('dob'),
-	gender: text('gender'),
-	email: text('email').notNull(),
-	mobile: text('mobile'),
+// ── Link Tokens ───────────────────────────────────────────────────────────────
+const linkTokenSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
+		tokenHash: { type: String, required: true, unique: true },
+		expiresAt: { type: Date, required: true },
+		openedAt: { type: Date, default: null },
+		revoked: { type: Boolean, default: false }
+	},
+	{ timestamps: true }
+);
+export const LinkToken = models.LinkToken ?? model('LinkToken', linkTokenSchema);
 
-	fatherName: text('father_name'),
-	fatherMobile: text('father_mobile'),
-	motherName: text('mother_name'),
-	motherMobile: text('mother_mobile'),
-	motherDob: text('mother_dob'),
-	maritalStatus: text('marital_status', { enum: ['single', 'married'] }),
-	spouseName: text('spouse_name'),
-	spouseContact: text('spouse_contact'),
-	spouseDob: text('spouse_dob'),
+// ── Documents (metadata — file bytes in GridFS) ───────────────────────────────
+const documentSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
+		docType: { type: String, required: true },
+		gridfsId: { type: Schema.Types.ObjectId, required: true },
+		mime: { type: String, required: true },
+		sizeBytes: { type: Number, required: true },
+		ocrStatus: {
+			type: String,
+			enum: ['pending', 'parsed', 'unreadable', 'failed', 'store_only'],
+			default: 'pending'
+		},
+		ocrJson: { type: Schema.Types.Mixed, default: null },
+		ocrTranscript: { type: String, default: null },
+		reviewStatus: {
+			type: String,
+			enum: ['uploaded', 'flagged', 'accepted', 'reupload_requested'],
+			default: 'uploaded'
+		},
+		reviewNote: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+export const Document = models.Document ?? model('Document', documentSchema);
 
-	presentAddress: text('present_address'),
-	presentPin: text('present_pin'),
-	presentHouseNo: text('present_house_no'),
-	permanentAddress: text('permanent_address'),
-	permanentPin: text('permanent_pin'),
-	permanentHouseNo: text('permanent_house_no'),
+// ── Physical Items ────────────────────────────────────────────────────────────
+const physicalItemSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
+		itemType: {
+			type: String,
+			enum: ['passport_photos_x4', 'offer_letter_signed'],
+			required: true
+		},
+		received: { type: Boolean, default: false },
+		receivedAt: { type: Date, default: null },
+		receivedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		note: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+export const PhysicalItem = models.PhysicalItem ?? model('PhysicalItem', physicalItemSchema);
 
-	aadhaarNoEncrypted: text('aadhaar_no_encrypted'),
-	aadhaarLast4: text('aadhaar_last4'),
-	panNo: text('pan_no'),
-	uanNo: text('uan_no'),
-	dlNo: text('dl_no'),
-	passportNo: text('passport_no'),
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+const auditLogSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', default: null },
+		actor: { type: String, required: true },
+		action: { type: String, required: true },
+		field: { type: String, default: null },
+		oldValue: { type: String, default: null },
+		newValue: { type: String, default: null },
+		ip: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+export const AuditLog = models.AuditLog ?? model('AuditLog', auditLogSchema);
 
-	bankName: text('bank_name'),
-	accountNo: text('account_no'),
-	ifsc: text('ifsc'),
-	branch: text('branch'),
-
-	// OCR-suggested values keyed by candidate field name; never authoritative (PRD §4)
-	ocrSuggestions: jsonb('ocr_suggestions').$type<Record<string, string>>().default({}),
-
-	consentAt: timestamp('consent_at', { withTimezone: true }),
-	consentIp: text('consent_ip'),
-
-	status: text('status', {
-		enum: [
-			'created',
-			'opened',
-			'in_progress',
-			'submitted',
-			'changes_requested',
-			'approved',
-			'complete',
-			'revoked'
-		]
-	})
-		.notNull()
-		.default('created'),
-
-	createdBy: uuid('created_by').references(() => admins.id),
-	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-	submittedAt: timestamp('submitted_at', { withTimezone: true }),
-	reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
-	reviewedBy: uuid('reviewed_by').references(() => admins.id)
-});
-
-export const linkTokens = pgTable('link_tokens', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	candidateId: uuid('candidate_id').notNull().references(() => candidates.id),
-	tokenHash: text('token_hash').notNull().unique(),
-	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-	openedAt: timestamp('opened_at', { withTimezone: true }),
-	revoked: boolean('revoked').notNull().default(false),
-	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-});
-
-export const documents = pgTable('documents', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	candidateId: uuid('candidate_id').notNull().references(() => candidates.id),
-	docType: text('doc_type').notNull(),
-	spacesKey: text('spaces_key').notNull(),
-	mime: text('mime').notNull(),
-	sizeBytes: integer('size_bytes').notNull(),
-	ocrStatus: text('ocr_status', {
-		enum: ['pending', 'parsed', 'unreadable', 'failed', 'store_only']
-	})
-		.notNull()
-		.default('pending'),
-	ocrJson: jsonb('ocr_json').$type<Record<string, unknown>>(),
-	ocrTranscript: text('ocr_transcript'),
-	confirmed: boolean('confirmed').notNull().default(false),
-	reviewStatus: text('review_status', {
-		enum: ['uploaded', 'flagged', 'accepted', 'reupload_requested']
-	})
-		.notNull()
-		.default('uploaded'),
-	reviewNote: text('review_note'),
-	uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow()
-});
-
-export const physicalItems = pgTable('physical_items', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	candidateId: uuid('candidate_id').notNull().references(() => candidates.id),
-	itemType: text('item_type', {
-		enum: ['passport_photos_x4', 'offer_letter_signed']
-	}).notNull(),
-	received: boolean('received').notNull().default(false),
-	receivedAt: timestamp('received_at', { withTimezone: true }),
-	receivedBy: uuid('received_by').references(() => admins.id),
-	note: text('note')
-});
-
-export const auditLog = pgTable('audit_log', {
-	id: uuid('id').primaryKey().defaultRandom(),
-	candidateId: uuid('candidate_id'),
-	actor: text('actor').notNull(), // admin email or 'candidate' or 'system'
-	action: text('action').notNull(),
-	field: text('field'),
-	oldValue: text('old_value'),
-	newValue: text('new_value'),
-	ip: text('ip'),
-	at: timestamp('at', { withTimezone: true }).notNull().defaultNow()
-});
-
-export type Candidate = typeof candidates.$inferSelect;
-export type Doc = typeof documents.$inferSelect;
-export type Admin = typeof admins.$inferSelect;
-export type PhysicalItem = typeof physicalItems.$inferSelect;
+// ── Shared types ──────────────────────────────────────────────────────────────
+export type CandidateDoc = InstanceType<typeof Candidate> & { _id: Types.ObjectId };
+export type DocumentDoc = InstanceType<typeof Document> & { _id: Types.ObjectId };
+export type AdminDoc = InstanceType<typeof Admin> & { _id: Types.ObjectId };
+export type PhysicalItemDoc = InstanceType<typeof PhysicalItem> & { _id: Types.ObjectId };

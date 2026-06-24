@@ -1,8 +1,8 @@
-import { db, t } from './db';
+import { AuditLog } from './db/schema';
 
 interface AuditEntry {
 	candidateId?: string | null;
-	actor: string; // admin email, 'candidate', or 'system'
+	actor: string;
 	action: string;
 	field?: string;
 	oldValue?: string | null;
@@ -10,20 +10,20 @@ interface AuditEntry {
 	ip?: string;
 }
 
-// PRD §9: never log raw identifiers — mask anything that looks like Aadhaar or an account number.
+// PRD §9: never log raw identifiers — mask anything that looks like Aadhaar or account number.
 function maskPii(value: string | null | undefined): string | null {
 	if (!value) return value ?? null;
 	return value.replace(/\d{8,}/g, (m) => `${'X'.repeat(m.length - 4)}${m.slice(-4)}`);
 }
 
 export async function audit(entry: AuditEntry) {
-	await db.insert(t.auditLog).values({
+	await AuditLog.create({
 		candidateId: entry.candidateId ?? null,
 		actor: entry.actor,
 		action: entry.action,
-		field: entry.field,
+		field: entry.field ?? null,
 		oldValue: maskPii(entry.oldValue),
 		newValue: maskPii(entry.newValue),
-		ip: entry.ip
+		ip: entry.ip ?? null
 	});
 }
