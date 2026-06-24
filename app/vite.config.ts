@@ -1,6 +1,9 @@
-import adapter from '@sveltejs/adapter-vercel';
+import adapterVercel from '@sveltejs/adapter-vercel';
+import adapterNode from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+
+const adapter = process.env.RAILWAY ? adapterNode() : adapterVercel();
 
 export default defineConfig({
 	plugins: [
@@ -11,7 +14,7 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			adapter: adapter()
+			adapter
 		})
 	]
 });

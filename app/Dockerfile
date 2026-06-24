@@ -1,9 +1,10 @@
-# Build stage — full deps, also used by the one-shot migrate/seed service
+# Build stage
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+ENV RAILWAY=true
 RUN npm run build
 
 # Runtime stage — production deps only
