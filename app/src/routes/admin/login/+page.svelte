@@ -8,9 +8,8 @@
 	<div class="login-card">
 		<div class="login-hero">
 			<div class="hero-dots"></div>
-			<div class="logo-mark" style="width:42px;height:42px;border-radius:11px;font-size:21px;position:relative">C</div>
+			<img src="/championsgroup.png" alt="Champions Group" style="height:52px;width:auto;object-fit:contain;position:relative" />
 			<div style="position:relative">
-				<div style="font-weight:800;font-size:20px;color:#fff">ChampOnboard</div>
 				<div style="font-size:12.5px;color:rgba(255,255,255,.75)">HR admin sign in</div>
 			</div>
 		</div>

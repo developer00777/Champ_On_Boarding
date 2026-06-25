@@ -7,8 +7,7 @@
 		<nav class="topnav">
 			<div class="topnav-inner">
 				<a href="/admin" class="brand">
-					<span class="logo-mark">C</span>
-					<span style="font-weight:800;font-size:16px;color:var(--ink)">ChampOnboard</span>
+					<img src="/championsgroup.png" alt="Champions Group" style="height:36px;width:auto;object-fit:contain" />
 				</a>
 				<span class="role-tag">{data.admin.role === 'super_admin' ? 'Super admin' : 'HR Admin'}</span>
 				<div style="flex:1"></div>
