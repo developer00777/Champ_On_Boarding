@@ -538,7 +538,9 @@
 								</div>
 							</div>
 							{@render field('panNo', 'PAN number', { placeholder: 'AAAAA9999A', required: true })}
-							{@render field('uanNo', 'UAN number (if available)')}
+							{#if data.candidate.track === 'experienced'}
+								{@render field('uanNo', 'UAN number (if available)')}
+							{/if}
 							{@render field('dlNo', 'Driving licence no. (if applicable)')}
 							{@render field('passportNo', 'Passport no. (if applicable)')}
 						</div>

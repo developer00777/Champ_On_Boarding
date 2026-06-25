@@ -95,7 +95,6 @@
 			title: 'Identification',
 			rows: [
 				['PAN', c.panNo],
-				['UAN', c.uanNo],
 				['Driving licence', c.dlNo],
 				['Passport', c.passportNo]
 			]
@@ -299,6 +298,19 @@
 					</div>
 				{/each}
 			{/each}
+			<div class="group-title">UAN</div>
+			<div class="frow">
+				<span class="flabel">UAN number</span>
+				{#if c.track === 'experienced'}
+					<span class="fvalue">{c.uanNo || '—'}</span>
+				{:else}
+					<form method="POST" action="?/setUan" use:enhance class="uan-form">
+						<input name="uanNo" value={form?.uanSaved ? form.uanNo : (c.uanNo ?? '')} placeholder="12 digits" class="uan-input" />
+						<button class="btn ghost small">Save</button>
+					</form>
+					{#if form?.uanSaved}<span class="saved-chip">Saved ✓</span>{/if}
+				{/if}
+			</div>
 			<div class="group-title">Aadhaar</div>
 			<div class="frow" style="border-bottom:none">
 				<span class="flabel">Aadhaar number</span>
@@ -475,6 +487,26 @@
 	}
 	.red-eyebrow {
 		color: var(--red);
+	}
+	.uan-form {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex: 1;
+		justify-content: flex-end;
+	}
+	.uan-input {
+		width: 140px;
+		font-size: 13px;
+		padding: 5px 9px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		font-family: ui-monospace, monospace;
+	}
+	.saved-chip {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--teal);
 	}
 	.verif {
 		border: 1px solid var(--mist);

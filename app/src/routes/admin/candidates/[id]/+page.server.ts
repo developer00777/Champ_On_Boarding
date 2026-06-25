@@ -250,6 +250,24 @@ export const actions: Actions = {
 		return { ok: true };
 	},
 
+	setUan: async ({ params, request, locals, getClientAddress }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (['intern', 'fresher'].includes(row.candidate.track) === false)
+			return fail(400, { message: 'UAN is set by the candidate for experienced track.' });
+		const form = await request.formData();
+		const uanNo = String(form.get('uanNo') ?? '').trim() || null;
+		await Candidate.findByIdAndUpdate(params.id, { uanNo });
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'uan_set',
+			newValue: uanNo ?? '',
+			ip: getClientAddress()
+		});
+		return { uanSaved: true, uanNo: uanNo ?? '' };
+	},
+
 	crosscheck: async ({ params, locals, getClientAddress }) => {
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
