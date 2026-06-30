@@ -48,10 +48,10 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-3.5-flash}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      ORIGIN: http://localhost:3000
-      PUBLIC_BASE_URL: http://localhost:3000
+      ORIGIN: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      MAIL_FROM: ${MAIL_FROM:-ChampOnboard <onboarding@resend.dev>}
+      MAIL_FROM: ${MAIL_FROM:-ChampOnboard <onboarding@offer.championsmail.com>}
     depends_on:
       mongo:
         condition: service_healthy
