@@ -8,6 +8,7 @@ export function brandSignoff(brand: BrandTheme): string {
 }
 
 export async function sendMail(to: string, subject: string, text: string) {
+	console.log(`[mail] key_set=${!!env.RESEND_API_KEY} from="${env.MAIL_FROM}" to=${to}`);
 	if (!env.RESEND_API_KEY) {
 		console.log(`[mail:console] to=${to} subject="${subject}"\n${text}`);
 		return;
@@ -20,5 +21,6 @@ export async function sendMail(to: string, subject: string, text: string) {
 		},
 		body: JSON.stringify({ from: env.MAIL_FROM ?? 'onboarding@example.com', to, subject, text })
 	});
-	if (!res.ok) console.error(`[mail] Resend ${res.status}: ${(await res.text()).slice(0, 200)}`);
+	const body = await res.text();
+	console.log(`[mail] Resend ${res.status}: ${body.slice(0, 300)}`);
 }
