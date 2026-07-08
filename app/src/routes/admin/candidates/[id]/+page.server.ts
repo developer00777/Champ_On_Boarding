@@ -39,10 +39,12 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!row) error(404, 'Candidate not found');
 	const { candidate, company } = row;
 
-	const checklist = await checklistFor(String(candidate._id), candidate.track as Track);
-	const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
-	const verificationDocs = await Verification.find({ candidateId: candidate._id }).lean();
-	const offerLetter = await OfferLetter.findOne({ candidateId: candidate._id }).lean();
+	const [checklist, physical, verificationDocs, offerLetter] = await Promise.all([
+		checklistFor(String(candidate._id), candidate.track as Track),
+		PhysicalItem.find({ candidateId: candidate._id }).lean(),
+		Verification.find({ candidateId: candidate._id }).lean(),
+		OfferLetter.findOne({ candidateId: candidate._id }).lean()
+	]);
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
 

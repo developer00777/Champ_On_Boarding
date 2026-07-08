@@ -21,8 +21,13 @@ export function fillDocxTemplate(templateBuffer: Buffer, fields: Record<string, 
 	if (!file) throw new Error(`${path} not found in docx template`);
 
 	let xml = file.asText();
-	for (const [key, value] of Object.entries(fields)) {
-		xml = xml.split(`[${key}]`).join(escapeXml(value));
+	const keys = Object.keys(fields);
+	if (keys.length > 0) {
+		const pattern = keys
+			.map((key) => `\\[${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`)
+			.join('|');
+		const placeholderRegex = new RegExp(pattern, 'g');
+		xml = xml.replace(placeholderRegex, (matched) => escapeXml(fields[matched.slice(1, -1)]));
 	}
 
 	zip.file(path, xml);

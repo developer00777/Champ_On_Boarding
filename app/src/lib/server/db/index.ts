@@ -29,7 +29,9 @@ async function seedCompanies() {
 
 export async function connectDb() {
 	if (connected || mongoose.connection.readyState === 1) return;
-	await mongoose.connect(env.MONGODB_URI, {
+	const uri = env.MONGODB_URI;
+	if (!uri) throw new Error('MONGODB_URI is not set');
+	await mongoose.connect(uri, {
 		dbName: env.MONGODB_DB ?? 'champonboard',
 		authSource: 'admin',
 		serverSelectionTimeoutMS: 5000,

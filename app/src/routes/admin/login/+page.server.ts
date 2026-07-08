@@ -34,10 +34,11 @@ export const actions: Actions = {
 
 			await createSession(cookies, String(admin._id));
 			await audit({ actor: admin.email, action: 'login', ip: getClientAddress() });
-			redirect(303, '/admin');
 		} catch (e) {
 			console.error('[login] error:', e);
 			return fail(500, { message: 'Server error — check logs.' });
 		}
+
+		redirect(303, '/admin');
 	}
 };

@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 	});
 
 	const fields = buildOfferLetterFields(candidate, company?.name ?? '', offerLetterInputFromDraft(draft));
-	const buffer = fillDocxTemplate(offerLetterTemplateBuffer(), fields);
+	const buffer = fillDocxTemplate(await offerLetterTemplateBuffer(), fields);
 
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
 	const filename = `${safeName}_offer_letter.docx`;

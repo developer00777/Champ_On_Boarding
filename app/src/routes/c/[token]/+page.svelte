@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { brandCssVars, brandFontsHref } from '$lib/shared/brands';
+	import { untrack } from 'svelte';
 
 	let { data, form } = $props();
 
@@ -10,8 +11,10 @@
 	const brandStyle = $derived(brandCssVars(brand));
 	const fontsHref = $derived(brandFontsHref(brand));
 
-	let fields: Record<string, string> = $state({ ...data.candidate.fields, aadhaarNo: '' });
-	let suggestions: Record<string, string> = $state({ ...data.candidate.suggestions });
+	let fields: Record<string, string> = $state(
+		untrack(() => ({ ...data.candidate.fields, aadhaarNo: '' }))
+	);
+	let suggestions: Record<string, string> = $state(untrack(() => ({ ...data.candidate.suggestions })));
 	let autofilled: Record<string, boolean> = $state({});
 	let uploading: Record<string, boolean> = $state({});
 	let slotMessages: Record<string, string> = $state({});
@@ -109,6 +112,7 @@
 		{ label: 'Identification', keys: ['aadhaarNo', 'panNo'] },
 		{ label: 'Bank', keys: ['bankName', 'accountNo', 'ifsc', 'branch'] }
 	];
+	const fieldsTotal = SECTIONS.reduce((a, s) => a + s.keys.length, 0);
 	const docsDone = $derived(
 		data.checklist.filter((s) =>
 			// Optional slots (e.g. previous offer letters) count as done so the ring can reach 100%.
@@ -125,7 +129,6 @@
 	);
 	const pct = $derived.by(() => {
 		const fieldsDone = sectionStates.reduce((a, s) => a + s.done, 0);
-		const fieldsTotal = SECTIONS.reduce((a, s) => a + s.keys.length, 0);
 		return Math.round((100 * (docsDone + fieldsDone)) / (data.checklist.length + fieldsTotal));
 	});
 	const RING = 213.6;

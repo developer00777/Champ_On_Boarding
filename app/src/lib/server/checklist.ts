@@ -13,7 +13,7 @@ export interface SlotStatus {
 }
 
 export async function checklistFor(candidateId: string, track: Track): Promise<SlotStatus[]> {
-	const docs = await Document.find({ candidateId }).lean();
+	const docs = await Document.find({ candidateId }, 'docType reviewStatus ocrStatus reviewNote mime').lean();
 	return slotsForTrack(track).map((slot) => {
 		const slotDocs = docs
 			.filter((d) => d.docType === slot.type)

@@ -89,6 +89,7 @@ const linkTokenSchema = new Schema(
 	},
 	{ timestamps: true }
 );
+linkTokenSchema.index({ candidateId: 1 });
 export const LinkToken = models.LinkToken ?? model('LinkToken', linkTokenSchema);
 
 // ── Documents (metadata — file bytes in GridFS) ───────────────────────────────
@@ -115,6 +116,7 @@ const documentSchema = new Schema(
 	},
 	{ timestamps: true }
 );
+documentSchema.index({ candidateId: 1 });
 export const Document = models.Document ?? model('Document', documentSchema);
 
 // ── Physical Items ────────────────────────────────────────────────────────────
@@ -133,6 +135,7 @@ const physicalItemSchema = new Schema(
 	},
 	{ timestamps: true }
 );
+physicalItemSchema.index({ candidateId: 1 });
 export const PhysicalItem = models.PhysicalItem ?? model('PhysicalItem', physicalItemSchema);
 
 // ── Audit Log ─────────────────────────────────────────────────────────────────

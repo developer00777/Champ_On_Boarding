@@ -108,7 +108,7 @@ export const actions: Actions = {
 		if (status === 'disabled') {
 			// Revoke all active sessions for this admin from Redis
 			const redis = getRedis();
-			const pattern = `sess:*`;
+			const pattern = `session:*`;
 			let cursor = '0';
 			do {
 				const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
@@ -144,7 +144,7 @@ export const actions: Actions = {
 
 		// Force re-login everywhere
 		const redis = getRedis();
-		const pattern = `sess:*`;
+		const pattern = `session:*`;
 		let cursor = '0';
 		do {
 			const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);

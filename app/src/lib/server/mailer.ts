@@ -1,7 +1,6 @@
 // Mailer — Resend when RESEND_API_KEY is set, console otherwise (dev).
 import { env } from '$env/dynamic/private';
 import type { BrandTheme } from '$lib/shared/brands';
-import { BRAND_LOGO_ASSETS } from '$lib/server/email/logo-assets';
 
 export interface MailAttachment {
 	filename: string;
@@ -31,7 +30,8 @@ export function brandFromHeader(brand: BrandTheme): string {
 }
 
 /** data: URI for a brand's logo, or null if the asset isn't in the registry. */
-function brandLogoDataUri(brand: BrandTheme): string | null {
+async function brandLogoDataUri(brand: BrandTheme): Promise<string | null> {
+	const { BRAND_LOGO_ASSETS } = await import('$lib/server/email/logo-assets');
 	const asset = BRAND_LOGO_ASSETS[brand.logo.src];
 	if (!asset) return null;
 	return `data:${asset.mime};base64,${asset.base64}`;
@@ -68,8 +68,8 @@ export async function sendMail(to: string, subject: string, text: string, option
 }
 
 /** Wraps plain-text body in a minimal branded HTML shell with the brand's logo. */
-function brandedHtml(brand: BrandTheme, text: string): string | undefined {
-	const logo = brandLogoDataUri(brand);
+async function brandedHtml(brand: BrandTheme, text: string): Promise<string | undefined> {
+	const logo = await brandLogoDataUri(brand);
 	if (!logo) return undefined;
 	const bodyHtml = text
 		.split('\n')
@@ -109,7 +109,7 @@ export async function sendBrandedMail(
 ) {
 	await sendMail(to, subject, text, {
 		from: brandFromHeader(brand),
-		html: brandedHtml(brand, text),
+		html: await brandedHtml(brand, text),
 		attachments
 	});
 }

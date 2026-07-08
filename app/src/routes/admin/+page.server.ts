@@ -102,7 +102,7 @@ export const actions: Actions = {
 		// exists for this candidate (e.g. CTC was finalized before the link went
 		// out) — one message to the candidate instead of two.
 		const offerDraft = await OfferLetter.findOne({ candidateId: candidate._id }).lean();
-		const { attachments, offerLetterBundled } = buildOnboardingLinkAttachments(
+		const { attachments, offerLetterBundled } = await buildOnboardingLinkAttachments(
 			candidate,
 			company.name,
 			offerDraft

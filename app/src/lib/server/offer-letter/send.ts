@@ -12,13 +12,13 @@ export function offerLetterReadyToSend(draft: OfferLetterDoc | null): boolean {
 	return !!draft && isOfferLetterComplete(offerLetterInputFromDraft(draft));
 }
 
-function buildOfferLetterAttachment(
+async function buildOfferLetterAttachment(
 	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress'>,
 	companyName: string,
 	draft: OfferLetterDoc
 ) {
 	const fields = buildOfferLetterFields(candidate, companyName, offerLetterInputFromDraft(draft));
-	const content = fillDocxTemplate(offerLetterTemplateBuffer(), fields);
+	const content = fillDocxTemplate(await offerLetterTemplateBuffer(), fields);
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
 	return { filename: `${safeName}_offer_letter.docx`, content };
 }
@@ -30,7 +30,7 @@ export async function sendOfferLetterMail(
 	draft: OfferLetterDoc,
 	brand: BrandTheme
 ) {
-	const attachment = buildOfferLetterAttachment(candidate, companyName, draft);
+	const attachment = await buildOfferLetterAttachment(candidate, companyName, draft);
 	await sendBrandedMail(
 		candidate.email,
 		`Your offer letter from ${brand.name}`,
@@ -45,14 +45,14 @@ export async function sendOfferLetterMail(
 /** Builds the onboarding-link email body/attachments, bundling the offer
  *  letter when a complete draft already exists so the candidate gets one
  *  message instead of two. */
-export function buildOnboardingLinkAttachments(
+export async function buildOnboardingLinkAttachments(
 	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress'>,
 	companyName: string,
 	draft: OfferLetterDoc | null
 ) {
 	if (!offerLetterReadyToSend(draft)) return { attachments: undefined, offerLetterBundled: false };
 	return {
-		attachments: [buildOfferLetterAttachment(candidate, companyName, draft!)],
+		attachments: [await buildOfferLetterAttachment(candidate, companyName, draft!)],
 		offerLetterBundled: true
 	};
 }
