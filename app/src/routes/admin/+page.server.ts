@@ -1,12 +1,13 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { env } from '$env/dynamic/public';
-import { Candidate, Company, PhysicalItem } from '$lib/server/db/schema';
+import { Candidate, Company, PhysicalItem, OfferLetter } from '$lib/server/db/schema';
 import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
-import { sendMail, brandSignoff } from '$lib/server/mailer';
+import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { TRACKS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug, BRANDS } from '$lib/shared/brands';
+import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const candidateDocs = await Candidate.find()
@@ -97,13 +98,27 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 
-		await sendMail(
+		// Bundle the offer letter into this same email if a complete draft already
+		// exists for this candidate (e.g. CTC was finalized before the link went
+		// out) — one message to the candidate instead of two.
+		const offerDraft = await OfferLetter.findOne({ candidateId: candidate._id }).lean();
+		const { attachments, offerLetterBundled } = buildOnboardingLinkAttachments(
+			candidate,
+			company.name,
+			offerDraft
+		);
+
+		await sendBrandedMail(
 			email,
 			`Your ${brand.name} onboarding link`,
 			`Hello${candidateName ? ' ' + candidateName : ''},\n\n` +
 				`Welcome aboard! Please complete your onboarding here (the link expires in 7 days):\n\n${link}\n\n` +
 				`Keep your Aadhaar card, PAN card, bank passbook and education documents handy — ` +
-				`photograph them on a flat surface in good light.\n\n${brandSignoff(brand)}`
+				`photograph them on a flat surface in good light.` +
+				(offerLetterBundled ? `\n\nYour offer letter is attached to this email.` : '') +
+				`\n\n${brandSignoff(brand)}`,
+			brand,
+			attachments
 		);
 
 		const waText = encodeURIComponent(

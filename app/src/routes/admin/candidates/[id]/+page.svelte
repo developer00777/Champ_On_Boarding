@@ -6,6 +6,13 @@
 	let reuploadFor: string | null = $state(null);
 
 	const c = $derived(data.candidate);
+	const ol = $derived(data.offerLetter);
+
+	const employmentTypeOptions = [
+		{ value: 'full_time', label: 'Full-time' },
+		{ value: 'part_time', label: 'Part-time' },
+		{ value: 'contract', label: 'Contract' }
+	];
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
 		created: { label: 'LINK SENT', cls: '' },
@@ -334,6 +341,97 @@
 		</section>
 
 		<section class="card">
+			<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+				<div class="eyebrow">Offer letter</div>
+				<div style="flex:1"></div>
+				{#if ol.status === 'sent'}
+					<span class="pill teal">SENT{ol.sentAt ? ' · ' + new Date(ol.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span>
+				{:else}
+					<span class="pill">DRAFT</span>
+				{/if}
+			</div>
+			<p class="muted" style="font-size:11.5px;margin:0 0 14px">
+				Name, address and company are pulled in automatically. Fill in the rest, then download or send it as
+				an attachment on {c.fullName || c.email}'s onboarding email.
+			</p>
+			{#if form?.offerLetterError}
+				<p class="error">{form.message}</p>
+			{/if}
+			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form">
+				<label class="offer-field">
+					<span>Job title</span>
+					<input name="jobTitle" value={ol.jobTitle} />
+				</label>
+				<label class="offer-field">
+					<span>Department</span>
+					<input name="department" value={ol.department} />
+				</label>
+				<label class="offer-field">
+					<span>Reporting manager (name/designation)</span>
+					<input name="reportingManager" value={ol.reportingManager} />
+				</label>
+				<label class="offer-field">
+					<span>Office location</span>
+					<input name="officeLocation" value={ol.officeLocation} />
+				</label>
+				<label class="offer-field">
+					<span>Joining date</span>
+					<input name="joiningDate" value={ol.joiningDate} placeholder="DD/MM/YYYY" />
+				</label>
+				<label class="offer-field">
+					<span>Employment type</span>
+					<select name="employmentType" value={ol.employmentType}>
+						<option value="" selected={!ol.employmentType}>Select…</option>
+						{#each employmentTypeOptions as opt}
+							<option value={opt.value} selected={ol.employmentType === opt.value}>{opt.label}</option>
+						{/each}
+					</select>
+				</label>
+				<label class="offer-field">
+					<span>CTC (annual)</span>
+					<input name="ctcAmount" value={ol.ctcAmount} placeholder="e.g. INR 8,00,000" />
+				</label>
+				<label class="offer-field">
+					<span>Notice period</span>
+					<input name="noticePeriod" value={ol.noticePeriod} placeholder="e.g. 30 days" />
+				</label>
+				<label class="offer-field">
+					<span>Acceptance due date</span>
+					<input name="acceptanceDueDate" value={ol.acceptanceDueDate} placeholder="DD/MM/YYYY" />
+				</label>
+				<label class="offer-field">
+					<span>Authorized signatory</span>
+					<input name="signatoryName" value={ol.signatoryName} />
+				</label>
+				<label class="offer-field">
+					<span>Signatory's designation</span>
+					<input name="signatoryDesignation" value={ol.signatoryDesignation} />
+				</label>
+				<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+					<button class="btn small">Save</button>
+					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download .docx</a>
+				</div>
+			</form>
+			{#if form?.offerLetterSaved}
+				<p class="saved-chip" style="margin-top:8px">Saved ✓</p>
+			{/if}
+			<form
+				method="POST"
+				action="?/sendOfferLetterEmail"
+				use:enhance
+				style="margin-top:12px"
+				onsubmit={(e) => {
+					if (!confirm(`Send the offer letter to ${c.email}?`)) e.preventDefault();
+				}}
+			>
+				<button class="btn teal">Send offer letter</button>
+			</form>
+			{#if form?.offerLetterSent}
+				<p class="saved-chip" style="margin-top:8px">Offer letter sent ✓</p>
+			{/if}
+		</section>
+
+		<section class="card">
 			<div class="eyebrow red-eyebrow" style="margin-bottom:14px">Physical items · joining day</div>
 			{#each data.physical as item}
 				<form method="POST" action="?/physical" use:enhance class="physrow">
@@ -493,6 +591,33 @@
 	}
 	.red-eyebrow {
 		color: var(--red);
+	}
+	.offer-form {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px 12px;
+	}
+	.offer-field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 11.5px;
+		color: var(--smoke);
+		font-weight: 600;
+	}
+	.offer-field input,
+	.offer-field select {
+		font-size: 13px;
+		padding: 7px 9px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		font-family: inherit;
+		color: var(--fg-2);
+	}
+	@media (max-width: 700px) {
+		.offer-form {
+			grid-template-columns: 1fr;
+		}
 	}
 	.uan-form {
 		display: flex;

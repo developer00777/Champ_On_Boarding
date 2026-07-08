@@ -167,8 +167,35 @@ const verificationSchema = new Schema(
 verificationSchema.index({ candidateId: 1, source: 1, docKind: 1 }, { unique: true });
 export const Verification = models.Verification ?? model('Verification', verificationSchema);
 
+// ── Offer Letters ─────────────────────────────────────────────────────────────
+// Recruiter-entered fields the template can't auto-fill (name/address/company
+// come from Candidate/Company directly). One doc per candidate; upserted as a
+// draft while the recruiter is filling it in, flipped to 'sent' once emailed.
+const offerLetterSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true, unique: true },
+		jobTitle: { type: String, default: null },
+		department: { type: String, default: null },
+		reportingManager: { type: String, default: null },
+		officeLocation: { type: String, default: null },
+		joiningDate: { type: String, default: null },
+		employmentType: { type: String, enum: ['full_time', 'part_time', 'contract'], default: null },
+		ctcAmount: { type: String, default: null },
+		noticePeriod: { type: String, default: null },
+		acceptanceDueDate: { type: String, default: null },
+		signatoryName: { type: String, default: null },
+		signatoryDesignation: { type: String, default: null },
+		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
+		sentAt: { type: Date, default: null },
+		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
+	},
+	{ timestamps: true }
+);
+export const OfferLetter = models.OfferLetter ?? model('OfferLetter', offerLetterSchema);
+
 // ── Shared types ──────────────────────────────────────────────────────────────
 export type CandidateDoc = InstanceType<typeof Candidate> & { _id: Types.ObjectId };
 export type DocumentDoc = InstanceType<typeof Document> & { _id: Types.ObjectId };
 export type AdminDoc = InstanceType<typeof Admin> & { _id: Types.ObjectId };
 export type PhysicalItemDoc = InstanceType<typeof PhysicalItem> & { _id: Types.ObjectId };
+export type OfferLetterDoc = InstanceType<typeof OfferLetter> & { _id: Types.ObjectId };

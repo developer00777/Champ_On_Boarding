@@ -1,15 +1,22 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Candidate, Company, Document, PhysicalItem, LinkToken, Verification } from '$lib/server/db/schema';
+import { Candidate, Company, Document, PhysicalItem, LinkToken, Verification, OfferLetter } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { decrypt } from '$lib/server/crypto';
-import { sendMail, brandSignoff } from '$lib/server/mailer';
+import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
+import {
+	offerLetterInputFromDraft,
+	isOfferLetterComplete,
+	missingOfferLetterFields,
+	type OfferLetterInput
+} from '$lib/server/offer-letter/fields';
+import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -35,6 +42,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const checklist = await checklistFor(String(candidate._id), candidate.track as Track);
 	const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
 	const verificationDocs = await Verification.find({ candidateId: candidate._id }).lean();
+	const offerLetter = await OfferLetter.findOne({ candidateId: candidate._id }).lean();
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
 
@@ -116,7 +124,12 @@ export const load: PageServerLoad = async ({ params }) => {
 				note: v.note ?? null,
 				fieldResults: (v.fieldResults as Array<{ label: string; expected: string; found: string; verdict: string }>) ?? []
 			};
-		})
+		}),
+		offerLetter: {
+			...offerLetterInputFromDraft(offerLetter),
+			status: offerLetter?.status ?? 'draft',
+			sentAt: offerLetter?.sentAt?.toISOString() ?? null
+		}
 	};
 };
 
@@ -147,11 +160,12 @@ export const actions: Actions = {
 			action: 'approved',
 			ip: getClientAddress()
 		});
-		await sendMail(
+		await sendBrandedMail(
 			candidate.email,
 			'Your onboarding is approved',
 			`Hello,\n\nYour onboarding submission has been reviewed and approved by HR.\n` +
-				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n${brandSignoff(brand)}`
+				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n${brandSignoff(brand)}`,
+			brand
 		);
 		return { ok: true };
 	},
@@ -179,12 +193,14 @@ export const actions: Actions = {
 			newValue: note,
 			ip: getClientAddress()
 		});
-		await sendMail(
+		const reuploadBrand = brandBySlug(row.company?.brandSlug ?? undefined);
+		await sendBrandedMail(
 			row.candidate.email,
 			'Action needed on your onboarding documents',
 			`Hello,\n\nHR has requested a re-upload of one of your documents (${doc.docType.replace(/_/g, ' ')})` +
 				(note ? `:\n"${note}"` : '.') +
-				`\n\nPlease open your onboarding link again, replace the document, and resubmit.\n\n${brandSignoff(brandBySlug(row.company?.brandSlug ?? undefined))}`
+				`\n\nPlease open your onboarding link again, replace the document, and resubmit.\n\n${brandSignoff(reuploadBrand)}`,
+			reuploadBrand
 		);
 		return { ok: true };
 	},
@@ -305,5 +321,68 @@ export const actions: Actions = {
 		});
 
 		return { crosschecked };
+	},
+
+	saveOfferLetter: async ({ params, request, locals, getClientAddress }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+
+		const input: OfferLetterInput = {
+			jobTitle: String(form.get('jobTitle') ?? '').trim(),
+			department: String(form.get('department') ?? '').trim(),
+			reportingManager: String(form.get('reportingManager') ?? '').trim(),
+			officeLocation: String(form.get('officeLocation') ?? '').trim(),
+			joiningDate: String(form.get('joiningDate') ?? '').trim(),
+			employmentType: String(form.get('employmentType') ?? '').trim() as OfferLetterInput['employmentType'],
+			ctcAmount: String(form.get('ctcAmount') ?? '').trim(),
+			noticePeriod: String(form.get('noticePeriod') ?? '').trim(),
+			acceptanceDueDate: String(form.get('acceptanceDueDate') ?? '').trim(),
+			signatoryName: String(form.get('signatoryName') ?? '').trim(),
+			signatoryDesignation: String(form.get('signatoryDesignation') ?? '').trim()
+		};
+
+		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'offer_letter_saved',
+			ip: getClientAddress()
+		});
+
+		return { offerLetterSaved: true };
+	},
+
+	sendOfferLetterEmail: async ({ params, locals, getClientAddress }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const { candidate, company } = row;
+
+		const draft = await OfferLetter.findOne({ candidateId: params.id });
+		const draftInput = offerLetterInputFromDraft(draft);
+		if (!draft || !isOfferLetterComplete(draftInput)) {
+			return fail(400, {
+				offerLetterError: true,
+				message: `Fill in all offer letter fields before sending (missing: ${missingOfferLetterFields(draftInput).join(', ')}).`
+			});
+		}
+
+		const brand = brandBySlug(company?.brandSlug ?? undefined);
+		await sendOfferLetterMail(candidate, company?.name ?? '', draft, brand);
+
+		draft.status = 'sent';
+		draft.sentAt = new Date();
+		draft.sentBy = locals.admin!.id;
+		await draft.save();
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'offer_letter_sent',
+			newValue: candidate.email,
+			ip: getClientAddress()
+		});
+
+		return { offerLetterSent: true };
 	}
 };
