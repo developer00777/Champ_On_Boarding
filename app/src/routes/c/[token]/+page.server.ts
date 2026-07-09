@@ -15,14 +15,15 @@ const FIELDS = [
 	'fullName', 'dob', 'gender', 'mobile',
 	'fatherName', 'fatherMobile', 'motherName', 'motherMobile', 'motherDob',
 	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
+	'emergencyContactName', 'emergencyContactMobile', 'emergencyContactRelation',
 	'presentAddress', 'presentPin', 'presentHouseNo',
 	'permanentAddress', 'permanentPin', 'permanentHouseNo',
-	'panNo', 'uanNo', 'dlNo', 'passportNo',
+	'panNo', 'uanNo', 'dlNo', 'passportNo', 'linkedinId',
 	'bankName', 'accountNo', 'ifsc', 'branch'
 ] as const;
 
 const TITLE_CASE_FIELDS = new Set([
-	'fullName', 'fatherName', 'motherName', 'spouseName', 'bankName', 'branch'
+	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName', 'bankName', 'branch'
 ]);
 
 function formToFields(form: FormData): Record<string, string> {

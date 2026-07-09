@@ -22,9 +22,10 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 		'Company', 'Track', 'Status', 'Full Name', 'DOB', 'Gender', 'Email', 'Mobile',
 		'Father Name', 'Father Mobile', 'Mother Name', 'Mother Mobile', 'Mother DOB',
 		'Marital Status', 'Spouse Name', 'Spouse Contact', 'Spouse DOB',
+		'Emergency Contact Name', 'Emergency Contact Mobile', 'Emergency Contact Relation',
 		'Present Address', 'Present House No', 'Present PIN',
 		'Permanent Address', 'Permanent House No', 'Permanent PIN',
-		'Aadhaar No', 'PAN No', 'UAN No', 'DL No', 'Passport No',
+		'Aadhaar No', 'PAN No', 'UAN No', 'DL No', 'Passport No', 'LinkedIn ID',
 		'Bank Name', 'Account No', 'IFSC', 'Branch',
 		'Submitted At', 'Reviewed At'
 	];
@@ -35,10 +36,11 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 			c.track, c.status, c.fullName, c.dob, c.gender, c.email, c.mobile,
 			c.fatherName, c.fatherMobile, c.motherName, c.motherMobile, c.motherDob,
 			c.maritalStatus, c.spouseName, c.spouseContact, c.spouseDob,
+			c.emergencyContactName, c.emergencyContactMobile, c.emergencyContactRelation,
 			c.presentAddress, c.presentHouseNo, c.presentPin,
 			c.permanentAddress, c.permanentHouseNo, c.permanentPin,
 			c.aadhaarNoEncrypted ? decrypt(c.aadhaarNoEncrypted) : '',
-			c.panNo, c.uanNo, c.dlNo, c.passportNo,
+			c.panNo, c.uanNo, c.dlNo, c.passportNo, c.linkedinId,
 			c.bankName, c.accountNo, c.ifsc, c.branch,
 			c.submittedAt?.toISOString() ?? '',
 			c.reviewedAt?.toISOString() ?? ''

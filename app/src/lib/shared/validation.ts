@@ -97,7 +97,8 @@ export function validateMasterSheet(f: Record<string, string>): FieldError[] {
 	for (const [field, label] of [
 		['mobile', 'Mobile'],
 		['fatherMobile', "Father's mobile"],
-		['motherMobile', "Mother's mobile"]
+		['motherMobile', "Mother's mobile"],
+		['emergencyContactMobile', 'Emergency contact mobile']
 	] as const) {
 		if (f[field]?.trim() && !isValidMobile(f[field]))
 			errors.push({ field, message: `${label} must be a 10-digit number starting 6–9` });

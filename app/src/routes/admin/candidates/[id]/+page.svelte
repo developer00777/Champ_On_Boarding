@@ -84,7 +84,10 @@
 							['Spouse contact', c.spouseContact],
 							['Spouse DOB', c.spouseDob]
 						]
-					: [])
+					: []),
+				['Emergency contact name', c.emergencyContactName],
+				['Emergency contact mobile', c.emergencyContactMobile],
+				['Emergency contact relation', c.emergencyContactRelation]
 			]
 		},
 		{
@@ -103,7 +106,8 @@
 			rows: [
 				['PAN', c.panNo],
 				['Driving licence', c.dlNo],
-				['Passport', c.passportNo]
+				['Passport', c.passportNo],
+				['LinkedIn', c.linkedinId]
 			]
 		},
 		{

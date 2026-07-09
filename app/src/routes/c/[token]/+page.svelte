@@ -477,6 +477,9 @@
 								<input type="hidden" name="spouseContact" value="" />
 								<input type="hidden" name="spouseDob" value="" />
 							{/if}
+							{@render field('emergencyContactName', 'Emergency contact name (optional)')}
+							{@render field('emergencyContactMobile', 'Emergency contact mobile (optional)')}
+							{@render field('emergencyContactRelation', 'Emergency contact relation (optional)')}
 						</div>
 					</section>
 
@@ -546,6 +549,7 @@
 							{/if}
 							{@render field('dlNo', 'Driving licence no. (if applicable)')}
 							{@render field('passportNo', 'Passport no. (if applicable)')}
+							{@render field('linkedinId', 'LinkedIn profile URL (optional)')}
 						</div>
 					</section>
 
