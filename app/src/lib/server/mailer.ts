@@ -1,5 +1,6 @@
 // Mailer — Resend when RESEND_API_KEY is set, console otherwise (dev).
 import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import type { BrandTheme } from '$lib/shared/brands';
 
 export interface MailAttachment {
@@ -40,12 +41,12 @@ export function brandFromHeader(brand: BrandTheme, purpose: MailPurpose = 'onboa
 	return `${brand.legalName} <${address}>`;
 }
 
-/** data: URI for a brand's logo, or null if the asset isn't in the registry. */
-async function brandLogoDataUri(brand: BrandTheme): Promise<string | null> {
-	const { BRAND_LOGO_ASSETS } = await import('$lib/server/email/logo-assets');
-	const asset = BRAND_LOGO_ASSETS[brand.logo.src];
-	if (!asset) return null;
-	return `data:${asset.mime};base64,${asset.base64}`;
+/** Absolute URL for a brand's logo, served from the app's own static assets.
+ *  Most mail clients (Gmail, Outlook) strip `data:` URI images from HTML
+ *  email for security reasons, so the logo must be a normal hosted URL. */
+function brandLogoUrl(brand: BrandTheme): string {
+	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	return `${base}${brand.logo.src}`;
 }
 
 export async function sendMail(to: string, subject: string, text: string, options: SendMailOptions = {}) {
@@ -80,8 +81,7 @@ export async function sendMail(to: string, subject: string, text: string, option
 
 /** Wraps plain-text body in a minimal branded HTML shell with the brand's logo. */
 async function brandedHtml(brand: BrandTheme, text: string): Promise<string | undefined> {
-	const logo = await brandLogoDataUri(brand);
-	if (!logo) return undefined;
+	const logo = brandLogoUrl(brand);
 	const bodyHtml = text
 		.split('\n')
 		.map((line) => (line ? `<p style="margin:0 0 12px">${escapeHtml(line)}</p>` : ''))
