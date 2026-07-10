@@ -38,7 +38,8 @@ export async function sendOfferLetterMail(
 			`Congratulations! Please find your offer letter attached.\n\n` +
 			`Review the terms and reach out to HR with any questions.\n\n${brandSignoff(brand)}`,
 		brand,
-		[attachment]
+		[attachment],
+		'offer'
 	);
 }
 

@@ -20,10 +20,21 @@ export function brandSignoff(brand: BrandTheme): string {
 	return `— HR, ${brand.legalName}`;
 }
 
-/** "Brand Legal Name <mailbox@domain>" — keeps the shared sending mailbox but
- *  shows the recruiting brand's name to the recipient. */
-export function brandFromHeader(brand: BrandTheme): string {
-	const configured = env.MAIL_FROM ?? 'onboarding@example.com';
+export type MailPurpose = 'onboarding' | 'offer';
+
+/** Resolves the configured mailbox for a purpose. `offer` falls back to the
+ *  onboarding mailbox (MAIL_FROM) when OFFER_MAIL_FROM isn't set, so a second
+ *  address is opt-in. */
+function fromAddressFor(purpose: MailPurpose): string {
+	const onboarding = env.MAIL_FROM ?? 'onboarding@example.com';
+	if (purpose === 'offer') return env.OFFER_MAIL_FROM ?? onboarding;
+	return onboarding;
+}
+
+/** "Brand Legal Name <mailbox@domain>" — keeps a per-purpose sending mailbox
+ *  (see fromAddressFor) but shows the recruiting brand's name to the recipient. */
+export function brandFromHeader(brand: BrandTheme, purpose: MailPurpose = 'onboarding'): string {
+	const configured = fromAddressFor(purpose);
 	const match = configured.match(/<([^>]+)>/);
 	const address = match ? match[1] : configured;
 	return `${brand.legalName} <${address}>`;
@@ -99,16 +110,18 @@ function escapeHtml(value: string): string {
 }
 
 /** Sends a plain-text-compatible email with brand-aware from-name, an inline
- *  logo HTML body, and optional attachments (e.g. a filled offer letter). */
+ *  logo HTML body, and optional attachments (e.g. a filled offer letter).
+ *  `purpose` picks which configured mailbox sends it — see fromAddressFor. */
 export async function sendBrandedMail(
 	to: string,
 	subject: string,
 	text: string,
 	brand: BrandTheme,
-	attachments?: MailAttachment[]
+	attachments?: MailAttachment[],
+	purpose: MailPurpose = 'onboarding'
 ) {
 	await sendMail(to, subject, text, {
-		from: brandFromHeader(brand),
+		from: brandFromHeader(brand, purpose),
 		html: await brandedHtml(brand, text),
 		attachments
 	});
