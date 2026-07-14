@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		.trim()
 		.replace(/\s+/g, '_');
 
-	return new Response(buffer as unknown as ArrayBuffer, {
+	return new Response(new Uint8Array(buffer), {
 		headers: {
 			'Content-Type': 'application/pdf',
 			'Content-Disposition': `attachment; filename="${safeName}_offer_letter.pdf"`,

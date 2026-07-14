@@ -56,7 +56,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 	const candidateSafe = safeFilename(candidate.fullName ?? candidate.email);
 	const zipBuffer = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 
-	return new Response(zipBuffer.buffer as ArrayBuffer, {
+	return new Response(new Uint8Array(zipBuffer), {
 		headers: {
 			'Content-Type': 'application/zip',
 			'Content-Disposition': `attachment; filename="${candidateSafe}_documents.zip"`,
