@@ -25,9 +25,9 @@ async function buildOfferLetterPdfAttachment(
 	brand: BrandTheme
 ) {
 	const input = offerLetterInputFromDraft(draft);
-	const pdfBuffer = await generateOfferLetterPdf(candidate, companyName, input, brand);
+	const pdfBytes = await generateOfferLetterPdf(candidate, companyName, input, brand);
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
-	return { filename: `${safeName}_offer_letter.pdf`, content: pdfBuffer };
+	return { filename: `${safeName}_offer_letter.pdf`, content: Buffer.from(pdfBytes) };
 }
 
 /** Sends the branded offer-letter email with the filled PDF attached. */

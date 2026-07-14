@@ -1,8 +1,5 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-
-// Force Node.js runtime — pdfkit uses Node streams, incompatible with Edge
-export const config = { runtime: 'nodejs24.x' };
 import { Candidate, Company, OfferLetter } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { offerLetterInputFromDraft } from '$lib/server/offer-letter/fields';
@@ -26,11 +23,11 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 	});
 
 	const input = offerLetterInputFromDraft(draft);
-	const buffer = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
+	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
 
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
 
-	return new Response(new Uint8Array(buffer), {
+	return new Response(pdfBytes, {
 		headers: {
 			'Content-Type': 'application/pdf',
 			'Content-Disposition': `attachment; filename="${safeName}_offer_letter.pdf"`,

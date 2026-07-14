@@ -1,10 +1,6 @@
 // Candidate-facing offer letter PDF download — token-gated.
 // Only served once the HR team has marked the offer letter as 'sent'.
-// No admin session required; the onboarding token is the auth credential.
 import { error } from '@sveltejs/kit';
-
-// Force Node.js runtime — pdfkit uses Node streams, incompatible with Edge
-export const config = { runtime: 'nodejs24.x' };
 import type { RequestHandler } from './$types';
 import { Company, OfferLetter } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
@@ -24,14 +20,14 @@ export const GET: RequestHandler = async ({ params }) => {
 	const brand = brandBySlug(company?.brandSlug ?? undefined);
 
 	const input = offerLetterInputFromDraft(draft);
-	const buffer = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
+	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
 
 	const safeName = (candidate.fullName ?? candidate.email)
 		.replace(/[^a-zA-Z0-9 ]/g, '')
 		.trim()
 		.replace(/\s+/g, '_');
 
-	return new Response(new Uint8Array(buffer), {
+	return new Response(pdfBytes, {
 		headers: {
 			'Content-Type': 'application/pdf',
 			'Content-Disposition': `attachment; filename="${safeName}_offer_letter.pdf"`,
