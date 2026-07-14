@@ -2,13 +2,15 @@
 // Track → required document slots. This is data: a new track or document is a
 // new entry here (plus an OCR schema in ocr.ts if it is an extraction target).
 
-export type Track = 'intern' | 'fresher' | 'experienced';
-export const TRACKS: Track[] = ['intern', 'fresher', 'experienced'];
+export type Track = 'intern' | 'fresher' | 'experienced' | 'consultant' | 'contract';
+export const TRACKS: Track[] = ['intern', 'fresher', 'experienced', 'consultant', 'contract'];
 
 export const TRACK_LABELS: Record<Track, string> = {
 	intern: 'Intern',
 	fresher: 'Fresher',
-	experienced: 'Experienced'
+	experienced: 'Experienced',
+	consultant: 'Consultant Basis',
+	contract: 'Contract Basis'
 };
 
 export interface DocSlot {
@@ -23,8 +25,16 @@ export interface DocSlot {
 	maxFiles: number;
 }
 
-const ALL: Track[] = ['intern', 'fresher', 'experienced'];
-const EXP: Track[] = ['experienced'];
+const ALL: Track[] = ['intern', 'fresher', 'experienced', 'consultant', 'contract'];
+// "Same document/OCR requirements as Experienced" — Consultant Basis and
+// Contract Basis reuse every Experienced-only slot (relieving letters, bank
+// statements, payslips, BGC/BGV forms, etc.), and also self-enter their own
+// UAN the same way Experienced candidates do (see EXP_LIKE_TRACKS below).
+const EXP: Track[] = ['experienced', 'consultant', 'contract'];
+
+/** Tracks that behave like Experienced outside the document matrix too
+ *  (e.g. the candidate self-enters their own UAN instead of HR setting it). */
+export const EXP_LIKE_TRACKS: Track[] = EXP;
 
 export const DOC_SLOTS: DocSlot[] = [
 	{ type: 'aadhaar_front', label: 'Aadhaar Card — Front', hint: 'Full Aadhaar number and name clearly visible, all 4 corners in frame', tracks: ALL, mandatory: true, ocr: 'aadhaar_front', maxFiles: 1 },

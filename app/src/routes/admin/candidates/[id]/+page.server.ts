@@ -6,7 +6,7 @@ import { decrypt } from '$lib/server/crypto';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
-import { PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
@@ -17,6 +17,9 @@ import {
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
+import { sendApprovalNotificationWA } from '$lib/server/whatsapp';
+import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -86,6 +89,7 @@ export const load: PageServerLoad = async ({ params }) => {
 			accountNo: candidate.accountNo ?? null,
 			ifsc: candidate.ifsc ?? null,
 			branch: candidate.branch ?? null,
+			employeeId: candidate.employeeId ?? null,
 			consentAt: candidate.consentAt?.toISOString() ?? null,
 			createdAt: (candidate as unknown as { createdAt: Date }).createdAt.toISOString(),
 			submittedAt: candidate.submittedAt?.toISOString() ?? null,
@@ -173,6 +177,37 @@ export const actions: Actions = {
 				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n${brandSignoff(brand)}`,
 			brand
 		);
+
+		// WhatsApp approval notification to candidate (best-effort)
+		if (candidate.mobile) {
+			await sendApprovalNotificationWA({
+				mobile: candidate.mobile,
+				candidateName: candidate.fullName || '',
+				companyName: row.company?.name ?? brand.name
+			}).catch((err) => console.error('[wa] approval notification failed:', err));
+		}
+
+		// Alert onboarding concern person to create employee code
+		const onboardingEmail = env.ONBOARDING_CONCERN_EMAIL;
+		if (onboardingEmail) {
+			const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+			const reviewUrl = `${base}/admin/candidates/${params.id}`;
+			await sendBrandedMail(
+				onboardingEmail,
+				`✅ Create employee code: ${candidate.fullName || candidate.email}`,
+				`Hello,\n\n` +
+				`${candidate.fullName || candidate.email} has been approved by HR and is ready for employee code creation.\n\n` +
+				`Track: ${TRACK_LABELS[candidate.track as Track]}\n` +
+				`Company: ${row.company?.name ?? brand.name}\n` +
+				`Job title: ${(await OfferLetter.findOne({ candidateId: params.id }).lean())?.jobTitle ?? '—'}\n` +
+				`Email: ${candidate.email}\n` +
+				`Mobile: ${candidate.mobile ?? '—'}\n\n` +
+				`Please create their employee code and update the system:\n${reviewUrl}\n\n` +
+				`${brandSignoff(brand)}`,
+				brand
+			).catch((err) => console.error('[approve-alert] onboarding concern email failed:', err));
+		}
+
 		return { ok: true };
 	},
 
@@ -334,18 +369,33 @@ export const actions: Actions = {
 		if (!row) return fail(404);
 		const form = await request.formData();
 
+		// Handle signature image upload — convert to base64 data-URI for storage.
+		// If no new file is uploaded, preserve the existing value from the hidden field.
+		let signatoryImageBase64 = String(form.get('signatoryImageBase64Existing') ?? '');
+		const sigFile = form.get('signatoryImage');
+		if (sigFile instanceof File && sigFile.size > 0) {
+			if (sigFile.size > 2 * 1024 * 1024)
+				return fail(400, { message: 'Signature image must be under 2 MB.' });
+			if (!['image/png', 'image/jpeg', 'image/webp'].includes(sigFile.type))
+				return fail(400, { message: 'Signature must be a PNG, JPG, or WebP image.' });
+			const bytes = await sigFile.arrayBuffer();
+			signatoryImageBase64 = `data:${sigFile.type};base64,${Buffer.from(bytes).toString('base64')}`;
+		}
+
 		const input: OfferLetterInput = {
 			jobTitle: String(form.get('jobTitle') ?? '').trim(),
 			department: String(form.get('department') ?? '').trim(),
 			reportingManager: String(form.get('reportingManager') ?? '').trim(),
 			officeLocation: String(form.get('officeLocation') ?? '').trim(),
 			joiningDate: String(form.get('joiningDate') ?? '').trim(),
+			endDate: String(form.get('endDate') ?? '').trim(),
 			employmentType: String(form.get('employmentType') ?? '').trim() as OfferLetterInput['employmentType'],
 			ctcAmount: String(form.get('ctcAmount') ?? '').trim(),
 			noticePeriod: String(form.get('noticePeriod') ?? '').trim(),
 			acceptanceDueDate: String(form.get('acceptanceDueDate') ?? '').trim(),
 			signatoryName: String(form.get('signatoryName') ?? '').trim(),
-			signatoryDesignation: String(form.get('signatoryDesignation') ?? '').trim()
+			signatoryDesignation: String(form.get('signatoryDesignation') ?? '').trim(),
+			signatoryImageBase64
 		};
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });
@@ -357,6 +407,22 @@ export const actions: Actions = {
 		});
 
 		return { offerLetterSaved: true };
+	},
+
+	setEmployeeId: async ({ params, request, locals, getClientAddress }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const employeeId = String(form.get('employeeId') ?? '').trim() || null;
+		await Candidate.findByIdAndUpdate(params.id, { employeeId });
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'employee_id_set',
+			newValue: employeeId ?? '',
+			ip: getClientAddress()
+		});
+		return { employeeIdSaved: true, employeeId: employeeId ?? '' };
 	},
 
 	sendOfferLetterEmail: async ({ params, locals, getClientAddress }) => {

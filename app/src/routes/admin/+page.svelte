@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { TRACK_LABELS, type Track } from '$lib/shared/matrix';
 
 	let { data, form } = $props();
 
@@ -66,10 +67,14 @@
 				<input id="email" name="email" type="email" placeholder="name@email.com" required />
 			</div>
 			<div>
+				<label for="candidateMobile">Mobile (WhatsApp)</label>
+				<input id="candidateMobile" name="candidateMobile" type="tel" placeholder="10-digit mobile" />
+			</div>
+			<div>
 				<label for="track">Track</label>
 				<select id="track" name="track" required>
 					{#each data.tracks as track}
-						<option value={track}>{track[0].toUpperCase() + track.slice(1)}</option>
+						<option value={track}>{TRACK_LABELS[track as Track]}</option>
 					{/each}
 				</select>
 			</div>
@@ -163,7 +168,7 @@
 					<div style="font-size:12px;color:var(--smoke)">{c.email}</div>
 				</div>
 				<div class="tcell">{c.company}</div>
-				<div class="tcell" style="text-transform:capitalize">{c.track}</div>
+				<div class="tcell">{TRACK_LABELS[c.track as Track]}</div>
 				<div><span class="pill {statusMeta[c.status]?.cls}">{statusMeta[c.status]?.label ?? c.status}</span></div>
 				<div class="tcell" style="color:var(--smoke)">
 					{c.submittedAt ? new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
@@ -211,7 +216,7 @@
 	}
 	.gen-grid {
 		display: grid;
-		grid-template-columns: 1.2fr 1.4fr 0.9fr 1fr auto;
+		grid-template-columns: 1.2fr 1.4fr 0.9fr 0.9fr 1fr auto;
 		gap: 12px;
 		align-items: end;
 	}

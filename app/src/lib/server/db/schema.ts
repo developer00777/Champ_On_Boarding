@@ -30,7 +30,7 @@ export const Admin = models.Admin ?? model('Admin', adminSchema);
 const candidateSchema = new Schema(
 	{
 		companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
-		track: { type: String, enum: ['intern', 'fresher', 'experienced'], required: true },
+		track: { type: String, enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract'], required: true },
 		fullName: String,
 		dob: String,
 		gender: String,
@@ -65,6 +65,7 @@ const candidateSchema = new Schema(
 		accountNo: String,
 		ifsc: String,
 		branch: String,
+		employeeId: { type: String, default: null },
 		ocrSuggestions: { type: Map, of: String, default: {} },
 		consentAt: Date,
 		consentIp: String,
@@ -186,12 +187,14 @@ const offerLetterSchema = new Schema(
 		reportingManager: { type: String, default: null },
 		officeLocation: { type: String, default: null },
 		joiningDate: { type: String, default: null },
-		employmentType: { type: String, enum: ['full_time', 'part_time', 'contract'], default: null },
+		endDate: { type: String, default: null },
+		employmentType: { type: String, enum: ['full_time', 'part_time', 'contract', 'consultant'], default: null },
 		ctcAmount: { type: String, default: null },
 		noticePeriod: { type: String, default: null },
 		acceptanceDueDate: { type: String, default: null },
 		signatoryName: { type: String, default: null },
 		signatoryDesignation: { type: String, default: null },
+		signatoryImageBase64: { type: String, default: null },
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }

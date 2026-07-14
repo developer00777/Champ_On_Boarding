@@ -5,9 +5,10 @@ import { Candidate, Company, PhysicalItem, OfferLetter } from '$lib/server/db/sc
 import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
-import { TRACKS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { TRACKS, TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug, BRANDS } from '$lib/shared/brands';
 import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
+import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const candidateDocs = await Candidate.find()
@@ -64,6 +65,7 @@ export const actions: Actions = {
 		const track = String(form.get('track') ?? '') as Track;
 		const companyId = String(form.get('companyId') ?? '');
 		const candidateName = String(form.get('candidateName') ?? '').trim();
+		const candidateMobile = String(form.get('candidateMobile') ?? '').trim().replace(/\D/g, '');
 
 		if (!email || !/^\S+@\S+\.\S+$/.test(email))
 			return fail(400, { message: 'A valid candidate email is required.' });
@@ -79,6 +81,7 @@ export const actions: Actions = {
 			track,
 			companyId,
 			fullName: candidateName || null,
+			mobile: candidateMobile || null,
 			createdBy: locals.admin!.id
 		});
 
@@ -105,7 +108,8 @@ export const actions: Actions = {
 		const { attachments, offerLetterBundled } = await buildOnboardingLinkAttachments(
 			candidate,
 			company.name,
-			offerDraft
+			offerDraft,
+			brand
 		);
 
 		await sendBrandedMail(
@@ -120,6 +124,17 @@ export const actions: Actions = {
 			brand,
 			attachments
 		);
+
+		// Send WhatsApp welcome message via DoubleTick (best-effort, non-fatal)
+		if (candidateMobile) {
+			await sendOnboardingWelcomeWA({
+				mobile: candidateMobile,
+				candidateName: candidateName || 'there',
+				companyName: company.name,
+				trackLabel: TRACK_LABELS[track],
+				link
+			});
+		}
 
 		const waText = encodeURIComponent(
 			`Welcome to ${brand.name}! Please complete your onboarding here (expires in 7 days): ${link}`

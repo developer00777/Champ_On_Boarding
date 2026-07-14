@@ -22,7 +22,9 @@ const COMPANIES = [
 	{ name: 'Champion Products', brandSlug: 'champion-products' },
 	{ name: 'Champion Infometrics', brandSlug: 'champion-infometrics' },
 	{ name: 'Champions Yacht Club', brandSlug: 'champions-yacht-club' },
-	{ name: 'Cirrologix', brandSlug: 'cirrologix' }
+	{ name: 'Cirrologix', brandSlug: 'cirrologix' },
+	{ name: 'Iconic Studio Pvt Ltd', brandSlug: 'iconic-studio' },
+	{ name: '100X Longevity Pvt Ltd', brandSlug: '100x-longevity' }
 ];
 
 for (const { name, brandSlug } of COMPANIES) {

@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { brandCssVars, brandFontsHref } from '$lib/shared/brands';
+	import { EXP_LIKE_TRACKS, type Track } from '$lib/shared/matrix';
 	import { untrack } from 'svelte';
 
 	let { data, form } = $props();
@@ -163,6 +164,17 @@
 					? 'submitted and now awaiting HR review. We’ll email you the moment they’re approved.'
 					: 'approved by HR. See you on joining day!'}
 			</p>
+			{#if data.offerLetterSent}
+				<a
+					class="offer-dl-btn"
+					href="/c/{page.params.token}/offer-letter"
+					download
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+					Download your offer letter (PDF)
+				</a>
+			{/if}
+
 			<div class="card bring">
 				<div class="eyebrow red-eyebrow">Bring on your joining day</div>
 				{#each data.physicalItems as item}
@@ -544,7 +556,7 @@
 								</div>
 							</div>
 							{@render field('panNo', 'PAN number', { placeholder: 'AAAAA9999A', required: true })}
-							{#if data.candidate.track === 'experienced'}
+							{#if EXP_LIKE_TRACKS.includes(data.candidate.track as Track)}
 								{@render field('uanNo', 'UAN number (if available)')}
 							{/if}
 							{@render field('dlNo', 'Driving licence no. (if applicable)')}
@@ -1190,6 +1202,31 @@
 		line-height: 1.55;
 		color: var(--fg-2);
 		margin: 0 0 32px;
+	}
+	.offer-dl-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		width: 100%;
+		padding: 14px 20px;
+		margin-bottom: 18px;
+		background: var(--brand-primary, #1E73BE);
+		color: #fff;
+		font-weight: 800;
+		font-size: 15px;
+		border-radius: 12px;
+		text-decoration: none;
+		box-shadow: 0 4px 18px -4px rgba(0,0,0,0.22);
+		transition: opacity 0.15s, transform 0.1s;
+	}
+	.offer-dl-btn:hover {
+		opacity: 0.9;
+		transform: translateY(-1px);
+	}
+	.offer-dl-btn:active {
+		transform: translateY(0);
+		opacity: 1;
 	}
 	.bring {
 		text-align: left;

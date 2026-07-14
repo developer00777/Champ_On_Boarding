@@ -26,9 +26,11 @@
 	},
 	"dependencies": {
 		"@node-rs/argon2": "^2.0.2",
+		"@types/pdfkit": "^0.17.6",
 		"exceljs": "^4.4.0",
 		"ioredis": "^5.11.1",
 		"mongoose": "^9.7.2",
+		"pdfkit": "^0.19.1",
 		"pizzip": "^3.2.0"
 	}
 }

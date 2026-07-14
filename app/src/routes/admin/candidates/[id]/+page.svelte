@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { EXP_LIKE_TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 
 	let { data, form } = $props();
 
@@ -123,6 +124,31 @@
 
 	const docCount = $derived(data.checklist.reduce((a, s) => a + s.docs.length, 0));
 	const initial = $derived((c.fullName || c.email)[0].toUpperCase());
+
+	// Journey steps for the left status widget
+	const JOURNEY = [
+		{ key: 'created',            label: 'Link sent',          icon: '🔗' },
+		{ key: 'opened',             label: 'Link opened',        icon: '👁️' },
+		{ key: 'in_progress',        label: 'Filling form',       icon: '📝' },
+		{ key: 'submitted',          label: 'Submitted',          icon: '📤' },
+		{ key: 'changes_requested',  label: 'Changes requested',  icon: '🔄' },
+		{ key: 'approved',           label: 'Approved by HR',     icon: '✅' },
+		{ key: 'complete',           label: 'Complete',           icon: '🎉' }
+	];
+
+	const STATUS_ORDER = ['created','opened','in_progress','submitted','changes_requested','approved','complete'];
+
+	function stepState(stepKey: string): 'done' | 'active' | 'pending' {
+		if (c.status === 'revoked') return 'pending';
+		const cur = STATUS_ORDER.indexOf(c.status);
+		const idx = STATUS_ORDER.indexOf(stepKey);
+		if (idx < cur) return 'done';
+		if (idx === cur) return 'active';
+		return 'pending';
+	}
+
+	// Employee ID: prefer server-echoed value after save, else candidate field
+	const empId = $derived(form?.employeeIdSaved ? form.employeeId : (c.employeeId ?? ''));
 </script>
 
 <a href="/admin" class="backlink">
@@ -144,7 +170,7 @@
 			/>
 		</div>
 		<div class="muted" style="margin-top:4px;font-size:13.5px">
-			{c.email} · <span style="text-transform:capitalize">{c.track}</span> · {data.companyName}
+			{c.email} · <span>{TRACK_LABELS[c.track as Track]}</span> · {data.companyName}
 			{#if c.submittedAt}· Submitted {new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{/if}
 			{#if c.consentAt}· Consent recorded{/if}
 		</div>
@@ -157,6 +183,12 @@
 					Approve candidate
 				</button>
 			</form>
+		{/if}
+		{#if docCount > 0}
+			<a class="btn ghost" href="/admin/candidates/{c.id}/docs-zip" download>
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+				Download all docs
+			</a>
 		{/if}
 		{#if !['revoked', 'created', 'opened'].includes(c.status)}
 			<a class="btn ghost" href="/admin/candidates/{c.id}/report" download>
@@ -175,6 +207,27 @@
 </div>
 
 {#if form?.message}<p class="error">{form.message}</p>{/if}
+
+{#if c.status === 'submitted'}
+	<div class="approval-widget">
+		<div class="approval-icon">
+			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+		</div>
+		<div style="flex:1">
+			<div style="font-weight:800;font-size:15px;color:var(--ink)">Ready for review</div>
+			<div style="font-size:12.5px;color:var(--smoke);margin-top:2px">
+				{c.fullName || c.email} has submitted all documentation. Review below and approve or request changes.
+			</div>
+		</div>
+		<form method="POST" action="?/approve" use:enhance>
+			<button class="btn teal" style="font-size:14px;padding:11px 22px">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+				Approve &amp; notify
+			</button>
+		</form>
+	</div>
+{/if}
+
 {#if data.flags.length}
 	<div class="flagbox">
 		<strong>Review flags ({data.flags.length})</strong>
@@ -185,6 +238,90 @@
 {/if}
 
 <div class="cols">
+
+	<!-- ── Left: Status journey + Employee ID widget ── -->
+	<aside class="status-sidebar">
+		<!-- Journey tracker -->
+		<section class="card journey-card">
+			<div class="eyebrow" style="margin-bottom:14px">Onboarding journey</div>
+			<div class="journey">
+				{#each JOURNEY as step}
+					{@const state = stepState(step.key)}
+					<div class="journey-step {state}">
+						<div class="j-dot">
+							{#if state === 'done'}
+								<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+							{:else if state === 'active'}
+								<div class="j-pulse"></div>
+							{/if}
+						</div>
+						<div class="j-line"></div>
+						<div class="j-label">
+							<span class="j-icon">{step.icon}</span>
+							<span>{step.label}</span>
+						</div>
+					</div>
+				{/each}
+				{#if c.status === 'revoked'}
+					<div class="journey-step active" style="--step-color:var(--red)">
+						<div class="j-dot" style="background:var(--red)"></div>
+						<div class="j-line" style="display:none"></div>
+						<div class="j-label"><span class="j-icon">🚫</span><span>Revoked</span></div>
+					</div>
+				{/if}
+			</div>
+			{#if c.submittedAt}
+				<div class="muted" style="font-size:11px;margin-top:10px;padding-top:10px;border-top:1px solid var(--mist)">
+					Submitted {new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+				</div>
+			{/if}
+			{#if c.reviewedAt}
+				<div class="muted" style="font-size:11px;margin-top:4px">
+					Reviewed {new Date(c.reviewedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+				</div>
+			{/if}
+		</section>
+
+		<!-- Employee ID widget -->
+		<section class="card emp-card">
+			<div class="eyebrow" style="margin-bottom:10px">Employee code</div>
+			{#if empId}
+				<div class="emp-id-display">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+					{empId}
+				</div>
+			{:else if ['approved','complete'].includes(c.status)}
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Candidate approved — assign employee code.</p>
+			{:else}
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available after approval.</p>
+			{/if}
+			<form method="POST" action="?/setEmployeeId" use:enhance class="emp-form">
+				<input
+					name="employeeId"
+					value={empId}
+					placeholder={['approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
+					class="emp-input"
+					disabled={!['approved','complete'].includes(c.status) && !empId}
+				/>
+				<button
+					class="btn small teal"
+					disabled={!['approved','complete'].includes(c.status) && !empId}
+				>
+					{empId ? 'Update' : 'Assign'}
+				</button>
+			</form>
+			{#if form?.employeeIdSaved}
+				<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
+			{/if}
+			{#if empId}
+				<div class="emp-hint">
+					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+					Code assigned · audit-logged
+				</div>
+			{/if}
+		</section>
+	</aside>
+
 	<!-- documents -->
 	<section class="card">
 		<div class="eyebrow" style="margin-bottom:16px">Documents · {docCount}</div>
@@ -318,7 +455,7 @@
 			<div class="group-title">UAN</div>
 			<div class="frow">
 				<span class="flabel">UAN number</span>
-				{#if c.track === 'experienced'}
+				{#if EXP_LIKE_TRACKS.includes(c.track as Track)}
 					<span class="fvalue">{c.uanNo || '—'}</span>
 				{:else}
 					<form method="POST" action="?/setUan" use:enhance class="uan-form">
@@ -361,7 +498,7 @@
 			{#if form?.offerLetterError}
 				<p class="error">{form.message}</p>
 			{/if}
-			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form">
+			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form" enctype="multipart/form-data">
 				<label class="offer-field">
 					<span>Job title</span>
 					<input name="jobTitle" value={ol.jobTitle} />
@@ -404,16 +541,41 @@
 					<input name="acceptanceDueDate" value={ol.acceptanceDueDate} placeholder="DD/MM/YYYY" />
 				</label>
 				<label class="offer-field">
-					<span>Authorized signatory</span>
+					<span>Authorized signatory name</span>
 					<input name="signatoryName" value={ol.signatoryName} />
 				</label>
 				<label class="offer-field">
 					<span>Signatory's designation</span>
 					<input name="signatoryDesignation" value={ol.signatoryDesignation} />
 				</label>
+
+				<!-- Signature image upload — spans full width -->
+				<div class="offer-field sig-field">
+					<span>Signature image</span>
+					<!-- preserve existing base64 so re-saving other fields doesn't wipe it -->
+					<input type="hidden" name="signatoryImageBase64Existing" value={ol.signatoryImageBase64 ?? ''} />
+					{#if ol.signatoryImageBase64}
+						<div class="sig-preview">
+							<img src={ol.signatoryImageBase64} alt="Signature preview" class="sig-img" />
+							<label class="sig-replace-btn">
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+								Replace
+								<input type="file" name="signatoryImage" accept="image/png,image/jpeg,image/webp" class="sig-file-hidden" />
+							</label>
+						</div>
+					{:else}
+						<label class="sig-upload-btn">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+							Upload signature
+							<input type="file" name="signatoryImage" accept="image/png,image/jpeg,image/webp" class="sig-file-hidden" />
+						</label>
+						<span class="muted" style="font-size:10.5px;margin-top:4px">PNG, JPG or WebP · max 2 MB · will appear above signatory name in PDF</span>
+					{/if}
+				</div>
+
 				<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
 					<button class="btn small">Save</button>
-					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download .docx</a>
+					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download PDF</a>
 				</div>
 			</form>
 			{#if form?.offerLetterSaved}
@@ -507,9 +669,122 @@
 	}
 	.cols {
 		display: grid;
-		grid-template-columns: 1.1fr 0.9fr;
+		grid-template-columns: 220px 1.1fr 0.9fr;
 		gap: 22px;
 		align-items: start;
+	}
+	.status-sidebar {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		position: sticky;
+		top: 20px;
+	}
+
+	/* Journey tracker */
+	.journey-card { padding: 18px 16px; }
+	.journey { display: flex; flex-direction: column; gap: 0; }
+	.journey-step {
+		display: grid;
+		grid-template-columns: 18px 1fr;
+		grid-template-rows: auto auto;
+		column-gap: 10px;
+		--step-color: var(--teal);
+	}
+	.journey-step.pending { --step-color: var(--fog); }
+	.journey-step.active  { --step-color: var(--purple); }
+	.j-dot {
+		grid-column: 1;
+		grid-row: 1;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: var(--step-color);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		position: relative;
+		z-index: 1;
+		transition: background 0.2s;
+	}
+	.journey-step.pending .j-dot {
+		background: var(--mist);
+		border: 2px solid var(--fog);
+	}
+	.j-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #fff;
+	}
+	.j-line {
+		grid-column: 1;
+		grid-row: 2;
+		width: 2px;
+		min-height: 18px;
+		background: var(--mist);
+		margin: 0 auto;
+	}
+	.journey-step:last-child .j-line { display: none; }
+	.j-label {
+		grid-column: 2;
+		grid-row: 1 / 3;
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		padding: 1px 0 14px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--smoke);
+	}
+	.journey-step.done .j-label  { color: var(--ink); }
+	.journey-step.active .j-label { color: var(--purple); font-weight: 800; }
+	.j-icon { font-size: 13px; line-height: 1.3; flex-shrink: 0; }
+
+	/* Employee code widget */
+	.emp-card { padding: 16px; }
+	.emp-id-display {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-family: ui-monospace, monospace;
+		font-size: 14px;
+		font-weight: 800;
+		color: var(--teal);
+		background: #f0fdf8;
+		border: 1.5px solid #6ee7b7;
+		border-radius: 9px;
+		padding: 8px 11px;
+		margin-bottom: 10px;
+	}
+	.emp-form {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+	}
+	.emp-input {
+		flex: 1;
+		min-width: 0;
+		font-size: 13px;
+		font-family: ui-monospace, monospace;
+		padding: 7px 9px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		color: var(--ink);
+	}
+	.emp-input:disabled {
+		background: var(--paper);
+		color: var(--fog);
+		cursor: not-allowed;
+	}
+	.emp-hint {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 10.5px;
+		color: var(--smoke);
+		margin-top: 6px;
 	}
 	.docrow {
 		display: flex;
@@ -618,6 +893,65 @@
 		font-family: inherit;
 		color: var(--fg-2);
 	}
+	.sig-field {
+		grid-column: 1 / -1;
+	}
+	.sig-upload-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 9px 16px;
+		border: 1.5px dashed var(--border);
+		border-radius: 10px;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--purple);
+		background: #faf8fd;
+		cursor: pointer;
+		transition: border-color 0.15s, background 0.15s;
+		width: fit-content;
+	}
+	.sig-upload-btn:hover {
+		border-color: var(--purple);
+		background: #f3effe;
+	}
+	.sig-file-hidden {
+		display: none;
+	}
+	.sig-preview {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		padding: 10px 14px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: #fafafa;
+		width: fit-content;
+	}
+	.sig-img {
+		height: 48px;
+		max-width: 160px;
+		object-fit: contain;
+		border-radius: 4px;
+		background: #fff;
+	}
+	.sig-replace-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--purple);
+		cursor: pointer;
+		padding: 5px 10px;
+		border: 1px solid var(--border);
+		border-radius: 7px;
+		background: #fff;
+		white-space: nowrap;
+	}
+	.sig-replace-btn:hover {
+		border-color: var(--purple);
+	}
 	@media (max-width: 700px) {
 		.offer-form {
 			grid-template-columns: 1fr;
@@ -698,9 +1032,45 @@
 	.phys-status.got {
 		color: var(--teal);
 	}
-	@media (max-width: 900px) {
+	@media (max-width: 1100px) {
+		.cols {
+			grid-template-columns: 200px 1fr 0.9fr;
+		}
+	}
+	@media (max-width: 800px) {
 		.cols {
 			grid-template-columns: 1fr;
 		}
+		.status-sidebar {
+			position: static;
+			flex-direction: row;
+			flex-wrap: wrap;
+		}
+		.journey-card, .emp-card {
+			flex: 1;
+			min-width: 200px;
+		}
+	}
+	.approval-widget {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		background: linear-gradient(135deg, #f0fdf8 0%, #e6faf4 100%);
+		border: 1.5px solid #6ee7b7;
+		border-radius: 18px;
+		padding: 18px 22px;
+		margin-bottom: 20px;
+		flex-wrap: wrap;
+	}
+	.approval-icon {
+		width: 52px;
+		height: 52px;
+		border-radius: 14px;
+		background: var(--teal);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #fff;
+		flex-shrink: 0;
 	}
 </style>

@@ -266,6 +266,62 @@ export const BRANDS: BrandTheme[] = [
 		cardRadius: 0,
 		uppercaseCta: true,
 		logo: { src: '/brands/cirrologix.png', monogram: 'CL' }
+	},
+	{
+		slug: 'iconic-studio',
+		name: 'Iconic Studio',
+		legalName: 'Iconic Studio Pvt Ltd',
+		tagline: 'Creative studio crafting iconic brand experiences.',
+		colors: {
+			primary: '#FF4D00',
+			primaryDark: '#CC3D00',
+			accent: '#FFB800',
+			ink: '#0D0D0D',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#1A1A1A',
+			muted: '#6B6B6B',
+			border: '#E8E8E8',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #0D0D0D 0%, #1a1a1a 60%, #FF4D00 130%)'
+		},
+		fonts: {
+			heading: "'Poppins', Arial, sans-serif",
+			body: "'Poppins', Arial, sans-serif",
+			googleFamilies: ['Poppins:wght@400;500;600;700;800']
+		},
+		buttonRadius: 6,
+		cardRadius: 12,
+		uppercaseCta: false,
+		logo: { src: '/brands/iconic-studio.png', monogram: 'IS', onDark: true }
+	},
+	{
+		slug: '100x-longevity',
+		name: '100X Longevity',
+		legalName: '100X Longevity Pvt Ltd',
+		tagline: 'Science-backed longevity & performance optimisation.',
+		colors: {
+			primary: '#00C896',
+			primaryDark: '#009E76',
+			accent: '#00E5FF',
+			ink: '#0A1628',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#111827',
+			muted: '#6B7280',
+			border: '#E5E7EB',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #0A1628 0%, #0d2240 60%, #00C896 130%)'
+		},
+		fonts: {
+			heading: "'DM Sans', Arial, sans-serif",
+			body: "'DM Sans', Arial, sans-serif",
+			googleFamilies: ['DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700']
+		},
+		buttonRadius: 50,
+		cardRadius: 16,
+		uppercaseCta: false,
+		logo: { src: '/brands/100x-longevity.png', monogram: '1X', onDark: true }
 	}
 ];
 

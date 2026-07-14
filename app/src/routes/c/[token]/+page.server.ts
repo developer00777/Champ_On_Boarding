@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Candidate, Company } from '$lib/server/db/schema';
+import { Candidate, Company, Admin, OfferLetter } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
 import { checklistFor } from '$lib/server/checklist';
 import { audit } from '$lib/server/audit';
@@ -8,6 +8,9 @@ import { encrypt } from '$lib/server/crypto';
 import { validateMasterSheet, titleCase, maskAadhaar } from '$lib/shared/validation';
 import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
+import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
+import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 
 const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
@@ -43,11 +46,15 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!candidate) error(404, 'This onboarding link is invalid, expired, or revoked.');
 
 	const company = await Company.findById(candidate.companyId).lean();
-	const checklist = await checklistFor(candidate.id, candidate.track as Track);
+	const [checklist, offerLetter] = await Promise.all([
+		checklistFor(candidate.id, candidate.track as Track),
+		OfferLetter.findOne({ candidateId: candidate.id }).lean()
+	]);
 	const brand = brandBySlug(company?.brandSlug ?? undefined);
 
 	return {
 		brand,
+		offerLetterSent: offerLetter?.status === 'sent',
 		candidate: {
 			id: candidate.id,
 			track: candidate.track,
@@ -138,6 +145,39 @@ export const actions: Actions = {
 
 		await Candidate.findByIdAndUpdate(candidate.id, update);
 		await audit({ candidateId: candidate.id, actor: 'candidate', action: 'submitted', ip: getClientAddress() });
+
+		// Alert the HR admin who created this candidate's link
+		const company = await Company.findById(candidate.companyId).lean();
+		const brand = brandBySlug(company?.brandSlug ?? undefined);
+		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+		const reviewUrl = `${base}/admin/candidates/${candidate.id}`;
+
+		const alertRecipients: string[] = [];
+
+		// Creator (HR admin who generated the link)
+		if (candidate.createdBy) {
+			const creator = await Admin.findById(candidate.createdBy).lean();
+			if (creator?.email) alertRecipients.push(creator.email);
+		}
+		// Catch-all onboarding alert address from env
+		if (env.ONBOARDING_ALERT_EMAIL && !alertRecipients.includes(env.ONBOARDING_ALERT_EMAIL)) {
+			alertRecipients.push(env.ONBOARDING_ALERT_EMAIL);
+		}
+
+		for (const recipient of alertRecipients) {
+			await sendBrandedMail(
+				recipient,
+				`🔔 Action needed: ${candidate.fullName || candidate.email} has submitted onboarding`,
+				`Hello,\n\n` +
+				`${candidate.fullName || candidate.email} has completed and submitted their onboarding documentation for review.\n\n` +
+				`Track: ${TRACK_LABELS[candidate.track as Track]}\n` +
+				`Company: ${company?.name ?? brand.name}\n\n` +
+				`Please review their submission and approve or request changes:\n${reviewUrl}\n\n` +
+				`${brandSignoff(brand)}`,
+				brand
+			).catch((err) => console.error('[submit-alert] email failed:', err));
+		}
+
 		return { submitted: true };
 	}
 };
