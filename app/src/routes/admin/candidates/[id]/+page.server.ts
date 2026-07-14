@@ -395,7 +395,9 @@ export const actions: Actions = {
 			acceptanceDueDate: String(form.get('acceptanceDueDate') ?? '').trim(),
 			signatoryName: String(form.get('signatoryName') ?? '').trim(),
 			signatoryDesignation: String(form.get('signatoryDesignation') ?? '').trim(),
-			signatoryImageBase64
+			signatoryImageBase64,
+			weeklyExpectation: String(form.get('weeklyExpectation') ?? '').trim(),
+			keyResponsibilities: String(form.get('keyResponsibilities') ?? '').trim()
 		};
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });

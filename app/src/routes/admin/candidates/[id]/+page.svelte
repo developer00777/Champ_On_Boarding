@@ -547,6 +547,18 @@
 					<input name="signatoryDesignation" value={ol.signatoryDesignation} />
 				</label>
 
+				{#if c.track === 'consultant'}
+					<!-- Consultant-only: clause 3 weekly expectation + clause 4 KRA bullets -->
+					<label class="offer-field sig-field">
+						<span>Weekly expectation (clause 3)</span>
+						<input name="weeklyExpectation" value={ol.weeklyExpectation ?? ''} placeholder="e.g. Minimum 04 Content per Week" />
+					</label>
+					<label class="offer-field sig-field">
+						<span>Key responsibilities (one per line — becomes bullets in clause 4)</span>
+						<textarea name="keyResponsibilities" rows="6" class="kra-textarea" placeholder={"Content Volume & Consistency: Publish 4 pieces every week\nContent Quality: Score 90%+ on internal checklist\nContent Performance: Achieve 200+ views per piece"}>{ol.keyResponsibilities ?? ''}</textarea>
+					</label>
+				{/if}
+
 				<!-- Signature image upload — spans full width -->
 				<div class="offer-field sig-field">
 					<span>Signature image</span>
@@ -893,6 +905,16 @@
 	}
 	.sig-field {
 		grid-column: 1 / -1;
+	}
+	.kra-textarea {
+		font-size: 12.5px;
+		padding: 8px 10px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		font-family: inherit;
+		color: var(--fg-2);
+		resize: vertical;
+		line-height: 1.5;
 	}
 	.sig-upload-btn {
 		display: inline-flex;

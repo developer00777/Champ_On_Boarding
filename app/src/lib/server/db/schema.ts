@@ -195,6 +195,10 @@ const offerLetterSchema = new Schema(
 		signatoryName: { type: String, default: null },
 		signatoryDesignation: { type: String, default: null },
 		signatoryImageBase64: { type: String, default: null },
+		// Consultant-track only: clause-3 weekly expectation + clause-4 KRA bullets
+		// (one responsibility per line). Ignored for other tracks.
+		weeklyExpectation: { type: String, default: null },
+		keyResponsibilities: { type: String, default: null },
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }

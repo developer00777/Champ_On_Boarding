@@ -1,12 +1,24 @@
-// Generates a branded offer letter PDF using pdf-lib (pure JS, no Node streams).
-// Works on Vercel Edge, Node.js serverless, and Railway — no runtime restrictions.
+// Generates a branded offer letter PDF using pdf-lib (pure JS, no Node streams —
+// works on Vercel Edge, Node serverless, and Railway alike).
+//
+// Three real Champions Group templates, selected by track:
+//   intern                          → Internship Joining Agreement
+//   consultant                      → Consultant Agreement
+//   experienced | fresher | contract → Offer of Appointment
+//
+// The layout engine below flows text down the page and auto-inserts page breaks
+// (header + footer redrawn on each), so multi-page letters never overflow or
+// leave blank pages. Company name is substituted from the recruiting brand.
 import { PDFDocument, rgb, StandardFonts, PageSizes } from 'pdf-lib';
+import type { PDFFont, PDFPage, PDFImage } from 'pdf-lib';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { OfferLetterInput } from './fields';
-import { EMPLOYMENT_TYPE_LABELS, COMPENSATION_LABEL_BY_TRACK, LETTER_TYPE_BY_TRACK } from './fields';
+import { EMPLOYMENT_TYPE_LABELS } from './fields';
 import type { CandidateDoc } from '$lib/server/db/schema';
 import type { Track } from '$lib/shared/matrix';
+
+// ── low-level helpers ────────────────────────────────────────────────────────
 
 function hexToRgb(hex: string): [number, number, number] {
 	const h = hex.replace('#', '');
@@ -38,312 +50,538 @@ function dataUriToBytes(dataUri: string): Uint8Array | null {
 	return bytes;
 }
 
-function formatCurrency(raw: string): string {
-	const num = parseInt(raw.replace(/[^0-9]/g, ''), 10);
-	if (isNaN(num)) return raw;
-	// Use "Rs." not the ₹ glyph — pdf-lib StandardFonts use WinAnsi encoding
-	// which cannot encode U+20B9 (₹) and throws at draw time.
-	return 'Rs. ' + num.toLocaleString('en-IN');
-}
-
-function formatNoticePeriod(raw: string): string {
-	return /^\d+$/.test(raw.trim()) ? `${raw.trim()} days` : raw;
-}
-
-// pdf-lib StandardFonts use WinAnsi (cp1252) encoding and throw on any
-// character outside it (₹, curly quotes, em-dash, emoji, non-Latin scripts).
-// Map the common ones to safe equivalents and strip everything else so a
-// stray character in a name/address never crashes PDF generation.
+// pdf-lib StandardFonts use WinAnsi (cp1252) encoding and throw on any character
+// outside it (₹, curly quotes, em-dash, emoji, non-Latin scripts). Map the common
+// ones and strip the rest so a stray character never crashes generation.
 function sanitize(text: string): string {
 	return (text ?? '')
 		.replace(/₹/g, 'Rs.')
-		.replace(/[‘’‚‛]/g, "'")   // curly single quotes
-		.replace(/[“”„‟]/g, '"')   // curly double quotes
-		.replace(/[–—―]/g, '-')          // en/em dashes
-		.replace(/[…]/g, '...')                    // ellipsis
-		.replace(/[ ]/g, ' ')                      // non-breaking space
-		.replace(/[•]/g, '-')                      // bullet
-		// Drop any remaining char outside the Latin-1 range WinAnsi can render
+		.replace(/[‘’‚‛]/g, "'")
+		.replace(/[“”„‟]/g, '"')
+		.replace(/[–—―]/g, '-')
+		.replace(/[…]/g, '...')
+		.replace(/[ ]/g, ' ')
+		.replace(/[•]/g, '-')
 		.replace(/[^\x09\x0A\x0D\x20-\x7E¡-ÿ]/g, '');
 }
 
-// pdf-lib text wrapping helper
-function wrapText(text: string, maxWidth: number, fontSize: number, avgCharWidth: number): string[] {
-	const charsPerLine = Math.floor(maxWidth / (fontSize * avgCharWidth));
-	const words = text.split(' ');
-	const lines: string[] = [];
-	let current = '';
-	for (const word of words) {
-		if ((current + ' ' + word).trim().length > charsPerLine && current) {
-			lines.push(current.trim());
-			current = word;
-		} else {
-			current = (current + ' ' + word).trim();
-		}
-	}
-	if (current) lines.push(current.trim());
-	return lines;
+/** "240000" → "Rs. 2,40,000" (₹ glyph is not WinAnsi-encodable). */
+function formatMoney(raw: string): string {
+	const cleaned = raw.replace(/[^0-9.]/g, '');
+	const num = parseInt(cleaned, 10);
+	if (isNaN(num)) return raw;
+	return 'Rs. ' + num.toLocaleString('en-IN');
 }
 
+// ── layout engine ────────────────────────────────────────────────────────────
+
+interface Ctx {
+	doc: PDFDocument;
+	page: PDFPage;
+	fontR: PDFFont;
+	fontB: PDFFont;
+	W: number;
+	H: number;
+	M: number;       // left/right margin
+	CW: number;      // content width
+	y: number;       // current baseline cursor (top-down)
+	topY: number;    // y where content starts on a fresh page
+	bottomY: number; // y below which we must break the page
+	logo: PDFImage | null;
+	inkColor: ReturnType<typeof rgb>;
+	primaryColor: ReturnType<typeof rgb>;
+	brand: BrandTheme;
+	companyName: string;
+}
+
+const BLACK = rgb(0.13, 0.13, 0.13);
+const GREY = rgb(0.4, 0.4, 0.4);
+const LIGHT = rgb(0.6, 0.6, 0.6);
+
+const HEADER_H = 66;
+const FOOTER_H = 26;
+
+function drawChrome(ctx: Ctx, page: PDFPage) {
+	const { W, H, M, brand, companyName } = ctx;
+	// Top accent stripe
+	page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: ctx.primaryColor });
+	// Logo top-right
+	if (ctx.logo) {
+		const dims = ctx.logo.scaleToFit(150, 40);
+		page.drawImage(ctx.logo, { x: W - M - dims.width, y: H - 8 - dims.height, width: dims.width, height: dims.height });
+	} else {
+		const mono = sanitize(brand.logo.monogram);
+		const w = ctx.fontB.widthOfTextAtSize(mono, 18);
+		page.drawText(mono, { x: W - M - w, y: H - 40, font: ctx.fontB, size: 18, color: ctx.inkColor });
+	}
+	// Footer rule + confidential line + company name
+	page.drawRectangle({ x: M, y: FOOTER_H, width: ctx.CW, height: 0.5, color: rgb(0.85, 0.85, 0.85) });
+	const foot = sanitize(`${companyName}  -  Private & Confidential`);
+	const fw = ctx.fontR.widthOfTextAtSize(foot, 7.5);
+	page.drawText(foot, { x: (W - fw) / 2, y: FOOTER_H - 12, font: ctx.fontR, size: 7.5, color: LIGHT });
+}
+
+function newPage(ctx: Ctx) {
+	const page = ctx.doc.addPage([ctx.W, ctx.H]);
+	drawChrome(ctx, page);
+	ctx.page = page;
+	ctx.y = ctx.topY;
+}
+
+/** Ensure `need` pts of vertical space remain; else start a new page. */
+function ensure(ctx: Ctx, need: number) {
+	if (ctx.y - need < ctx.bottomY) newPage(ctx);
+}
+
+/** Greedy word-wrap to a pixel width for a given font/size. */
+function wrap(ctx: Ctx, text: string, font: PDFFont, size: number, maxW: number): string[] {
+	const words = sanitize(text).split(/\s+/);
+	const lines: string[] = [];
+	let line = '';
+	for (const word of words) {
+		const trial = line ? line + ' ' + word : word;
+		if (font.widthOfTextAtSize(trial, size) > maxW && line) {
+			lines.push(line);
+			line = word;
+		} else {
+			line = trial;
+		}
+	}
+	if (line) lines.push(line);
+	return lines.length ? lines : [''];
+}
+
+/** Draw a paragraph (optionally indented), wrapping + paging as needed. */
+function para(
+	ctx: Ctx,
+	text: string,
+	opts: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; indent?: number; gapAfter?: number; lineGap?: number } = {}
+) {
+	const size = opts.size ?? 9.5;
+	const font = opts.font ?? ctx.fontR;
+	const color = opts.color ?? BLACK;
+	const indent = opts.indent ?? 0;
+	const lineGap = opts.lineGap ?? 3.5;
+	const maxW = ctx.CW - indent;
+	const lines = wrap(ctx, text, font, size, maxW);
+	for (const line of lines) {
+		ensure(ctx, size + lineGap);
+		ctx.page.drawText(line, { x: ctx.M + indent, y: ctx.y, font, size, color });
+		ctx.y -= size + lineGap;
+	}
+	ctx.y -= opts.gapAfter ?? 6;
+}
+
+/** A numbered/lettered clause: marker in the gutter, text hanging-indented. */
+function clause(ctx: Ctx, marker: string, text: string, opts: { size?: number; gapAfter?: number } = {}) {
+	const size = opts.size ?? 9.5;
+	const lineGap = 3.5;
+	const gutter = ctx.fontR.widthOfTextAtSize(marker + ' ', size) + 2;
+	const maxW = ctx.CW - gutter;
+	const lines = wrap(ctx, text, ctx.fontR, size, maxW);
+	ensure(ctx, size + lineGap);
+	// marker
+	ctx.page.drawText(sanitize(marker), { x: ctx.M, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+	// first line beside marker
+	ctx.page.drawText(lines[0], { x: ctx.M + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+	ctx.y -= size + lineGap;
+	for (let i = 1; i < lines.length; i++) {
+		ensure(ctx, size + lineGap);
+		ctx.page.drawText(lines[i], { x: ctx.M + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+		ctx.y -= size + lineGap;
+	}
+	ctx.y -= opts.gapAfter ?? 5;
+}
+
+/** Bullet point (hanging indent under a dash). */
+function bullet(ctx: Ctx, text: string, opts: { size?: number; indent?: number } = {}) {
+	const size = opts.size ?? 9.5;
+	const lineGap = 3.5;
+	const indent = opts.indent ?? 16;
+	const gutter = 10;
+	const maxW = ctx.CW - indent - gutter;
+	const lines = wrap(ctx, text, ctx.fontR, size, maxW);
+	ensure(ctx, size + lineGap);
+	ctx.page.drawText('-', { x: ctx.M + indent, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+	ctx.page.drawText(lines[0], { x: ctx.M + indent + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+	ctx.y -= size + lineGap;
+	for (let i = 1; i < lines.length; i++) {
+		ensure(ctx, size + lineGap);
+		ctx.page.drawText(lines[i], { x: ctx.M + indent + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+		ctx.y -= size + lineGap;
+	}
+	ctx.y -= 3;
+}
+
+/** Centered, underlined section heading. */
+function heading(ctx: Ctx, text: string, opts: { size?: number } = {}) {
+	const size = opts.size ?? 12;
+	ensure(ctx, size + 14);
+	const t = sanitize(text);
+	const w = ctx.fontB.widthOfTextAtSize(t, size);
+	const x = (ctx.W - w) / 2;
+	ctx.page.drawText(t, { x, y: ctx.y, font: ctx.fontB, size, color: ctx.inkColor });
+	// underline
+	ctx.page.drawRectangle({ x, y: ctx.y - 2.5, width: w, height: 0.8, color: ctx.inkColor });
+	ctx.y -= size + 12;
+}
+
+/** Left bold sub-heading. */
+function subHeading(ctx: Ctx, text: string, opts: { size?: number; gapAfter?: number } = {}) {
+	const size = opts.size ?? 10;
+	ensure(ctx, size + 8);
+	ctx.page.drawText(sanitize(text), { x: ctx.M, y: ctx.y, font: ctx.fontB, size, color: BLACK });
+	ctx.y -= size + (opts.gapAfter ?? 6);
+}
+
+/** A signature line + caption. Returns after advancing the cursor. */
+function signatureLine(ctx: Ctx, caption: string, opts: { width?: number; bold?: boolean } = {}) {
+	const width = opts.width ?? 200;
+	ensure(ctx, 30);
+	ctx.y -= 14; // space above the line
+	ctx.page.drawRectangle({ x: ctx.M, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	ctx.y -= 12;
+	ctx.page.drawText(sanitize(caption), {
+		x: ctx.M, y: ctx.y, font: opts.bold ? ctx.fontB : ctx.fontR, size: 9.5, color: BLACK
+	});
+	ctx.y -= 16;
+}
+
+function gap(ctx: Ctx, pts: number) {
+	ctx.y -= pts;
+}
+
+// ── header block (Name / Contact / Email + Place / Date) ─────────────────────
+
+function drawApplicantHeader(
+	ctx: Ctx,
+	opts: { name: string; contact: string; email: string; place?: string; date: string; internLabels?: boolean }
+) {
+	const labelName = opts.internLabels ? 'Intern Name' : 'Name';
+	const labelContact = opts.internLabels ? 'Intern Contact No.' : 'Contact No';
+	const labelEmail = opts.internLabels ? 'Intern Email Address' : 'Email ID';
+	const size = 9.5;
+
+	// Place (left) + Date (right) row for internship-style header
+	if (opts.place !== undefined) {
+		ctx.page.drawText(sanitize(`Place: ${opts.place}`), { x: ctx.M, y: ctx.y, font: ctx.fontB, size, color: BLACK });
+		const dateStr = sanitize(`Date: ${opts.date}`);
+		const dw = ctx.fontB.widthOfTextAtSize(dateStr, size);
+		ctx.page.drawText(dateStr, { x: ctx.W - ctx.M - dw, y: ctx.y, font: ctx.fontB, size, color: BLACK });
+		ctx.y -= size + 8;
+	}
+
+	const row = (label: string, value: string) => {
+		ensure(ctx, size + 4);
+		ctx.page.drawText(sanitize(`${label}: `), { x: ctx.M, y: ctx.y, font: ctx.fontB, size, color: BLACK });
+		const lw = ctx.fontB.widthOfTextAtSize(`${label}: `, size);
+		ctx.page.drawText(sanitize(value || '-'), { x: ctx.M + lw, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+		ctx.y -= size + 4;
+	};
+	row(labelName, opts.name);
+	row(labelContact, opts.contact);
+	row(labelEmail, opts.email);
+
+	// Divider rule under the applicant block
+	ctx.y -= 4;
+	ctx.page.drawRectangle({ x: ctx.M, y: ctx.y, width: ctx.CW, height: 0.6, color: rgb(0.75, 0.75, 0.75) });
+	ctx.y -= 14;
+}
+
+// ── date helpers ─────────────────────────────────────────────────────────────
+
+function today(): string {
+	return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TEMPLATE 1 — OFFER OF APPOINTMENT  (experienced / fresher / contract)
+// ═══════════════════════════════════════════════════════════════════════════
+function renderOfferOfAppointment(
+	ctx: Ctx,
+	c: { name: string; contact: string; email: string },
+	o: OfferLetterInput,
+	company: string
+) {
+	drawApplicantHeader(ctx, { name: c.name, contact: c.contact, email: c.email, date: today() });
+
+	heading(ctx, 'OFFER OF APPOINTMENT');
+	gap(ctx, 4);
+
+	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8 });
+
+	para(
+		ctx,
+		`Further to your recent interview and its results, we are pleased to offer you an employment with our organization ${company} as "${o.jobTitle || '____________'}" with "subject to the following terms and conditions".`,
+		{ gapAfter: 8 }
+	);
+
+	subHeading(ctx, `The starting date of your employment will be no later than ${o.joiningDate || '____________'}`, { gapAfter: 8 });
+
+	const ctc = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
+	clause(ctx, '1.', `Your Total Cost To Company per Annum is ${ctc}/- inclusive of Standard statutory deductions. *Refer Annexure*`);
+	clause(ctx, '2.', `Statutory deductions and other standard benefits from the Company are as per the Rules and regulations.`);
+	clause(ctx, '3.', `All rewards and increments will be based purely on your performance on the job and your Contribution to the company and subject to Company Rules and regulations as mentioned in company HRIS portal and Intranet.`);
+	clause(ctx, '4.', `You will be required to observe the rules and regulations applicable to all employees of the Company. You will not engage in any trade or profession or undertaken employment, full or part-time, while in the services of the Company.`);
+	clause(ctx, '5.', `You will on probation period of 6 months, after which you will be due for the confirmation. During this probation period, you required to give a notice period of ${o.noticePeriod || '30 days'} in the event of your resigning from the services of the company in normal circumstances but if training provided you are entitled to follow company process. However the notice period will be 60 days after confirmation. Further ${company} can terminate this employment by serving you either by one-month notice or a month salary in lieu of notice, during the period of employment.`);
+	clause(ctx, '6.', `In addition to holding all confidential information as a key member of our organization, you will not directly or indirectly engage in services with any of our competitors or start your own consultancy of similar nature during your tenure of employment or two years after leaving the company.`);
+	clause(ctx, '7.', `You are entitled for Leave as per the rules and regulations of the company.`);
+	clause(ctx, '8.', `You will have to work as per the scheduled time allotted to you except, Holidays. You will have to be flexible with your timings depending upon the company's requirements.`);
+	clause(ctx, '9.', `During the term of your employment you are expected to adhere to the service conditions of the company that are in existence and framed by the company from time to time.`);
+	clause(ctx, '10.', `The retirement of all members is 58 years.`);
+	clause(ctx, '11.', `You are requested to sign the EMPLOYMENT COMMITMENT AGREEMENT at the time of joining the Company and also by signing this Letter of offer you agree to be the part of ${company} for the period of two years.`);
+	clause(ctx, '12.', `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, Autonomy and growth among all members of the Strategic family. As a new entrant, we would like you to whole-heartedly contribute in this process.`, { gapAfter: 8 });
+
+	para(ctx, `As a token of acceptance of the above terms and conditions, you are requested to sign a copy of this letter and return to us.`, { gapAfter: 6 });
+	para(ctx, `Wish you a long and enjoyable career with ${company}.`, { gapAfter: 16 });
+
+	// Employer signature
+	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4 });
+	signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
+
+	gap(ctx, 10);
+	para(ctx, `I hereby accept the above-mentioned terms and conditions`, { gapAfter: 14 });
+	para(ctx, `Name:`, { gapAfter: 14 });
+	para(ctx, `Signature:`, { gapAfter: 14 });
+	para(ctx, `Date:`, { gapAfter: 0 });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TEMPLATE 2 — INTERNSHIP JOINING AGREEMENT  (intern)
+// ═══════════════════════════════════════════════════════════════════════════
+function renderInternship(
+	ctx: Ctx,
+	c: { name: string; contact: string; email: string },
+	o: OfferLetterInput,
+	company: string
+) {
+	const place = o.officeLocation || 'Bangalore';
+	drawApplicantHeader(ctx, {
+		name: c.name, contact: c.contact, email: c.email,
+		place, date: today(), internLabels: true
+	});
+
+	heading(ctx, 'INTERNSHIP JOINING AGREEMENT');
+	gap(ctx, 4);
+
+	const start = o.joiningDate || '____________';
+	const end = o.endDate || '____________';
+	const stipend = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
+
+	para(
+		ctx,
+		`With reference to your application we would like to congratulate you on being selected for internship with ${company}, based at ${place} as "${o.jobTitle || 'Trainee'}". Your internship is scheduled to start effective from ${start} to ${end}.`,
+		{ gapAfter: 8 }
+	);
+
+	subHeading(ctx, 'Terms and conditions of the internship Program.', { gapAfter: 8 });
+
+	clause(ctx, '1.', `As intern you will be paid ${stipend}/- per month, which is including Statutory deductions if any.`);
+	clause(ctx, '2.', `You are expected to operate with the highest degree of initiative, economy, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not no time do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without notice.`);
+	clause(ctx, '3.', `During the internship program intern is abide by the company working hours, shifts and holidays based on the project allotted.`);
+	clause(ctx, '4.', `During the course of Internship, you shall not accept any other employment, either full-time or part-time, either for remuneration or otherwise.`);
+	clause(ctx, '5.', `Internship program can be terminated based on the company policy and procedure or based on code of the intern during the internship by without giving any notice to the Intern or by one day Updation with or without pay.`);
+	clause(ctx, '6.', `You are responsible for your own accommodation and commuting office place.`, { gapAfter: 10 });
+
+	// NDA clause 7
+	subHeading(ctx, `7.  Non-Disclosure Agreement during the Internship with ${company}.`, { gapAfter: 6 });
+	clause(ctx, 'a.', `During the course of your Internship with ${company} you will have access to confidential information about ${company}, its clients, its business transactions, and associated companies. You shall not during your course of internship or having ceased to be in the Internship of ${company}, disclose such confidential/proprietary information to any third party and/or any unauthorized person. All notes and memoranda pertaining to ${company} secrets and confidential/proprietary information made by or acquired by you during the course of your Internship shall at all times remain the property of ${company}.`);
+	clause(ctx, 'b.', `You are obliged to sign a Non-disclosure agreement specific to a particular client as and when required by ${company}.`);
+	clause(ctx, 'c.', `Prior to joining ${company}, you will be free from any contractual restrictions preventing you from accepting this offer or starting work on your Internship.`, { gapAfter: 8 });
+
+	// Intern agreement
+	subHeading(ctx, 'Intern Agreement:', { gapAfter: 6 });
+	para(ctx, `I ${c.name} acknowledge that I have been given a unique opportunity to gain valuable professional experience. I will be able to fulfil the Intern Profile described in a timely and professional manner. I also acknowledge that this internship is to be considered as a professional experience and that my performance will be evaluated based upon the following criteria:`, { gapAfter: 6 });
+	bullet(ctx, 'Hands-on experience in innovative tech projects.');
+	bullet(ctx, 'Collaboration with a diverse and dynamic team.');
+	bullet(ctx, 'Learning opportunities through workshops and training sessions.');
+	bullet(ctx, 'Exposure to cutting-edge technologies and industry trends.');
+	gap(ctx, 6);
+
+	// Mentor agreement
+	subHeading(ctx, 'Mentor Agreement', { gapAfter: 6 });
+	const mentor = o.reportingManager || '____________';
+	para(ctx, `I ${mentor} agree to mentor intern ${c.name} at ${company}. I acknowledge that this will be a professional experience for the intern, and agree to provide learning assistance and supervision throughout the internship. I agree to consult with both the intern and the internship coordinator before making any changes to the work plan.`, { gapAfter: 14 });
+
+	// Acceptance
+	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 6 });
+	para(ctx, `If you accept the above terms and conditions of service, please signify your acceptance on the duplicate copy of the internship letter provided to you and report for duty as indicated above.`, { gapAfter: 6 });
+	para(ctx, `Again, congratulations and we look forward to working with you.`, { gapAfter: 12 });
+
+	subHeading(ctx, 'Acceptance Signature:', { gapAfter: 10 });
+	signatureLine(ctx, 'Intern Name');
+	signatureLine(ctx, 'Intern Signature');
+	para(ctx, `Date: ____________________`, { gapAfter: 12 });
+
+	para(ctx, `For ${company}:`, { font: ctx.fontB, gapAfter: 10 });
+	signatureLine(ctx, 'Name');
+	signatureLine(ctx, 'Signature');
+	para(ctx, `Date: ____________________`, { gapAfter: 0 });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TEMPLATE 3 — CONSULTANT AGREEMENT  (consultant)
+// ═══════════════════════════════════════════════════════════════════════════
+function renderConsultant(
+	ctx: Ctx,
+	c: { name: string; contact: string; email: string },
+	o: OfferLetterInput,
+	company: string
+) {
+	drawApplicantHeader(ctx, { name: c.name, contact: c.contact, email: c.email, date: today() });
+
+	heading(ctx, 'Consultant Agreement');
+	gap(ctx, 4);
+
+	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8 });
+	para(
+		ctx,
+		`With reference to your application and the subsequent discussions you had with us, we are pleased to offer you the position of "${o.jobTitle || '____________'}" on contractual assignment with us on the following terms and conditions:`,
+		{ gapAfter: 8 }
+	);
+
+	subHeading(ctx, 'Terms and Conditions of the employment:', { gapAfter: 8 });
+
+	clause(ctx, '1.', `This assignment will be effective from ${o.joiningDate || '____________'}.`);
+	clause(ctx, '2.', `Your posting will be at our Corporate Office which is allocated based on the project need i.e., presently at ${company}${o.officeLocation ? ' - ' + o.officeLocation : ''}. However, during your contract period you may be stationed / located / posted / transferred by us to any other location of our Organization, as may be necessary for the implementation of the Project requirement.`);
+
+	// Clause 3 — per-person weekly expectation
+	if (o.weeklyExpectation.trim()) {
+		clause(ctx, '3.', `You are expected to Maintain ${o.weeklyExpectation.trim()}.`);
+	} else {
+		clause(ctx, '3.', `You are expected to maintain the agreed weekly deliverables as discussed.`);
+	}
+
+	// Clause 4 — Key Responsibilities (manually entered, one bullet per line)
+	const kras = o.keyResponsibilities.split('\n').map((l) => l.trim()).filter(Boolean);
+	ensure(ctx, 20);
+	ctx.page.drawText('4.', { x: ctx.M, y: ctx.y, font: ctx.fontR, size: 9.5, color: BLACK });
+	ctx.page.drawText(sanitize('As discussed, here you can find Key Responsibilities:'), { x: ctx.M + 16, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
+	ctx.y -= 15;
+	if (kras.length) {
+		for (const k of kras) bullet(ctx, k);
+	} else {
+		bullet(ctx, '____________________________________________');
+		bullet(ctx, '____________________________________________');
+	}
+	gap(ctx, 4);
+
+	const fee = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
+	clause(ctx, '5.', `You shall be paid as Total sum of ${fee}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.`);
+	clause(ctx, '6.', `This offer is valid and effective only after verification of your Personal and Professional Background besides your criminal background verification.`);
+	clause(ctx, '7.', `Your salary shall be processed against the receipt of your monthly Report and performance reports duly approved by the authorized signatory and submitted to the HR Department.`);
+	clause(ctx, '8.', `Absent from work: If you remain absent from work, without any reasonable explanation, for more than two consecutive days, it will be presumed that you are no longer interested in working for the Company and have abandoned its services, thereby terminating your contract of service without any notice. In such case, you will not be entitled to any compensation from the Company.`);
+	clause(ctx, '9.', `Notice Period: During your contract period, you are required to give a notice period of ${o.noticePeriod || '15 days'} in the event of your resigning from the services of the company. Further ${company} can terminate your employment based on the Clients' input and based on projects' requirements at any given Point.`);
+	clause(ctx, '10.', `Code of conduct: You are expected to operate with the highest degree of initiative, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not do or say anything which compromises the company's goals or reputations. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any prior notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without any prior notice.`);
+	clause(ctx, '11.', `Confidentiality: The Employee will not, during or at any time after the termination of your employment, disclose to any person or persons (except to senior Employees of the Company) nor use for your own benefit any confidential information that you may receive or obtain in relation to the affairs of the Company or its Clients.`);
+	clause(ctx, '12.', `Termination of Employment: Company has the right to terminate the employment if it finds its employee indulging in breach of company rules, illegal activity, damage to Company or Clients' reputation, criminal activity, strikes or protests, negative public statements, unauthorized absence for two consecutive working days, failure to perform, unethical behavior, or negative feedback from Reporting Officers or Customers, without any prior notice or warning.`, { gapAfter: 8 });
+
+	subHeading(ctx, 'General Conditions of Work:', { gapAfter: 6 });
+	bullet(ctx, 'Age limit for employment is 58 Years; any employee above 58 Years will be given notice to resign immediately.');
+	bullet(ctx, 'You will have no objection to working extra hours according to the requirements of the job.');
+	bullet(ctx, `During your employment you will be bound by the Company's Rules and Regulations framed and enforced from time to time.`);
+	bullet(ctx, 'This letter is governed by and shall be construed in accordance with the laws of Karnataka, and both parties shall submit to the exclusive jurisdiction of the Karnataka Courts.');
+	bullet(ctx, 'As being on Contract you are not entitled for any Gratuity or any other statutory obligations from the company.');
+	bullet(ctx, 'You will keep us informed of any changes in your residential address, family status or any other personal particulars relevant to your employment, as and when the change may occur.');
+	gap(ctx, 8);
+
+	subHeading(ctx, 'Acceptance:', { gapAfter: 6 });
+	para(ctx, `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, autonomy and growth among all members of the ${company} family. As a new entrant, we would like you to wholeheartedly contribute in this process.`, { gapAfter: 6 });
+	para(ctx, `I am sure that you will find your employment with ${company} a great challenge and we look forward to a long and mutually beneficial association.`, { gapAfter: 14 });
+
+	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4 });
+	signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
+	para(ctx, `Date:`, { gapAfter: 12 });
+
+	para(ctx, `I have read, understood and accepted the above. I understand that the terms and conditions are pre-conditions to my being offered employment with the company. I accept them of my own free choice and will.`, { gapAfter: 14 });
+	para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14 });
+	para(ctx, `Signature:`, { font: ctx.fontB, gapAfter: 0 });
+}
+
+// ── entry point ──────────────────────────────────────────────────────────────
+
 export async function generateOfferLetterPdf(
-	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress' | 'track'>,
+	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress' | 'track'> & { mobile?: string | null },
 	companyName: string,
 	offer: OfferLetterInput,
 	brand: BrandTheme
 ): Promise<Uint8Array> {
-	const pdfDoc = await PDFDocument.create();
-	pdfDoc.setTitle(`${LETTER_TYPE_BY_TRACK[candidate.track as Track]} — ${candidate.fullName ?? candidate.email}`);
-	pdfDoc.setAuthor(companyName);
-	pdfDoc.setCreator('ChampOnboard');
+	const doc = await PDFDocument.create();
+	doc.setTitle(`Offer Letter - ${candidate.fullName ?? candidate.email}`);
+	doc.setAuthor(companyName);
+	doc.setCreator('ChampOnboard');
 
-	const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-	const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+	const fontR = await doc.embedFont(StandardFonts.Helvetica);
+	const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
 
-	// Fetch logo + sig before drawing
+	// Logo (best-effort)
 	const logoBytes = await fetchLogoBytes(brand);
-	const sigBytes = offer.signatoryImageBase64 ? dataUriToBytes(offer.signatoryImageBase64) : null;
-
-	let logoImage = null;
+	let logo: PDFImage | null = null;
 	if (logoBytes) {
 		try {
-			// Try PNG first, fall back to JPG
-			if (brand.logo.src.endsWith('.png')) {
-				logoImage = await pdfDoc.embedPng(logoBytes);
-			} else {
-				logoImage = await pdfDoc.embedJpg(logoBytes);
-			}
-		} catch { logoImage = null; }
+			logo = brand.logo.src.endsWith('.png')
+				? await doc.embedPng(logoBytes)
+				: await doc.embedJpg(logoBytes);
+		} catch { logo = null; }
 	}
 
-	let sigImage = null;
-	if (sigBytes) {
-		try {
-			sigImage = await pdfDoc.embedPng(sigBytes).catch(() => pdfDoc.embedJpg(sigBytes!));
-		} catch { sigImage = null; }
-	}
-
-	const [W, H] = PageSizes.A4; // 595.28 x 841.89
-	const page = pdfDoc.addPage([W, H]);
-
-	// Auto-sanitize every drawn string so an unencodable character (₹, curly
-	// quote, emoji, non-Latin script) in any field can never crash the render.
-	const origDrawText = page.drawText.bind(page);
-	page.drawText = ((text: string, options?: Parameters<typeof origDrawText>[1]) =>
-		origDrawText(sanitize(text), options)) as typeof page.drawText;
-
-	// Safe text-width measurement (widthOfTextAtSize also throws on bad chars).
-	const widthOf = (font: typeof fontRegular, str: string, size: number) =>
-		font.widthOfTextAtSize(sanitize(str), size);
-
-	// Colours
+	const [W, H] = PageSizes.A4;
+	const M = 56;
 	const [pr, pg, pb] = hexToRgb(brand.colors.primary);
 	const [ir, ig, ib] = hexToRgb(brand.colors.ink);
-	const inkColor = rgb(ir, ig, ib);
-	const primaryColor = rgb(pr, pg, pb);
-	const black = rgb(0.1, 0.1, 0.1);
-	const grey = rgb(0.4, 0.4, 0.4);
-	const lightGrey = rgb(0.6, 0.6, 0.6);
-	const white = rgb(1, 1, 1);
-	const rowBg = rgb(0.96, 0.97, 0.98);
 
-	const M = 56;       // margin
-	const CW = W - M * 2;
-	const HEADER_H = 78;
-	const FOOTER_H = 28;
+	const ctx: Ctx = {
+		doc,
+		page: null as unknown as PDFPage,
+		fontR,
+		fontB,
+		W,
+		H,
+		M,
+		CW: W - M * 2,
+		y: 0,
+		topY: H - HEADER_H,
+		bottomY: FOOTER_H + 20,
+		logo,
+		inkColor: rgb(ir, ig, ib),
+		primaryColor: rgb(pr, pg, pb),
+		brand,
+		companyName: sanitize(companyName)
+	};
 
-	// ── Header bar ────────────────────────────────────────────────────────────
-	page.drawRectangle({ x: 0, y: H - HEADER_H, width: W, height: HEADER_H, color: inkColor });
+	// First page
+	newPage(ctx);
 
-	// Logo image or monogram
-	if (logoImage) {
-		const logoDims = logoImage.scaleToFit(160, 44);
-		page.drawImage(logoImage, {
-			x: M,
-			y: H - HEADER_H + (HEADER_H - logoDims.height) / 2,
-			width: logoDims.width,
-			height: logoDims.height
-		});
+	const c = {
+		name: candidate.fullName ?? candidate.email,
+		contact: candidate.mobile ? `+91 ${candidate.mobile}` : '',
+		email: candidate.email
+	};
+
+	const track = candidate.track as Track;
+	if (track === 'intern') {
+		renderInternship(ctx, c, offer, ctx.companyName);
+	} else if (track === 'consultant') {
+		renderConsultant(ctx, c, offer, ctx.companyName);
 	} else {
-		page.drawText(brand.logo.monogram, {
-			x: M, y: H - HEADER_H + 28,
-			font: fontBold, size: 22, color: white
-		});
+		renderOfferOfAppointment(ctx, c, offer, ctx.companyName);
 	}
 
-	// Company name right-aligned in header
-	const coNameW = widthOf(fontRegular, companyName, 8.5);
-	page.drawText(companyName, {
-		x: W - M - coNameW, y: H - HEADER_H + 14,
-		font: fontRegular, size: 8.5, color: rgb(0.8, 0.8, 0.8)
-	});
-
-	// ── Accent stripe ─────────────────────────────────────────────────────────
-	page.drawRectangle({ x: 0, y: H - HEADER_H - 3, width: W, height: 3, color: primaryColor });
-
-	// ── Footer bar ────────────────────────────────────────────────────────────
-	page.drawRectangle({ x: 0, y: 0, width: W, height: FOOTER_H, color: inkColor });
-	const footerText = `${companyName} — Confidential`;
-	const footerW = widthOf(fontRegular, footerText, 7.5);
-	page.drawText(footerText, {
-		x: (W - footerW) / 2, y: 9,
-		font: fontRegular, size: 7.5, color: rgb(0.6, 0.6, 0.6)
-	});
-
-	// ── Content cursor ────────────────────────────────────────────────────────
-	let y = H - HEADER_H - 3 - 22; // start just below accent stripe
-
-	// ── Date ─────────────────────────────────────────────────────────────────
-	const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-	const dateStr = `Date: ${today}`;
-	const dateW = widthOf(fontRegular, dateStr, 9);
-	page.drawText(dateStr, { x: W - M - dateW, y, font: fontRegular, size: 9, color: grey });
-	y -= 24;
-
-	// ── Letter title ─────────────────────────────────────────────────────────
-	const letterType = LETTER_TYPE_BY_TRACK[candidate.track as Track];
-	const titleText = letterType.toUpperCase();
-	const titleW = widthOf(fontBold, titleText, 15);
-	page.drawText(titleText, { x: (W - titleW) / 2, y, font: fontBold, size: 15, color: inkColor });
-	y -= 8;
-
-	// Rule under title
-	page.drawRectangle({ x: M, y, width: CW, height: 0.75, color: primaryColor });
-	y -= 18;
-
-	// ── To: address block ────────────────────────────────────────────────────
-	const candidateName = candidate.fullName ?? candidate.email;
-	page.drawText('To,', { x: M, y, font: fontRegular, size: 10, color: black });
-	y -= 14;
-	page.drawText(candidateName, { x: M, y, font: fontBold, size: 10, color: black });
-	y -= 14;
-	if (candidate.presentAddress) {
-		const addrLines = wrapText(candidate.presentAddress, CW * 0.55, 9.5, 0.52);
-		for (const line of addrLines) {
-			page.drawText(line, { x: M, y, font: fontRegular, size: 9.5, color: grey });
-			y -= 13;
+	// Optional: stamp the uploaded signature image near the last employer sig line.
+	// (Kept simple — appended on the final page top-right of the sig area.)
+	if (offer.signatoryImageBase64) {
+		const sigBytes = dataUriToBytes(offer.signatoryImageBase64);
+		if (sigBytes) {
+			try {
+				const sigImg = await doc.embedPng(sigBytes).catch(() => doc.embedJpg(sigBytes));
+				const dims = sigImg.scaleToFit(140, 44);
+				ctx.page.drawImage(sigImg, { x: ctx.M, y: Math.max(ctx.y + 6, ctx.bottomY + 6), width: dims.width, height: dims.height });
+			} catch { /* ignore bad signature image */ }
 		}
 	}
-	y -= 10;
 
-	// ── Salutation ────────────────────────────────────────────────────────────
-	page.drawText(`Dear ${candidateName},`, { x: M, y, font: fontRegular, size: 10.5, color: black });
-	y -= 18;
-
-	// ── Opening paragraph ────────────────────────────────────────────────────
-	const openingLines = wrapText(
-		`We are pleased to extend this ${letterType} to you for the position of ${offer.jobTitle || '___________'} in the ${offer.department || '___________'} department at ${companyName}. We look forward to you joining our team.`,
-		CW, 10, 0.52
-	);
-	for (const line of openingLines) {
-		page.drawText(line, { x: M, y, font: fontRegular, size: 10, color: black });
-		y -= 14;
-	}
-	y -= 10;
-
-	// ── Employment details heading ─────────────────────────────────────────────
-	page.drawText('EMPLOYMENT DETAILS', { x: M, y, font: fontBold, size: 10, color: inkColor });
-	y -= 6;
-	page.drawRectangle({ x: M, y, width: CW, height: 0.75, color: primaryColor });
-	y -= 6;
-
-	// ── Details table ─────────────────────────────────────────────────────────
-	const compensationLabel = COMPENSATION_LABEL_BY_TRACK[candidate.track as Track];
-	const rows: Array<[string, string]> = [
-		['Date of Joining', offer.joiningDate || '—'],
-		['Office Location', offer.officeLocation || '—'],
-		['Reporting Manager', offer.reportingManager || '—'],
-		['Employment Type', offer.employmentType ? EMPLOYMENT_TYPE_LABELS[offer.employmentType] : '—'],
-		[compensationLabel, offer.ctcAmount ? `${formatCurrency(offer.ctcAmount)} per annum` : '—'],
-		['Notice Period', offer.noticePeriod ? formatNoticePeriod(offer.noticePeriod) : '—'],
-		['Acceptance Due Date', offer.acceptanceDueDate || '—'],
-		...(offer.endDate ? [['End Date', offer.endDate] as [string, string]] : [])
-	];
-
-	const ROW_H = 22;
-	const colVal = M + CW * 0.46;
-
-	for (let i = 0; i < rows.length; i++) {
-		const [label, value] = rows[i];
-		// Alternating row background
-		if (i % 2 === 0) {
-			page.drawRectangle({ x: M, y: y - ROW_H + 5, width: CW, height: ROW_H, color: rowBg });
-		}
-		// Left accent stripe
-		page.drawRectangle({ x: M, y: y - ROW_H + 5, width: 3, height: ROW_H, color: i % 2 === 0 ? primaryColor : rgb(0.88, 0.88, 0.88) });
-		page.drawText(label, { x: M + 8, y: y - 7, font: fontRegular, size: 9.5, color: grey });
-		page.drawText(value, { x: colVal, y: y - 7, font: fontBold, size: 9.5, color: black });
-		y -= ROW_H;
-	}
-
-	// Bottom rule of table
-	page.drawRectangle({ x: M, y, width: CW, height: 0.75, color: rgb(0.85, 0.85, 0.85) });
-	y -= 16;
-
-	// ── Body paragraph ────────────────────────────────────────────────────────
-	const bodyLines = wrapText(
-		`We are confident that your skills and experience will be a valuable addition to our team. Please confirm your acceptance of this offer by signing and returning a copy of this letter by ${offer.acceptanceDueDate || 'the stated date'}. We are excited to welcome you aboard and look forward to working together.`,
-		CW, 10, 0.52
-	);
-	for (const line of bodyLines) {
-		page.drawText(line, { x: M, y, font: fontRegular, size: 10, color: black });
-		y -= 14;
-	}
-	y -= 16;
-
-	// ── Signatory ─────────────────────────────────────────────────────────────
-	page.drawText('Yours sincerely,', { x: M, y, font: fontRegular, size: 10, color: black });
-	y -= 14;
-
-	if (sigImage) {
-		try {
-			const sigDims = sigImage.scaleToFit(160, 52);
-			page.drawImage(sigImage, { x: M, y: y - sigDims.height, width: sigDims.width, height: sigDims.height });
-			y -= sigDims.height + 8;
-		} catch {
-			y -= 52;
-		}
-	} else {
-		y -= 52; // blank space for wet signature
-	}
-
-	// Signature rule
-	page.drawRectangle({ x: M, y, width: 150, height: 0.75, color: rgb(0.67, 0.67, 0.67) });
-	y -= 12;
-	page.drawText(offer.signatoryName || companyName, { x: M, y, font: fontBold, size: 10, color: black });
-	y -= 13;
-	if (offer.signatoryDesignation) {
-		page.drawText(offer.signatoryDesignation, { x: M, y, font: fontRegular, size: 9, color: grey });
-		y -= 13;
-	}
-	page.drawText(companyName, { x: M, y, font: fontRegular, size: 9, color: lightGrey });
-	y -= 24;
-
-	// ── Acceptance block ──────────────────────────────────────────────────────
-	if (y > FOOTER_H + 80) {
-		page.drawRectangle({ x: M, y, width: CW, height: 0.75, color: rgb(0.85, 0.85, 0.85) });
-		y -= 14;
-		page.drawText('ACCEPTANCE', { x: M, y, font: fontBold, size: 9, color: grey });
-		y -= 14;
-
-		const acceptLines = wrapText(
-			`I, ${candidateName}, hereby accept the offer of employment as stated above and confirm that the details provided are accurate.`,
-			CW, 9, 0.52
-		);
-		for (const line of acceptLines) {
-			page.drawText(line, { x: M, y, font: fontRegular, size: 9, color: grey });
-			y -= 13;
-		}
-		y -= 24;
-
-		// Candidate sig + date lines
-		const lineW = 155;
-		page.drawRectangle({ x: M, y, width: lineW, height: 0.75, color: rgb(0.67, 0.67, 0.67) });
-		page.drawRectangle({ x: M + lineW + 40, y, width: lineW, height: 0.75, color: rgb(0.67, 0.67, 0.67) });
-		y -= 12;
-		page.drawText('Signature', { x: M, y, font: fontRegular, size: 8.5, color: lightGrey });
-		page.drawText('Date', { x: M + lineW + 40, y, font: fontRegular, size: 8.5, color: lightGrey });
-	}
-
-	const pdfBytes = await pdfDoc.save();
-	return pdfBytes;
+	return doc.save();
 }
+
+// Re-export so existing imports of EMPLOYMENT_TYPE_LABELS via this module still work.
+export { EMPLOYMENT_TYPE_LABELS };

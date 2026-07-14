@@ -46,6 +46,10 @@ export interface OfferLetterInput {
 	signatoryDesignation: string;
 	/** PNG/JPG signature image stored as a data-URI (base64). Optional. */
 	signatoryImageBase64: string;
+	/** Consultant-only: clause-3 weekly expectation line (e.g. "Minimum 04 Content per Week"). */
+	weeklyExpectation: string;
+	/** Consultant-only: clause-4 key responsibilities, one bullet per line. */
+	keyResponsibilities: string;
 }
 
 /** Fields required before an offer letter can be sent (all recruiter inputs). */
@@ -76,7 +80,9 @@ export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> =
 	acceptanceDueDate: 'Acceptance due date',
 	signatoryName: 'Authorized signatory name',
 	signatoryDesignation: "Signatory's designation",
-	signatoryImageBase64: 'Signature image'
+	signatoryImageBase64: 'Signature image',
+	weeklyExpectation: 'Weekly expectation',
+	keyResponsibilities: 'Key responsibilities'
 };
 
 export function missingOfferLetterFields(input: OfferLetterInput): string[] {
@@ -99,7 +105,9 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 		acceptanceDueDate: draft?.acceptanceDueDate ?? '',
 		signatoryName: draft?.signatoryName ?? '',
 		signatoryDesignation: draft?.signatoryDesignation ?? '',
-		signatoryImageBase64: draft?.signatoryImageBase64 ?? ''
+		signatoryImageBase64: draft?.signatoryImageBase64 ?? '',
+		weeklyExpectation: draft?.weeklyExpectation ?? '',
+		keyResponsibilities: draft?.keyResponsibilities ?? ''
 	};
 }
 
