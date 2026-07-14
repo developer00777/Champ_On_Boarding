@@ -41,11 +41,30 @@ function dataUriToBytes(dataUri: string): Uint8Array | null {
 function formatCurrency(raw: string): string {
 	const num = parseInt(raw.replace(/[^0-9]/g, ''), 10);
 	if (isNaN(num)) return raw;
-	return '₹' + num.toLocaleString('en-IN');
+	// Use "Rs." not the ₹ glyph — pdf-lib StandardFonts use WinAnsi encoding
+	// which cannot encode U+20B9 (₹) and throws at draw time.
+	return 'Rs. ' + num.toLocaleString('en-IN');
 }
 
 function formatNoticePeriod(raw: string): string {
 	return /^\d+$/.test(raw.trim()) ? `${raw.trim()} days` : raw;
+}
+
+// pdf-lib StandardFonts use WinAnsi (cp1252) encoding and throw on any
+// character outside it (₹, curly quotes, em-dash, emoji, non-Latin scripts).
+// Map the common ones to safe equivalents and strip everything else so a
+// stray character in a name/address never crashes PDF generation.
+function sanitize(text: string): string {
+	return (text ?? '')
+		.replace(/₹/g, 'Rs.')
+		.replace(/[‘’‚‛]/g, "'")   // curly single quotes
+		.replace(/[“”„‟]/g, '"')   // curly double quotes
+		.replace(/[–—―]/g, '-')          // en/em dashes
+		.replace(/[…]/g, '...')                    // ellipsis
+		.replace(/[ ]/g, ' ')                      // non-breaking space
+		.replace(/[•]/g, '-')                      // bullet
+		// Drop any remaining char outside the Latin-1 range WinAnsi can render
+		.replace(/[^\x09\x0A\x0D\x20-\x7E¡-ÿ]/g, '');
 }
 
 // pdf-lib text wrapping helper
@@ -106,6 +125,16 @@ export async function generateOfferLetterPdf(
 	const [W, H] = PageSizes.A4; // 595.28 x 841.89
 	const page = pdfDoc.addPage([W, H]);
 
+	// Auto-sanitize every drawn string so an unencodable character (₹, curly
+	// quote, emoji, non-Latin script) in any field can never crash the render.
+	const origDrawText = page.drawText.bind(page);
+	page.drawText = ((text: string, options?: Parameters<typeof origDrawText>[1]) =>
+		origDrawText(sanitize(text), options)) as typeof page.drawText;
+
+	// Safe text-width measurement (widthOfTextAtSize also throws on bad chars).
+	const widthOf = (font: typeof fontRegular, str: string, size: number) =>
+		font.widthOfTextAtSize(sanitize(str), size);
+
 	// Colours
 	const [pr, pg, pb] = hexToRgb(brand.colors.primary);
 	const [ir, ig, ib] = hexToRgb(brand.colors.ink);
@@ -142,7 +171,7 @@ export async function generateOfferLetterPdf(
 	}
 
 	// Company name right-aligned in header
-	const coNameW = fontRegular.widthOfTextAtSize(companyName, 8.5);
+	const coNameW = widthOf(fontRegular, companyName, 8.5);
 	page.drawText(companyName, {
 		x: W - M - coNameW, y: H - HEADER_H + 14,
 		font: fontRegular, size: 8.5, color: rgb(0.8, 0.8, 0.8)
@@ -154,7 +183,7 @@ export async function generateOfferLetterPdf(
 	// ── Footer bar ────────────────────────────────────────────────────────────
 	page.drawRectangle({ x: 0, y: 0, width: W, height: FOOTER_H, color: inkColor });
 	const footerText = `${companyName} — Confidential`;
-	const footerW = fontRegular.widthOfTextAtSize(footerText, 7.5);
+	const footerW = widthOf(fontRegular, footerText, 7.5);
 	page.drawText(footerText, {
 		x: (W - footerW) / 2, y: 9,
 		font: fontRegular, size: 7.5, color: rgb(0.6, 0.6, 0.6)
@@ -166,14 +195,14 @@ export async function generateOfferLetterPdf(
 	// ── Date ─────────────────────────────────────────────────────────────────
 	const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 	const dateStr = `Date: ${today}`;
-	const dateW = fontRegular.widthOfTextAtSize(dateStr, 9);
+	const dateW = widthOf(fontRegular, dateStr, 9);
 	page.drawText(dateStr, { x: W - M - dateW, y, font: fontRegular, size: 9, color: grey });
 	y -= 24;
 
 	// ── Letter title ─────────────────────────────────────────────────────────
 	const letterType = LETTER_TYPE_BY_TRACK[candidate.track as Track];
 	const titleText = letterType.toUpperCase();
-	const titleW = fontBold.widthOfTextAtSize(titleText, 15);
+	const titleW = widthOf(fontBold, titleText, 15);
 	page.drawText(titleText, { x: (W - titleW) / 2, y, font: fontBold, size: 15, color: inkColor });
 	y -= 8;
 

@@ -24,10 +24,13 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 
 	const input = offerLetterInputFromDraft(draft);
 	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
+	// Copy into a standalone ArrayBuffer — an unambiguous BodyInit that both
+	// TypeScript and every JS runtime treat as binary (never JSON-serialised).
+	const body = pdfBytes.slice().buffer;
 
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
 
-	return new Response(pdfBytes, {
+	return new Response(body, {
 		headers: {
 			'Content-Type': 'application/pdf',
 			'Content-Disposition': `attachment; filename="${safeName}_offer_letter.pdf"`,

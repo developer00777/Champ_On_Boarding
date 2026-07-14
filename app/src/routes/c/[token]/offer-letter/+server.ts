@@ -21,13 +21,14 @@ export const GET: RequestHandler = async ({ params }) => {
 
 	const input = offerLetterInputFromDraft(draft);
 	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
+	const body = pdfBytes.slice().buffer;
 
 	const safeName = (candidate.fullName ?? candidate.email)
 		.replace(/[^a-zA-Z0-9 ]/g, '')
 		.trim()
 		.replace(/\s+/g, '_');
 
-	return new Response(pdfBytes, {
+	return new Response(body, {
 		headers: {
 			'Content-Type': 'application/pdf',
 			'Content-Disposition': `attachment; filename="${safeName}_offer_letter.pdf"`,
