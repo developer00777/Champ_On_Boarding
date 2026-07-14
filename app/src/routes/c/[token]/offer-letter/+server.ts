@@ -4,7 +4,7 @@
 import { error } from '@sveltejs/kit';
 
 // Force Node.js runtime — pdfkit uses Node streams, incompatible with Edge
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'nodejs24.x' };
 import type { RequestHandler } from './$types';
 import { Company, OfferLetter } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';

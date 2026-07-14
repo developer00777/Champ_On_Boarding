@@ -3,7 +3,7 @@
 import { error } from '@sveltejs/kit';
 
 // Force Node.js runtime — PizZip + GridFS use Node APIs, incompatible with Edge
-export const config = { runtime: 'nodejs' };
+export const config = { runtime: 'nodejs24.x' };
 import { ObjectId } from 'mongodb';
 import type { RequestHandler } from './$types';
 import { Candidate } from '$lib/server/db/schema';
