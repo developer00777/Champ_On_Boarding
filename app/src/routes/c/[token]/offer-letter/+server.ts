@@ -2,6 +2,9 @@
 // Only served once the HR team has marked the offer letter as 'sent'.
 // No admin session required; the onboarding token is the auth credential.
 import { error } from '@sveltejs/kit';
+
+// Force Node.js runtime — pdfkit uses Node streams, incompatible with Edge
+export const config = { runtime: 'nodejs' };
 import type { RequestHandler } from './$types';
 import { Company, OfferLetter } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';

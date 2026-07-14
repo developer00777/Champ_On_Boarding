@@ -1,6 +1,9 @@
 // Streams all of a candidate's uploaded documents as a single ZIP archive.
 // Available to HR admins for any candidate status — no employee code required.
 import { error } from '@sveltejs/kit';
+
+// Force Node.js runtime — PizZip + GridFS use Node APIs, incompatible with Edge
+export const config = { runtime: 'nodejs' };
 import { ObjectId } from 'mongodb';
 import type { RequestHandler } from './$types';
 import { Candidate } from '$lib/server/db/schema';
