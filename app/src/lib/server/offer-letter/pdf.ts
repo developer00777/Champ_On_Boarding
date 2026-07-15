@@ -155,6 +155,13 @@ interface Ctx {
 	primaryColor: ReturnType<typeof rgb>;
 	brand: BrandTheme;
 	companyName: string;
+	/** Body text size for this letter. Per-track: the intern agreement runs
+	 *  larger so it fills its pinned pages (see INTERN_BODY_SIZE). */
+	bodySize: number;
+	/** Multiplier on the space between blocks (paragraphs, clauses, bullets).
+	 *  The intern letter opens this up so its clauses reach the bottom margin
+	 *  the way the signed original's do, instead of stopping ~30% short. */
+	blockGap: number;
 }
 
 const BLACK = rgb(0.13, 0.13, 0.13);
@@ -163,6 +170,31 @@ const LIGHT = rgb(0.6, 0.6, 0.6);
 
 const HEADER_H = 66;
 const FOOTER_H = 26;
+
+/** Default body text size. The offer-of-appointment and consultant letters are
+ *  long enough to fill their pages at this size. */
+const BODY_SIZE = 9.5;
+
+/** The internship agreement is short, and its page breaks are pinned to the
+ *  signed original's (see renderInternship). At BODY_SIZE the text ran out
+ *  ~40% up each page and the pinned breaks left a dead band below it, so the
+ *  intern letter is set at the Word original's ~11pt and fills the page the
+ *  way the real document does. */
+const INTERN_BODY_SIZE = 11;
+
+/** Space between the intern letter's blocks, as a multiple of the default. The
+ *  signed original runs its clauses down to the bottom margin; at 1.0 the text
+ *  stopped ~40% up each page and the pinned breaks left a dead band below it.
+ *  Tuned against the real content: this is the widest rhythm that still fits the
+ *  three pinned pages — past ~3.5 the acceptance block overflows to a 4th/5th. */
+const INTERN_BLOCK_GAP = 3.0;
+
+/** Gap between wrapped lines for a given type size. Anchored so BODY_SIZE still
+ *  returns the 3.5pt the appointment/consultant letters were tuned against —
+ *  deriving it as a flat ratio drifted their glyphs by ~0.5pt for no reason. */
+function leadingFor(size: number): number {
+	return 3.5 * (size / BODY_SIZE);
+}
 
 function drawChrome(ctx: Ctx, page: PDFPage) {
 	const { W, H, M, brand, companyName } = ctx;
@@ -220,11 +252,11 @@ function para(
 	text: string,
 	opts: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; indent?: number; gapAfter?: number; lineGap?: number } = {}
 ) {
-	const size = opts.size ?? 9.5;
+	const size = opts.size ?? ctx.bodySize;
 	const font = opts.font ?? ctx.fontR;
 	const color = opts.color ?? BLACK;
 	const indent = opts.indent ?? 0;
-	const lineGap = opts.lineGap ?? 3.5;
+	const lineGap = opts.lineGap ?? leadingFor(size);
 	const maxW = ctx.CW - indent;
 	const lines = wrap(ctx, text, font, size, maxW);
 	for (const line of lines) {
@@ -232,13 +264,13 @@ function para(
 		ctx.page.drawText(line, { x: ctx.M + indent, y: ctx.y, font, size, color });
 		ctx.y -= size + lineGap;
 	}
-	ctx.y -= opts.gapAfter ?? 6;
+	ctx.y -= (opts.gapAfter ?? 6) * ctx.blockGap;
 }
 
 /** A numbered/lettered clause: marker in the gutter, text hanging-indented. */
 function clause(ctx: Ctx, marker: string, text: string, opts: { size?: number; gapAfter?: number } = {}) {
-	const size = opts.size ?? 9.5;
-	const lineGap = 3.5;
+	const size = opts.size ?? ctx.bodySize;
+	const lineGap = leadingFor(size);
 	const gutter = ctx.fontR.widthOfTextAtSize(marker + ' ', size) + 2;
 	const maxW = ctx.CW - gutter;
 	const lines = wrap(ctx, text, ctx.fontR, size, maxW);
@@ -253,13 +285,13 @@ function clause(ctx: Ctx, marker: string, text: string, opts: { size?: number; g
 		ctx.page.drawText(lines[i], { x: ctx.M + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
 		ctx.y -= size + lineGap;
 	}
-	ctx.y -= opts.gapAfter ?? 5;
+	ctx.y -= (opts.gapAfter ?? 5) * ctx.blockGap;
 }
 
 /** Bullet point (hanging indent under a dash). */
 function bullet(ctx: Ctx, text: string, opts: { size?: number; indent?: number } = {}) {
-	const size = opts.size ?? 9.5;
-	const lineGap = 3.5;
+	const size = opts.size ?? ctx.bodySize;
+	const lineGap = leadingFor(size);
 	const indent = opts.indent ?? 16;
 	const gutter = 10;
 	const maxW = ctx.CW - indent - gutter;
@@ -273,7 +305,7 @@ function bullet(ctx: Ctx, text: string, opts: { size?: number; indent?: number }
 		ctx.page.drawText(lines[i], { x: ctx.M + indent + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
 		ctx.y -= size + lineGap;
 	}
-	ctx.y -= 3;
+	ctx.y -= 3 * ctx.blockGap;
 }
 
 /** Centered, underlined section heading. */
@@ -291,21 +323,24 @@ function heading(ctx: Ctx, text: string, opts: { size?: number } = {}) {
 
 /** Left bold sub-heading. */
 function subHeading(ctx: Ctx, text: string, opts: { size?: number; gapAfter?: number } = {}) {
-	const size = opts.size ?? 10;
+	// Track the body size (+0.5 to sit just above it) rather than a fixed 10pt,
+	// which read as smaller than the intern letter's 11pt body text.
+	const size = opts.size ?? ctx.bodySize + 0.5;
 	ensure(ctx, size + 8);
 	ctx.page.drawText(sanitize(text), { x: ctx.M, y: ctx.y, font: ctx.fontB, size, color: BLACK });
-	ctx.y -= size + (opts.gapAfter ?? 6);
+	ctx.y -= size + (opts.gapAfter ?? 6) * ctx.blockGap;
 }
 
 /** A signature line + caption. Returns after advancing the cursor. */
 function signatureLine(ctx: Ctx, caption: string, opts: { width?: number; bold?: boolean } = {}) {
 	const width = opts.width ?? 200;
-	ensure(ctx, 30);
-	ctx.y -= 14; // space above the line
+	const above = 14 * ctx.blockGap; // room to actually sign
+	ensure(ctx, above + 18);
+	ctx.y -= above;
 	ctx.page.drawRectangle({ x: ctx.M, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
 	ctx.y -= 12;
 	ctx.page.drawText(sanitize(caption), {
-		x: ctx.M, y: ctx.y, font: opts.bold ? ctx.fontB : ctx.fontR, size: 9.5, color: BLACK
+		x: ctx.M, y: ctx.y, font: opts.bold ? ctx.fontB : ctx.fontR, size: ctx.bodySize, color: BLACK
 	});
 	ctx.y -= 16;
 }
@@ -324,14 +359,15 @@ function pageBreak(ctx: Ctx) {
  *  internship agreement repeats mid-document so each page carries a sign-off. */
 function signatureLineRight(ctx: Ctx, caption: string, opts: { width?: number } = {}) {
 	const width = opts.width ?? 170;
-	ensure(ctx, 34);
-	ctx.y -= 14;
+	const above = 14 * ctx.blockGap;
+	ensure(ctx, above + 20);
+	ctx.y -= above;
 	const x = ctx.W - ctx.M - width;
 	ctx.page.drawRectangle({ x, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
 	ctx.y -= 12;
 	const t = sanitize(caption);
-	const tw = ctx.fontB.widthOfTextAtSize(t, 9.5);
-	ctx.page.drawText(t, { x: x + (width - tw) / 2, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
+	const tw = ctx.fontB.widthOfTextAtSize(t, ctx.bodySize);
+	ctx.page.drawText(t, { x: x + (width - tw) / 2, y: ctx.y, font: ctx.fontB, size: ctx.bodySize, color: BLACK });
 	ctx.y -= 16;
 }
 
@@ -346,25 +382,28 @@ function signatureColumns(
 	const colW = 170;
 	const leftX = ctx.M;
 	const rightX = ctx.M + ctx.CW - colW;
-	ensure(ctx, opts.dateRow ? 60 : 34);
-	ctx.y -= 14;
+	// Room to actually sign above each rule, scaled per track. The rule→caption
+	// distance stays fixed so the caption never drifts off its own line.
+	const above = 14 * ctx.blockGap;
+	ensure(ctx, above + (opts.dateRow ? 46 : 20));
+	ctx.y -= above;
 	for (const x of [leftX, rightX]) {
 		ctx.page.drawRectangle({ x, y: ctx.y, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
 	}
 	ctx.y -= 12;
 	for (const [x, label] of [[leftX, left], [rightX, right]] as const) {
 		const t = sanitize(label);
-		const tw = ctx.fontB.widthOfTextAtSize(t, 9.5);
-		ctx.page.drawText(t, { x: x + (colW - tw) / 2, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
+		const tw = ctx.fontB.widthOfTextAtSize(t, ctx.bodySize);
+		ctx.page.drawText(t, { x: x + (colW - tw) / 2, y: ctx.y, font: ctx.fontB, size: ctx.bodySize, color: BLACK });
 	}
-	ctx.y -= 18;
+	ctx.y -= 18 * ctx.blockGap;
 	if (opts.dateRow) {
 		for (const x of [leftX, rightX]) {
 			ctx.page.drawText(sanitize('Date: _____________________'), {
-				x, y: ctx.y, font: ctx.fontR, size: 9.5, color: BLACK
+				x, y: ctx.y, font: ctx.fontR, size: ctx.bodySize, color: BLACK
 			});
 		}
-		ctx.y -= 18;
+		ctx.y -= 18 * ctx.blockGap;
 	}
 }
 
@@ -385,7 +424,7 @@ function drawApplicantHeader(
 	const labelName = opts.internLabels ? 'Intern Name' : 'Name';
 	const labelContact = opts.internLabels ? 'Intern Contact No.' : 'Contact No';
 	const labelEmail = opts.internLabels ? 'Intern Email Address' : 'Email ID';
-	const size = 9.5;
+	const size = ctx.bodySize;
 
 	// Place (left) + Date (right) row for internship-style header
 	if (opts.place !== undefined) {
@@ -550,14 +589,16 @@ function renderInternship(
 	// Measure the heading + paragraph + every bullet so the list never orphans a
 	// criterion onto the next page. Measured, not guessed: recruiters can add or
 	// reword bullets, and a hardcoded height would silently stop matching.
+	// Derived from ctx.bodySize so the math follows the type size.
+	const lineH = ctx.bodySize + leadingFor(ctx.bodySize); // exactly what para()/bullet() advance
 	const bulletLines = criteria.reduce(
-		(n, cr) => n + wrap(ctx, cr, ctx.fontR, 9.5, ctx.CW - 26).length,
+		(n, cr) => n + wrap(ctx, cr, ctx.fontR, ctx.bodySize, ctx.CW - 26).length,
 		0
 	);
 	const internAgreementNeed =
-		16 + // "Intern Agreement:" sub-heading
-		wrap(ctx, internAgreementText, ctx.fontR, 9.5, ctx.CW).length * 13 +
-		bulletLines * 13 +
+		ctx.bodySize + 6 + // "Intern Agreement:" sub-heading
+		wrap(ctx, internAgreementText, ctx.fontR, ctx.bodySize, ctx.CW).length * lineH +
+		bulletLines * lineH +
 		criteria.length * 3 +
 		6;
 
@@ -761,6 +802,8 @@ export async function generateOfferLetterPdf(
 	const [pr, pg, pb] = hexToRgb(brand.colors.primary);
 	const [ir, ig, ib] = hexToRgb(brand.colors.ink);
 
+	const track = candidate.track as Track;
+
 	const ctx: Ctx = {
 		doc,
 		page: null as unknown as PDFPage,
@@ -777,7 +820,9 @@ export async function generateOfferLetterPdf(
 		inkColor: rgb(ir, ig, ib),
 		primaryColor: rgb(pr, pg, pb),
 		brand,
-		companyName: sanitize(companyName)
+		companyName: sanitize(companyName),
+		bodySize: track === 'intern' ? INTERN_BODY_SIZE : BODY_SIZE,
+		blockGap: track === 'intern' ? INTERN_BLOCK_GAP : 1
 	};
 
 	// First page
@@ -789,7 +834,6 @@ export async function generateOfferLetterPdf(
 		email: candidate.email
 	};
 
-	const track = candidate.track as Track;
 	if (track === 'intern') {
 		renderInternship(ctx, c, offer, ctx.companyName);
 	} else if (track === 'consultant') {
