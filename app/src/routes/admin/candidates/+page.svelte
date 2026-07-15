@@ -158,8 +158,12 @@
 		background: var(--purple);
 		color: #fff;
 	}
+	/* The global input/select rule sets width:100%, which stretches these across
+	   the row; a filter control should be as wide as its content. */
 	.filterbar select {
-		border: 1px solid var(--border-2);
+		width: auto;
+		min-width: 130px;
+		border: 1.5px solid var(--border-2);
 		border-radius: 9px;
 		padding: 7px 10px;
 		font-size: 12.5px;

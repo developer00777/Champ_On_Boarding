@@ -27,8 +27,10 @@
 	}
 </script>
 
-<h1 class="page-title">Candidates</h1>
-<p class="muted" style="margin:0 0 22px;font-size:14px">Generate onboarding links and review submissions.</p>
+<h1 class="page-title">Home</h1>
+<p class="muted" style="margin:0 0 22px;font-size:14px">
+	Where onboarding stands, and the link you send to start one.
+</p>
 
 <div class="stats">
 	{#each stats as s}
@@ -116,10 +118,24 @@
 </section>
 
 <style>
-	.page-title {
-		font-size: 30px;
-		font-weight: 800;
-		margin: 0 0 4px;
+	.recent-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 12px 18px 10px;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--ink);
+	}
+	.seeall {
+		font-size: 12.5px;
+		font-weight: 650;
+		color: var(--purple);
+		text-decoration: none;
+	}
+	.seeall:hover {
+		text-decoration: underline;
 	}
 	.stats {
 		display: grid;
@@ -181,107 +197,12 @@
 		cursor: pointer;
 		text-decoration: none;
 	}
-	.co-list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.co-row {
-		display: grid;
-		grid-template-columns: 1.5fr 1fr auto auto;
-		gap: 12px;
-		align-items: center;
-	}
-	.co-name {
-		display: flex;
-		align-items: center;
-		gap: 9px;
-		font-weight: 700;
-		font-size: 14px;
-	}
-	.co-swatch {
-		width: 14px;
-		height: 14px;
-		border-radius: 4px;
-		flex-shrink: 0;
-		border: 1px solid var(--border);
-	}
-	.saved-chip {
-		font-size: 12px;
-		font-weight: 700;
-		color: var(--teal);
-	}
-	.add-co-grid {
-		display: grid;
-		grid-template-columns: 1.5fr 1fr auto;
-		gap: 12px;
-		align-items: end;
-	}
-	.table-card {
-		background: #fff;
-		border: 1px solid var(--border);
-		border-radius: 20px;
-		padding: 8px 8px 6px;
-		box-shadow: 0 4px 12px rgba(11, 7, 24, 0.05);
-		overflow: hidden;
-	}
-	.thead,
-	.trow {
-		display: grid;
-		grid-template-columns: 1.6fr 1fr 0.8fr 1.2fr 0.7fr auto;
-		gap: 12px;
-		padding: 14px 18px;
-		align-items: center;
-	}
-	.thead {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--smoke);
-	}
-	.trow {
-		border-top: 1px solid var(--mist);
-		text-decoration: none;
-		border-radius: 12px;
-		transition: background 0.15s;
-	}
-	.trow:hover {
-		background: #faf8fd;
-	}
-	.tcell {
-		font-size: 13px;
-		color: var(--fg-2);
-	}
-	.review-cta {
-		color: var(--purple);
-		font-weight: 700;
-		font-size: 13px;
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		justify-self: end;
-	}
 	@media (max-width: 900px) {
 		.stats {
 			grid-template-columns: repeat(2, 1fr);
 		}
 		.gen-grid {
 			grid-template-columns: 1fr 1fr;
-		}
-		.co-row,
-		.add-co-grid {
-			grid-template-columns: 1fr;
-		}
-		.thead {
-			display: none;
-		}
-		.trow {
-			grid-template-columns: 1fr auto;
-			row-gap: 4px;
-		}
-		.tcell {
-			display: none;
 		}
 	}
 </style>

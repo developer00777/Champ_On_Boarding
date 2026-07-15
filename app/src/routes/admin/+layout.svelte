@@ -164,9 +164,76 @@
 		color: #fff;
 	}
 	.content {
-		padding: 28px 24px 80px;
-		max-width: 1180px;
+		padding: 28px 28px 80px;
 		width: 100%;
+		min-width: 0;
+	}
+
+	/* Shared admin chrome. These live here rather than in each page's scoped
+	   <style> because Home, Candidates and Entities all render the same table and
+	   headings — duplicating them per page is how they silently drift apart. */
+	.content :global(.page-title) {
+		font-size: 26px;
+		font-weight: 800;
+		margin: 0 0 4px;
+		letter-spacing: -0.02em;
+	}
+	.content :global(.table-card) {
+		background: #fff;
+		border: 1px solid var(--border);
+		border-radius: 20px;
+		padding: 8px 8px 6px;
+		box-shadow: 0 4px 12px rgba(11, 7, 24, 0.05);
+		overflow: hidden;
+	}
+	.content :global(.thead),
+	.content :global(.trow) {
+		display: grid;
+		grid-template-columns: 1.6fr 1fr 0.8fr 1.2fr 0.7fr auto;
+		gap: 12px;
+		padding: 14px 18px;
+		align-items: center;
+	}
+	.content :global(.thead) {
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--smoke);
+	}
+	.content :global(.trow) {
+		border-top: 1px solid var(--mist);
+		text-decoration: none;
+		border-radius: 12px;
+		transition: background 0.15s;
+	}
+	.content :global(.trow:hover) {
+		background: #faf8fd;
+	}
+	.content :global(.tcell) {
+		font-size: 13px;
+		color: var(--fg-2);
+	}
+	.content :global(.review-cta) {
+		color: var(--purple);
+		font-weight: 700;
+		font-size: 13px;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		justify-self: end;
+	}
+	@media (max-width: 900px) {
+		.content :global(.thead) {
+			display: none;
+		}
+		.content :global(.trow) {
+			grid-template-columns: 1fr auto;
+			row-gap: 4px;
+		}
+		.content :global(.tcell) {
+			display: none;
+		}
 	}
 
 	@media (max-width: 820px) {

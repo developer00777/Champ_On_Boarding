@@ -292,6 +292,13 @@
 		align-items: center;
 		gap: 6px;
 	}
+	/* Opt out of the global width:100% on selects — these sit inline in a row. */
+	.ent-form select {
+		width: auto;
+		min-width: 150px;
+		padding: 7px 10px;
+		font-size: 12.5px;
+	}
 	.filebtn {
 		position: relative;
 		overflow: hidden;
