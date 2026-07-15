@@ -8,6 +8,10 @@ node_modules/
 #   cd app && npx vite-node scripts/gen-offer-samples.ts
 offer_samples/
 
+# Throwaway UI mockups used to agree a design before building it. The real
+# pages are the source of truth; these go stale the moment they change.
+design/
+
 # Real candidates' signed letters/agreements are personal data and must never
 # be committed. Keep reference copies outside the repo.
 *.pdf

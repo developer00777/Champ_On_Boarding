@@ -8,6 +8,11 @@ const companySchema = new Schema(
 	{
 		name: { type: String, required: true, unique: true },
 		brandSlug: { type: String, default: null },
+		// Logo uploaded when the company was added, as a data-URI. Brands in
+		// brands.ts ship their own logo file; this covers companies added from the
+		// admin UI, which have no brand entry to draw art from. Takes precedence
+		// over the brand's logo when set.
+		logoBase64: { type: String, default: null },
 		active: { type: Boolean, default: true }
 	},
 	{ timestamps: true }

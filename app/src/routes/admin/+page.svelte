@@ -16,30 +16,15 @@
 	};
 
 	const stats = $derived([
-		{ label: 'Total candidates', value: data.candidates.length, color: 'var(--ink)' },
-		{
-			label: 'Awaiting review',
-			value: data.candidates.filter((c) => c.status === 'submitted').length,
-			color: 'var(--gold)'
-		},
-		{
-			label: 'In progress',
-			value: data.candidates.filter((c) => ['created', 'opened', 'in_progress', 'changes_requested'].includes(c.status)).length,
-			color: 'var(--purple)'
-		},
-		{
-			label: 'Approved',
-			value: data.candidates.filter((c) => ['approved', 'complete'].includes(c.status)).length,
-			color: 'var(--teal)'
-		}
+		{ label: 'Total candidates', value: data.stats.total, color: 'var(--ink)' },
+		{ label: 'Awaiting review', value: data.stats.awaitingReview, color: 'var(--gold)' },
+		{ label: 'In progress', value: data.stats.inProgress, color: 'var(--purple)' },
+		{ label: 'Approved', value: data.stats.approved, color: 'var(--teal)' }
 	]);
 
 	function copyLink(link: string) {
 		navigator.clipboard.writeText(link);
 	}
-
-	const brandColor = (slug: string | null) =>
-		data.brandOptions.find((b) => b.slug === slug)?.primary ?? 'var(--fog)';
 </script>
 
 <h1 class="page-title">Candidates</h1>
@@ -104,64 +89,15 @@
 	{/if}
 </section>
 
-{#if data.isSuperAdmin}
-	<section class="card" style="margin-bottom:22px">
-		<div style="font-weight:700;font-size:18px;margin-bottom:4px">Companies &amp; brands</div>
-		<p class="muted" style="margin:0 0 16px;font-size:13px">
-			Each company's brand theme styles the candidate portal, onboarding pages and emails.
-		</p>
-		{#if form?.companyError}<p class="error">{form.companyError}</p>{/if}
-
-		<div class="co-list">
-			{#each data.companies as company}
-				<form method="POST" action="?/setCompanyBrand" use:enhance class="co-row">
-					<input type="hidden" name="companyId" value={company.id} />
-					<div class="co-name">
-						<span class="co-swatch" style:background={brandColor(company.brandSlug)}></span>
-						{company.name}
-					</div>
-					<select name="brandSlug" value={company.brandSlug ?? ''}>
-						<option value="">— No brand (default) —</option>
-						{#each data.brandOptions as b}
-							<option value={b.slug}>{b.name}</option>
-						{/each}
-					</select>
-					<button class="btn" style="padding:9px 16px;font-size:13px">Save</button>
-					{#if form?.brandSaved === company.id}<span class="saved-chip">Saved ✓</span>{/if}
-				</form>
-			{/each}
-		</div>
-
-		<div style="font-weight:700;font-size:14px;margin:20px 0 10px">Add a company</div>
-		<form method="POST" action="?/createCompany" use:enhance class="add-co-grid">
-			<input name="name" placeholder="Company name" required />
-			<select name="brandSlug">
-				<option value="">— No brand (default) —</option>
-				{#each data.brandOptions as b}
-					<option value={b.slug}>{b.name}</option>
-				{/each}
-			</select>
-			<button class="btn">Add company</button>
-		</form>
-		{#if form?.companyCreated}
-			<p class="muted" style="margin-top:8px">Added <strong>{form.companyCreated}</strong>.</p>
-		{/if}
-	</section>
-{/if}
-
-<section class="table-card">
-	<div class="thead">
-		<div>Candidate</div>
-		<div>Company</div>
-		<div>Track</div>
-		<div>Status</div>
-		<div>Submitted</div>
-		<div></div>
+<section class="table-card recent-card">
+	<div class="recent-head">
+		<span>Recent candidates</span>
+		<a href="/admin/candidates" class="seeall">See all {data.total} →</a>
 	</div>
-	{#if data.candidates.length === 0}
+	{#if data.recent.length === 0}
 		<p class="muted" style="padding:16px 18px">No candidates yet — generate the first link above.</p>
 	{:else}
-		{#each data.candidates as c}
+		{#each data.recent as c (c.id)}
 			<a class="trow" href="/admin/candidates/{c.id}">
 				<div>
 					<div style="font-weight:700;font-size:14px;color:var(--ink)">{c.fullName || c.email}</div>
@@ -170,9 +106,6 @@
 				<div class="tcell">{c.company}</div>
 				<div class="tcell">{TRACK_LABELS[c.track as Track]}</div>
 				<div><span class="pill {statusMeta[c.status]?.cls}">{statusMeta[c.status]?.label ?? c.status}</span></div>
-				<div class="tcell" style="color:var(--smoke)">
-					{c.submittedAt ? new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
-				</div>
 				<div class="review-cta">
 					Review
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" /></svg>

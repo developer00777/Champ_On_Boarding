@@ -9,8 +9,8 @@ export const TRACK_LABELS: Record<Track, string> = {
 	intern: 'Intern',
 	fresher: 'Fresher',
 	experienced: 'Experienced',
-	consultant: 'Consultant Basis',
-	contract: 'Contract Basis'
+	consultant: 'Consultant',
+	contract: 'Contract'
 };
 
 /** Tracks whose letter uses the consultant-style agreement: same structure and

@@ -6,20 +6,30 @@ import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { TRACKS, TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
-import { brandBySlug, BRANDS } from '$lib/shared/brands';
+import { brandBySlug } from '$lib/shared/brands';
 import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
 import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const candidateDocs = await Candidate.find()
-		.populate('companyId')
-		.sort({ createdAt: -1 })
-		.lean();
+/** Statuses that mean "candidate still has work to do". */
+const IN_PROGRESS = ['created', 'opened', 'in_progress', 'changes_requested'];
+const DONE = ['approved', 'complete'];
 
-	const companies = await Company.find({ active: true }).lean();
+export const load: PageServerLoad = async ({ locals }) => {
+	// Count in the database rather than fetching every candidate to length-check
+	// four arrays in the browser. The full list lives at /admin/candidates now.
+	const [total, awaitingReview, inProgress, approved, recentDocs, companies] = await Promise.all([
+		Candidate.countDocuments(),
+		Candidate.countDocuments({ status: 'submitted' }),
+		Candidate.countDocuments({ status: { $in: IN_PROGRESS } }),
+		Candidate.countDocuments({ status: { $in: DONE } }),
+		Candidate.find().populate('companyId').sort({ createdAt: -1 }).limit(5).lean(),
+		Company.find({ active: true }).sort({ name: 1 }).lean()
+	]);
 
 	return {
-		candidates: candidateDocs.map((c) => {
+		stats: { total, awaitingReview, inProgress, approved },
+		total,
+		recent: recentDocs.map((c) => {
 			const company = c.companyId as unknown as { name: string };
 			return {
 				id: String(c._id),
@@ -27,38 +37,16 @@ export const load: PageServerLoad = async ({ locals }) => {
 				fullName: c.fullName ?? null,
 				track: c.track,
 				status: c.status,
-				company: company?.name ?? '',
-				createdAt: (c as { createdAt: Date }).createdAt.toISOString(),
-				submittedAt: c.submittedAt?.toISOString() ?? null
+				company: company?.name ?? ''
 			};
 		}),
 		companies: companies.map((c) => ({ id: String(c._id), name: c.name, brandSlug: c.brandSlug ?? null })),
 		tracks: TRACKS,
-		isSuperAdmin: locals.admin?.role === 'super_admin',
-		brandOptions: BRANDS.map((b) => ({ slug: b.slug, name: b.name, primary: b.colors.primary }))
+		isSuperAdmin: locals.admin?.role === 'super_admin'
 	};
 };
 
 export const actions: Actions = {
-	setCompanyBrand: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
-		const form = await request.formData();
-		const companyId = String(form.get('companyId') ?? '');
-		const brandSlug = String(form.get('brandSlug') ?? '') || null;
-		await Company.findByIdAndUpdate(companyId, { brandSlug });
-		return { brandSaved: companyId };
-	},
-
-	createCompany: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
-		const form = await request.formData();
-		const name = String(form.get('name') ?? '').trim();
-		const brandSlug = String(form.get('brandSlug') ?? '') || null;
-		if (!name) return fail(400, { companyError: 'Company name is required.' });
-		await Company.create({ name, brandSlug });
-		return { companyCreated: name };
-	},
-
 	generateLink: async ({ request, locals, getClientAddress }) => {
 		const form = await request.formData();
 		const email = String(form.get('email') ?? '').trim().toLowerCase();
