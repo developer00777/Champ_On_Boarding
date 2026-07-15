@@ -196,6 +196,39 @@ function leadingFor(size: number): number {
 	return 3.5 * (size / BODY_SIZE);
 }
 
+/** Tracks whose offer of appointment is laid out to match the signed reference
+ *  (3 pages: terms → acceptance → joining documents). `contract` shares the same
+ *  template text but was not part of that reference, so it keeps the original
+ *  free-flowing layout and its existing page count. */
+const APPOINTMENT_PINNED_TRACKS: ReadonlySet<Track> = new Set<Track>(['fresher', 'experienced']);
+
+/** Body/rhythm for the pinned appointment letters. Same reasoning as the intern
+ *  letter: the reference is ~11pt on US Letter, so at BODY_SIZE on A4 the text
+ *  stops well short of the bottom and the pinned breaks leave a dead band. */
+const APPOINTMENT_BODY_SIZE = 11;
+
+/** Tuned against the reference, which is itself only ~6% empty on its dense
+ *  terms page but ~21%/~29% on the acceptance and joining-docs pages — those
+ *  pages are genuinely short, so the target is the reference's profile, not a
+ *  full sheet. 2.5 lands 4%/31%/41%; past ~2.9 the acceptance block overflows
+ *  to a 4th page. */
+const APPOINTMENT_BLOCK_GAP = 2.5;
+
+/** The signed reference's final page: the documents required at joining. Fixed
+ *  boilerplate — the same legal checklist for every hire, verbatim from the
+ *  reference, so it is not recruiter-editable. */
+const JOINING_DOCUMENTS = [
+	'Photocopies of your educational certificates.',
+	'PAN Card is must to submit.',
+	'ADHAR Card Photocopy',
+	'6 Passport size photographs',
+	'Relieving letter from previous employer, if applicable',
+	'Recent salary statement, if applicable.',
+	'PF account details, if applicable.',
+	'Proof of age.',
+	'Income Tax Deduction certificate from the previous employer'
+];
+
 function drawChrome(ctx: Ctx, page: PDFPage) {
 	const { W, H, M, brand, companyName } = ctx;
 	// Top accent stripe
@@ -465,7 +498,10 @@ function renderOfferOfAppointment(
 	ctx: Ctx,
 	c: { name: string; contact: string; email: string },
 	o: OfferLetterInput,
-	company: string
+	company: string,
+	/** Lay the letter out to match the signed reference's pages. False for
+	 *  `contract`, which keeps the original free-flowing layout. */
+	pinned = false
 ) {
 	drawApplicantHeader(ctx, { name: c.name, contact: c.contact, email: c.email, date: today() });
 
@@ -502,6 +538,10 @@ function renderOfferOfAppointment(
 	clause(ctx, '8.', `You will have to work as per the scheduled time allotted to you except, Holidays. You will have to be flexible with your timings depending upon the company's requirements.`);
 	clause(ctx, '9.', `During the term of your employment you are expected to adhere to the service conditions of the company that are in existence and framed by the company from time to time.`);
 	clause(ctx, '10.', `The retirement of all members is 58 years.`);
+
+	// The signed reference breaks here: page 1 closes on clause 10.
+	if (pinned) pageBreak(ctx);
+
 	clause(ctx, '11.', `You are requested to sign the EMPLOYMENT COMMITMENT AGREEMENT at the time of joining the Company and also by signing this Letter of offer you agree to be the part of ${company} for the period of two years.`);
 	clause(ctx, '12.', `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, Autonomy and growth among all members of the Strategic family. As a new entrant, we would like you to whole-heartedly contribute in this process.`, { gapAfter: 8 });
 
@@ -518,6 +558,27 @@ function renderOfferOfAppointment(
 		para(ctx, `Name:`, { gapAfter: 14 });
 		para(ctx, `Signature:`, { gapAfter: 14 });
 		para(ctx, `Date:`, { gapAfter: 0 });
+	});
+
+	if (!pinned) return;
+
+	// Final page — the joining documents checklist. The reference carries a
+	// salary annexure between the acceptance and this page; it is a per-person
+	// breakdown (Basic/HRA/PF/Gratuity/ESI) the tool does not collect, so it is
+	// deliberately omitted and this follows the acceptance directly.
+	pageBreak(ctx);
+
+	para(ctx, `You are required to submit to us the following at the time of your joining.`, { gapAfter: 4 });
+	para(ctx, `(ALL DOCUMENTS ARE COMPULSORY-Get originals for verification at the time of joining)`, {
+		font: ctx.fontB,
+		gapAfter: 12
+	});
+	for (const doc of JOINING_DOCUMENTS) bullet(ctx, doc);
+	gap(ctx, 18);
+
+	// Both parties counter-sign this page in the reference.
+	signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
+		dateRow: true
 	});
 }
 
@@ -821,8 +882,18 @@ export async function generateOfferLetterPdf(
 		primaryColor: rgb(pr, pg, pb),
 		brand,
 		companyName: sanitize(companyName),
-		bodySize: track === 'intern' ? INTERN_BODY_SIZE : BODY_SIZE,
-		blockGap: track === 'intern' ? INTERN_BLOCK_GAP : 1
+		bodySize:
+			track === 'intern'
+				? INTERN_BODY_SIZE
+				: APPOINTMENT_PINNED_TRACKS.has(track)
+					? APPOINTMENT_BODY_SIZE
+					: BODY_SIZE,
+		blockGap:
+			track === 'intern'
+				? INTERN_BLOCK_GAP
+				: APPOINTMENT_PINNED_TRACKS.has(track)
+					? APPOINTMENT_BLOCK_GAP
+					: 1
 	};
 
 	// First page
@@ -839,7 +910,7 @@ export async function generateOfferLetterPdf(
 	} else if (track === 'consultant') {
 		renderConsultant(ctx, c, offer, ctx.companyName);
 	} else {
-		renderOfferOfAppointment(ctx, c, offer, ctx.companyName);
+		renderOfferOfAppointment(ctx, c, offer, ctx.companyName, APPOINTMENT_PINNED_TRACKS.has(track));
 	}
 
 	// Optional: stamp the uploaded signature image near the last employer sig line.
