@@ -11,6 +11,7 @@
 // leave blank pages. Company name is substituted from the recruiting brand.
 import { PDFDocument, rgb, StandardFonts, PageSizes } from 'pdf-lib';
 import type { PDFFont, PDFPage, PDFImage } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { OfferLetterInput } from './fields';
@@ -470,30 +471,51 @@ function renderConsultant(
 	clause(ctx, '5.', `You shall be paid as Total sum of ${fee}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.`);
 	clause(ctx, '6.', `This offer is valid and effective only after verification of your Personal and Professional Background besides your criminal background verification.`);
 	clause(ctx, '7.', `Your salary shall be processed against the receipt of your monthly Report and performance reports duly approved by the authorized signatory and submitted to the HR Department.`);
-	clause(ctx, '8.', `Absent from work: If you remain absent from work, without any reasonable explanation, for more than two consecutive days, it will be presumed that you are no longer interested in working for the Company and have abandoned its services, thereby terminating your contract of service without any notice. In such case, you will not be entitled to any compensation from the Company.`);
+	clause(ctx, '8.', `Absent from work:`);
+	clause(ctx, '', `(1) If you remain absent from work, without any reasonable explanation, for more than two consecutive days, it will be presumed that you are no longer interested in working for the Company and have abandoned its services, There by terminating your contract of service without any notice. In such case, you will not be entitled to any compensation from the Company.`);
 	clause(ctx, '9.', `Notice Period: During your contract period, you are required to give a notice period of ${o.noticePeriod || '15 days'} in the event of your resigning from the services of the company. Further ${company} can terminate your employment based on the Clients' input and based on projects' requirements at any given Point.`);
-	clause(ctx, '10.', `Code of conduct: You are expected to operate with the highest degree of initiative, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not do or say anything which compromises the company's goals or reputations. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any prior notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without any prior notice.`);
+	clause(ctx, '10.', `Code of conduct: You are expected to operate with the highest degree of initiative, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any prior notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without any prior notice.`);
 	clause(ctx, '11.', `Confidentiality: The Employee will not, during or at any time after the termination of your employment, disclose to any person or persons (except to senior Employees of the Company) nor use for your own benefit any confidential information that you may receive or obtain in relation to the affairs of the Company or its Clients.`);
-	clause(ctx, '12.', `Termination of Employment: Company has the right to terminate the employment if it finds its employee indulging in breach of company rules, illegal activity, damage to Company or Clients' reputation, criminal activity, strikes or protests, negative public statements, unauthorized absence for two consecutive working days, failure to perform, unethical behavior, or negative feedback from Reporting Officers or Customers, without any prior notice or warning.`, { gapAfter: 8 });
+	clause(ctx, '12.', `Termination of Employment: Company has the right to terminate the employment if it finds its employee indulging in the following without any prior notice or warning, pertaining to immediate termination.`);
+	clause(ctx, 'a)', `Breach of company rules and regulations.`);
+	clause(ctx, 'b)', `Having indulged in any activity which is illegal, against public interest or company or the project which employee is allotted.`);
+	clause(ctx, 'c)', `Creating or getting associated with illegal groups or causing damage to Company or Clients' reputation and work place.`);
+	clause(ctx, 'd)', `Found in any criminal or any other activity as specified by the state and central laws or found guilty of any laws or acts.`);
+	clause(ctx, 'e)', `Strikes or protest against company or its clients or any project related personnel's.`);
+	clause(ctx, 'f)', `Publishing, talking or posing anything negative statement about the Company Or its clients or any officials related to this project in public or social or any other open platforms.`);
+	clause(ctx, 'g)', `Being absent from the work without intimation or Updation for two (2) consecutive scheduled working days.`);
+	clause(ctx, 'h)', `If failed to perform as expected and trained by the project allotted and role as prescribed by Department or Reporting Authority.`);
+	clause(ctx, 'i)', `If we find any employee with Unconstructive or Unethical Behavior with your reporting head or Co-Workers/Company Staff or with Customers.`);
+	clause(ctx, 'j)', `If we receive any negative feedback from respective Reporting Officer/In charge or negative feedback from Customers.`);
+	clause(ctx, 'k)', `If we found you being associated with any Unauthorized Association or Political Parties or if they form any Employee Union Committees.`);
+	clause(ctx, 'l)', `Employee should not start a similar business till 12 months from the date of resigning, if contract is active for more than 12 months.`);
+	clause(ctx, 'm)', `Should not share any important information or stock information to others or Competitor or other vendors.`, { gapAfter: 8 });
 
-	subHeading(ctx, 'General Conditions of Work:', { gapAfter: 6 });
-	bullet(ctx, 'Age limit for employment is 58 Years; any employee above 58 Years will be given notice to resign immediately.');
-	bullet(ctx, 'You will have no objection to working extra hours according to the requirements of the job.');
-	bullet(ctx, `During your employment you will be bound by the Company's Rules and Regulations framed and enforced from time to time.`);
-	bullet(ctx, 'This letter is governed by and shall be construed in accordance with the laws of Karnataka, and both parties shall submit to the exclusive jurisdiction of the Karnataka Courts.');
-	bullet(ctx, 'As being on Contract you are not entitled for any Gratuity or any other statutory obligations from the company.');
-	bullet(ctx, 'You will keep us informed of any changes in your residential address, family status or any other personal particulars relevant to your employment, as and when the change may occur.');
+	subHeading(ctx, '12. General Conditions of Work: You will be bound by the following:', { gapAfter: 6 });
+	bullet(ctx, `Age limit for employment is 58 Years; any employee above 58 Years will be given notice to resign immediately without any prior notice.`);
+	bullet(ctx, `You will have no objection to working extra hours in the morning and or the evening according to the requirements of the job;`);
+	bullet(ctx, `You will carry out your duties with diligence and loyalty at all times, keeping the Company's interest paramount;`);
+	bullet(ctx, `You shall not at any circumstances either directly or indirectly, receive or accept for your own or on behalf of any commission, rebate, discount or profit from any person, company, or firm having business transactions with ${company} and the project allocated.`);
+	bullet(ctx, `During your employment you will be bound by the Company's Rules and Regulations framed and enforced from time to time. The company reserves the right to amend or alter the said Rules and Regulations at its discretion, without any notice thereof, and these will be deemed as Rules and Regulations in terms of your employment;`);
+	bullet(ctx, `The Company shall verify the facts stated by you in your resume submitted during the interview process. If any of the facts stated there in are found to be false, your services will be terminated immediately without any notice or any compensation in lieu of the notice period:`);
+	bullet(ctx, `This letter is governed by and shall be construed in accordance with the laws of Karnataka, and both parties to this letter shall submit to the exclusive jurisdiction of the Karnataka Courts. This letter contains the entire understanding between the parties and supersedes all previous agreements and /or arrangements relating to employment with ${company} if any. Any amendment or modification to this letter shall be made in writing and signed by both the parties.`);
+	bullet(ctx, `The terms and conditions of service are confidential and may not disclose to or discussed with anyone.`);
+	bullet(ctx, `You will be required to observe the rules and regulations applicable to all employees of the company.`);
+	bullet(ctx, `As being on Contract you are not entitled for any Gratuity or any other statutory obligations for the company.`);
+	bullet(ctx, `The Parties acknowledge that this Agreement is non-exclusive and that either Party will be free, during and after the Term, to engage or contract with third parties for the provision of services similar to the Services.`);
+	bullet(ctx, `You will keep us informed of any changes in your residential address, your family status or any other personal particulars relevant to your employment, as and when the change may occur.`);
 	gap(ctx, 8);
 
 	subHeading(ctx, 'Acceptance:', { gapAfter: 6 });
 	para(ctx, `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, autonomy and growth among all members of the ${company} family. As a new entrant, we would like you to wholeheartedly contribute in this process.`, { gapAfter: 6 });
+	para(ctx, `This letter constitutes the complete understanding between you and the company regarding terms of employment with the company. This supersedes any and all other agreements, either written or oral, between you and the company regarding your employment. Any modification of this agreement will be effective only if it is in writing signed by both the parties. Any arbitration arising out of this contract will be held between employee and employer at Bangalore Head Office with company nominated person on one to one basis.`, { gapAfter: 6 });
 	para(ctx, `I am sure that you will find your employment with ${company} a great challenge and we look forward to a long and mutually beneficial association.`, { gapAfter: 14 });
 
-	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4 });
+	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 10 });
 	signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
 	para(ctx, `Date:`, { gapAfter: 12 });
 
-	para(ctx, `I have read, understood and accepted the above. I understand that the terms and conditions are pre-conditions to my being offered employment with the company. I accept them of my own free choice and will.`, { gapAfter: 14 });
+	para(ctx, `I have read, understood and accepted the above: I understand that the terms and conditions are pre - conditions to my being offered employment with the company. I am under no obligation or duress to accept these terms and conditions of employment. I accept them of my own free choice and will.`, { gapAfter: 14 });
 	para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14 });
 	para(ctx, `Signature:`, { font: ctx.fontB, gapAfter: 0 });
 }
@@ -507,12 +529,32 @@ export async function generateOfferLetterPdf(
 	brand: BrandTheme
 ): Promise<Uint8Array> {
 	const doc = await PDFDocument.create();
+	doc.registerFontkit(fontkit);
 	doc.setTitle(`Offer Letter - ${candidate.fullName ?? candidate.email}`);
 	doc.setAuthor(companyName);
 	doc.setCreator('ChampOnboard');
 
-	const fontR = await doc.embedFont(StandardFonts.Helvetica);
-	const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
+	// Embed Carlito (metric-compatible with Calibri) to match the original Word
+	// templates. Falls back to Helvetica only if the font modules fail to load.
+	let fontR: PDFFont;
+	let fontB: PDFFont;
+	try {
+		const [{ CARLITO_REGULAR_BASE64 }, { CARLITO_BOLD_BASE64 }] = await Promise.all([
+			import('./font-carlito-regular'),
+			import('./font-carlito-bold')
+		]);
+		const toBytes = (b64: string) => {
+			const bin = atob(b64);
+			const arr = new Uint8Array(bin.length);
+			for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+			return arr;
+		};
+		fontR = await doc.embedFont(toBytes(CARLITO_REGULAR_BASE64), { subset: true });
+		fontB = await doc.embedFont(toBytes(CARLITO_BOLD_BASE64), { subset: true });
+	} catch {
+		fontR = await doc.embedFont(StandardFonts.Helvetica);
+		fontB = await doc.embedFont(StandardFonts.HelveticaBold);
+	}
 
 	// Logo (best-effort)
 	const logoBytes = await fetchLogoBytes(brand);
