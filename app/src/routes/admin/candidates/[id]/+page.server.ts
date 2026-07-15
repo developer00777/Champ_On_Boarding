@@ -400,7 +400,8 @@ export const actions: Actions = {
 			signatoryImageBase64,
 			weeklyExpectation: String(form.get('weeklyExpectation') ?? '').trim(),
 			keyResponsibilities: String(form.get('keyResponsibilities') ?? '').trim(),
-			internCriteria: String(form.get('internCriteria') ?? '').trim()
+			internCriteria: String(form.get('internCriteria') ?? '').trim(),
+			paymentClause: String(form.get('paymentClause') ?? '').trim()
 		};
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });

@@ -34,7 +34,8 @@ const base: OfferLetterInput = {
 	signatoryImageBase64: '',
 	weeklyExpectation: '',
 	keyResponsibilities: '',
-	internCriteria: ''
+	internCriteria: '',
+	paymentClause: ''
 };
 
 const samples = [
@@ -137,7 +138,7 @@ const samples = [
 		}
 	},
 	{
-		file: '5-contract-offer-of-appointment.pdf',
+		file: '5-contract-agreement.pdf',
 		candidate: {
 			fullName: 'Fatima Sheikh',
 			email: 'fatima.sheikh@example.com',
@@ -153,11 +154,17 @@ const samples = [
 			joiningDate: '03-Aug-2026',
 			endDate: '02-Aug-2027',
 			employmentType: 'contract' as const,
-			ctcAmount: '600000',
-			monthlyCompensation: '45000',
-			noticePeriod: '30 days',
-			confirmedNoticePeriod: '60 days',
-			acceptanceDueDate: '25-Jul-2026'
+			// Contract takes the Consultant Agreement, whose clause 5 states this
+			// as a monthly sum — so it is a monthly figure, not annual CTC.
+			ctcAmount: '45000',
+			noticePeriod: '15 days',
+			acceptanceDueDate: '25-Jul-2026',
+			weeklyExpectation: 'Minimum 40 hours per Week',
+			keyResponsibilities: [
+				'Test Coverage: Author and maintain regression suites for every release candidate',
+				'Defect Quality: Reproduce, triage and document defects with clear repro steps',
+				'Release Readiness: Sign off each build against the agreed acceptance criteria'
+			].join('\n')
 		}
 	}
 ];

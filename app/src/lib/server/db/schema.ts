@@ -204,6 +204,9 @@ const offerLetterSchema = new Schema(
 		// Intern-track only: the "evaluated based upon the following criteria"
 		// bullets (one per line). Null falls back to the standard four.
 		internCriteria: { type: String, default: null },
+		// Consultant/contract tracks: the clause-5 payment sentence. `{amount}` is
+		// substituted with ctcAmount. Null falls back to the standard wording.
+		paymentClause: { type: String, default: null },
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }

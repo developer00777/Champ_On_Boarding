@@ -27,8 +27,11 @@ export const COMPENSATION_LABEL_BY_TRACK: Record<Track, string> = {
 	intern: 'Stipend (monthly)',
 	fresher: 'CTC (annual)',
 	experienced: 'CTC (annual)',
-	consultant: 'Professional Fees',
-	contract: 'CTC (annual)'
+	// Both render through the Consultant Agreement's clause 5, which states the
+	// figure as "Total sum of <amount>/- per month" — so these must be monthly.
+	// Contract previously read "CTC (annual)" while using the appointment letter.
+	consultant: 'Professional fees (monthly)',
+	contract: 'Professional fees (monthly)'
 };
 
 export interface OfferLetterInput {
@@ -54,14 +57,19 @@ export interface OfferLetterInput {
 	signatoryDesignation: string;
 	/** PNG/JPG signature image stored as a data-URI (base64). Optional. */
 	signatoryImageBase64: string;
-	/** Consultant-only: clause-3 weekly expectation line (e.g. "Minimum 04 Content per Week"). */
+	/** Consultant/contract: clause-3 weekly expectation line (e.g. "Minimum 04 Content per Week"). */
 	weeklyExpectation: string;
-	/** Consultant-only: clause-4 key responsibilities, one bullet per line. */
+	/** Consultant/contract: clause-4 key responsibilities, one bullet per line. */
 	keyResponsibilities: string;
 	/** Intern-only: the Intern Agreement evaluation criteria, one bullet per
 	 *  line. Recruiter-editable per intern (the profile differs by team), so it
 	 *  is stored rather than fixed in the template. Blank → DEFAULT_INTERN_CRITERIA. */
 	internCriteria: string;
+	/** Consultant/contract: the clause-5 payment sentence, editable in full because
+	 *  fee structures vary per consultant. `{amount}` is substituted with the
+	 *  formatted `ctcAmount`, so the fee tracks that field unless the recruiter
+	 *  writes an explicit figure. Blank → DEFAULT_CONSULTANT_PAYMENT_CLAUSE. */
+	paymentClause: string;
 }
 
 /** The four criteria the signed internship agreements carry. Used to pre-fill
@@ -72,6 +80,12 @@ export const DEFAULT_INTERN_CRITERIA = [
 	'Learning opportunities through workshops and training sessions.',
 	'Exposure to cutting-edge technologies and industry trends.'
 ].join('\n');
+
+/** The clause-5 payment sentence the signed consultant agreements carry. Used to
+ *  pre-fill the recruiter's textarea and as the fallback when it is left blank.
+ *  `{amount}` is replaced with the formatted `ctcAmount` at render time. */
+export const DEFAULT_CONSULTANT_PAYMENT_CLAUSE =
+	'You shall be paid as Total sum of {amount}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.';
 
 /** Fields required before an offer letter can be sent (all recruiter inputs). */
 export const REQUIRED_OFFER_LETTER_FIELDS: Array<keyof OfferLetterInput> = [
@@ -106,7 +120,8 @@ export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> =
 	signatoryImageBase64: 'Signature image',
 	weeklyExpectation: 'Weekly expectation',
 	keyResponsibilities: 'Key responsibilities',
-	internCriteria: 'Intern evaluation criteria'
+	internCriteria: 'Intern evaluation criteria',
+	paymentClause: 'Payment clause'
 };
 
 export function missingOfferLetterFields(input: OfferLetterInput): string[] {
@@ -136,7 +151,8 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 		keyResponsibilities: draft?.keyResponsibilities ?? '',
 		// Pre-fill the standard four so the recruiter edits a real list rather
 		// than facing an empty box and retyping the boilerplate.
-		internCriteria: draft?.internCriteria ?? DEFAULT_INTERN_CRITERIA
+		internCriteria: draft?.internCriteria ?? DEFAULT_INTERN_CRITERIA,
+		paymentClause: draft?.paymentClause ?? DEFAULT_CONSULTANT_PAYMENT_CLAUSE
 	};
 }
 

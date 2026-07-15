@@ -13,6 +13,14 @@ export const TRACK_LABELS: Record<Track, string> = {
 	contract: 'Contract Basis'
 };
 
+/** Tracks whose letter uses the consultant-style agreement: same structure and
+ *  terms (clause 3 weekly expectation, clause 4 KRAs, clause 5 payment) and the
+ *  same monthly — not annual — reading of the compensation figure. Each track
+ *  keeps its own title: a contract hire gets a "Contract Agreement", never a
+ *  "Consultant Agreement". Lives here rather than in the offer-letter module
+ *  because the admin form needs it to decide which fields to show. */
+export const CONSULTANT_LETTER_TRACKS: Track[] = ['consultant', 'contract'];
+
 export interface DocSlot {
 	type: string;
 	label: string;

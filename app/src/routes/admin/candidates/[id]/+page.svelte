@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { EXP_LIKE_TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
+	import {
+		CONSULTANT_LETTER_TRACKS,
+		EXP_LIKE_TRACKS,
+		TRACK_LABELS,
+		type Track
+	} from '$lib/shared/matrix';
 
 	let { data, form } = $props();
 
@@ -8,6 +13,11 @@
 
 	const c = $derived(data.candidate);
 	const ol = $derived(data.offerLetter);
+
+	/** Consultant and contract share the Consultant Agreement, so they take its
+	 *  clause-3/4/5 inputs and its monthly compensation reading — and skip the
+	 *  appointment letter's probation/confirmation notice fields. */
+	const isConsultantLetter = $derived(CONSULTANT_LETTER_TRACKS.includes(c.track as Track));
 
 	const employmentTypeOptions = [
 		{ value: 'full_time', label: 'Full-time' },
@@ -527,10 +537,17 @@
 					</select>
 				</label>
 				<label class="offer-field">
-					<span>CTC (annual)</span>
-					<input name="ctcAmount" value={ol.ctcAmount} placeholder="e.g. INR 8,00,000" />
+					<!-- The consultant/contract letter states this figure as a monthly sum,
+					     the appointment letter as annual CTC — label it for the letter the
+					     candidate will actually receive. -->
+					<span>{isConsultantLetter ? 'Professional fees (monthly)' : 'CTC (annual)'}</span>
+					<input
+						name="ctcAmount"
+						value={ol.ctcAmount}
+						placeholder={isConsultantLetter ? 'e.g. 40,000' : 'e.g. INR 8,00,000'}
+					/>
 				</label>
-				{#if c.track !== 'intern' && c.track !== 'consultant'}
+				{#if c.track !== 'intern' && !isConsultantLetter}
 					<label class="offer-field">
 						<span>Monthly compensation <em>(optional)</em></span>
 						<input
@@ -542,10 +559,10 @@
 					</label>
 				{/if}
 				<label class="offer-field">
-					<span>Notice period {#if c.track !== 'intern' && c.track !== 'consultant'}<em>(during probation)</em>{/if}</span>
+					<span>Notice period {#if c.track !== 'intern' && !isConsultantLetter}<em>(during probation)</em>{/if}</span>
 					<input name="noticePeriod" value={ol.noticePeriod} placeholder="e.g. 30 days" />
 				</label>
-				{#if c.track !== 'intern' && c.track !== 'consultant'}
+				{#if c.track !== 'intern' && !isConsultantLetter}
 					<label class="offer-field">
 						<span>Notice period <em>(after confirmation)</em></span>
 						<input
@@ -569,8 +586,8 @@
 					<input name="signatoryDesignation" value={ol.signatoryDesignation} />
 				</label>
 
-				{#if c.track === 'consultant'}
-					<!-- Consultant-only: clause 3 weekly expectation + clause 4 KRA bullets -->
+				{#if isConsultantLetter}
+					<!-- Consultant Agreement (consultant + contract): clause 3/4/5 inputs -->
 					<label class="offer-field sig-field">
 						<span>Weekly expectation (clause 3)</span>
 						<input name="weeklyExpectation" value={ol.weeklyExpectation ?? ''} placeholder="e.g. Minimum 04 Content per Week" />
@@ -578,6 +595,11 @@
 					<label class="offer-field sig-field">
 						<span>Key responsibilities (one per line — becomes bullets in clause 4)</span>
 						<textarea name="keyResponsibilities" rows="6" class="kra-textarea" placeholder={"Content Volume & Consistency: Publish 4 pieces every week\nContent Quality: Score 90%+ on internal checklist\nContent Performance: Achieve 200+ views per piece"}>{ol.keyResponsibilities ?? ''}</textarea>
+					</label>
+					<label class="offer-field sig-field">
+						<span>Payment clause (clause 5)</span>
+						<textarea name="paymentClause" rows="3" class="kra-textarea">{ol.paymentClause ?? ''}</textarea>
+						<small>Write <code>{'{amount}'}</code> where the fee should appear — it is filled in from the CTC amount above.</small>
 					</label>
 				{/if}
 

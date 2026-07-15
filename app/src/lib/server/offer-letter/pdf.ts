@@ -2,9 +2,11 @@
 // works on Vercel Edge, Node serverless, and Railway alike).
 //
 // Three real Champions Group templates, selected by track:
-//   intern                          → Internship Joining Agreement
-//   consultant                      → Consultant Agreement
-//   experienced | fresher | contract → Offer of Appointment
+//   intern                → Internship Joining Agreement
+//   consultant            → Consultant Agreement
+//   contract              → Contract Agreement (same structure/terms as the
+//                           consultant agreement, under its own title)
+//   experienced | fresher → Offer of Appointment
 //
 // The layout engine below flows text down the page and auto-inserts page breaks
 // (header + footer redrawn on each), so multi-page letters never overflow or
@@ -15,9 +17,13 @@ import fontkit from '@pdf-lib/fontkit';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { OfferLetterInput } from './fields';
-import { EMPLOYMENT_TYPE_LABELS, DEFAULT_INTERN_CRITERIA } from './fields';
+import {
+	EMPLOYMENT_TYPE_LABELS,
+	DEFAULT_INTERN_CRITERIA,
+	DEFAULT_CONSULTANT_PAYMENT_CLAUSE
+} from './fields';
 import type { CandidateDoc } from '$lib/server/db/schema';
-import type { Track } from '$lib/shared/matrix';
+import { CONSULTANT_LETTER_TRACKS, type Track } from '$lib/shared/matrix';
 
 // ── low-level helpers ────────────────────────────────────────────────────────
 
@@ -709,11 +715,15 @@ function renderConsultant(
 	ctx: Ctx,
 	c: { name: string; contact: string; email: string },
 	o: OfferLetterInput,
-	company: string
+	company: string,
+	/** Title for this track. Contract hires get the same agreement structure and
+	 *  terms as consultants, but the document is their own — it must not call
+	 *  itself a Consultant Agreement. */
+	title = 'Consultant Agreement'
 ) {
 	drawApplicantHeader(ctx, { name: c.name, contact: c.contact, email: c.email, date: today() });
 
-	heading(ctx, 'Consultant Agreement');
+	heading(ctx, title);
 	gap(ctx, 4);
 
 	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8 });
@@ -749,8 +759,14 @@ function renderConsultant(
 	}
 	gap(ctx, 4);
 
+	// Clause 5 — payment terms. Recruiter-editable in full (fee structures vary);
+	// `{amount}` keeps the figure tracking ctcAmount so the two cannot drift apart.
 	const fee = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
-	clause(ctx, '5.', `You shall be paid as Total sum of ${fee}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.`);
+	const paymentText = (o.paymentClause?.trim() || DEFAULT_CONSULTANT_PAYMENT_CLAUSE).replace(
+		/\{amount\}/g,
+		fee
+	);
+	clause(ctx, '5.', paymentText);
 	clause(ctx, '6.', `This offer is valid and effective only after verification of your Personal and Professional Background besides your criminal background verification.`);
 	clause(ctx, '7.', `Your salary shall be processed against the receipt of your monthly Report and performance reports duly approved by the authorized signatory and submitted to the HR Department.`);
 	clause(ctx, '8.', `Absent from work:`);
@@ -907,8 +923,14 @@ export async function generateOfferLetterPdf(
 
 	if (track === 'intern') {
 		renderInternship(ctx, c, offer, ctx.companyName);
-	} else if (track === 'consultant') {
-		renderConsultant(ctx, c, offer, ctx.companyName);
+	} else if (CONSULTANT_LETTER_TRACKS.includes(track)) {
+		renderConsultant(
+			ctx,
+			c,
+			offer,
+			ctx.companyName,
+			track === 'contract' ? 'Contract Agreement' : 'Consultant Agreement'
+		);
 	} else {
 		renderOfferOfAppointment(ctx, c, offer, ctx.companyName, APPOINTMENT_PINNED_TRACKS.has(track));
 	}
