@@ -438,10 +438,11 @@ export const actions: Actions = {
 
 		const draft = await OfferLetter.findOne({ candidateId: params.id });
 		const draftInput = offerLetterInputFromDraft(draft);
-		if (!draft || !isOfferLetterComplete(draftInput)) {
+		const track = candidate.track as Track;
+		if (!draft || !isOfferLetterComplete(draftInput, track)) {
 			return fail(400, {
 				offerLetterError: true,
-				message: `Fill in all offer letter fields before sending (missing: ${missingOfferLetterFields(draftInput).join(', ')}).`
+				message: `Fill in all offer letter fields before sending (missing: ${missingOfferLetterFields(draftInput, track).join(', ')}).`
 			});
 		}
 

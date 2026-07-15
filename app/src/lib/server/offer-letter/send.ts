@@ -5,6 +5,7 @@
 // The .docx template is retained only for the "Download .docx" button (Word-editable copy).
 import type { CandidateDoc, OfferLetterDoc } from '$lib/server/db/schema';
 import type { BrandTheme } from '$lib/shared/brands';
+import type { Track } from '$lib/shared/matrix';
 import { sendMail, brandFromHeader, offerLetterHtml } from '$lib/server/mailer';
 import { env as publicEnv } from '$env/dynamic/public';
 import {
@@ -14,8 +15,8 @@ import {
 } from '$lib/server/offer-letter/fields';
 import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
 
-export function offerLetterReadyToSend(draft: OfferLetterDoc | null): boolean {
-	return !!draft && isOfferLetterComplete(offerLetterInputFromDraft(draft));
+export function offerLetterReadyToSend(draft: OfferLetterDoc | null, track: Track): boolean {
+	return !!draft && isOfferLetterComplete(offerLetterInputFromDraft(draft), track);
 }
 
 async function buildOfferLetterPdfAttachment(
@@ -97,7 +98,8 @@ export async function buildOnboardingLinkAttachments(
 	draft: OfferLetterDoc | null,
 	brand: BrandTheme
 ) {
-	if (!offerLetterReadyToSend(draft)) return { attachments: undefined, offerLetterBundled: false };
+	if (!offerLetterReadyToSend(draft, candidate.track as Track))
+		return { attachments: undefined, offerLetterBundled: false };
 	return {
 		attachments: [await buildOfferLetterPdfAttachment(candidate, companyName, draft!, brand)],
 		offerLetterBundled: true

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import {
+		COMPENSATION_FIELD_BY_TRACK,
 		CONSULTANT_LETTER_TRACKS,
 		EXP_LIKE_TRACKS,
 		TRACK_LABELS,
@@ -18,6 +19,10 @@
 	 *  clause-3/4/5 inputs and its monthly compensation reading — and skip the
 	 *  appointment letter's probation/confirmation notice fields. */
 	const isConsultantLetter = $derived(CONSULTANT_LETTER_TRACKS.includes(c.track as Track));
+
+	/** How this track's letter quotes `ctcAmount` (monthly stipend / annual CTC /
+	 *  monthly fee) — drives the label, placeholder and hint. */
+	const compField = $derived(COMPENSATION_FIELD_BY_TRACK[c.track as Track]);
 
 	const employmentTypeOptions = [
 		{ value: 'full_time', label: 'Full-time' },
@@ -524,9 +529,16 @@
 					<input name="officeLocation" value={ol.officeLocation} />
 				</label>
 				<label class="offer-field">
-					<span>Joining date</span>
+					<span>{c.track === 'intern' ? 'Internship start date' : 'Joining date'}</span>
 					<input name="joiningDate" value={ol.joiningDate} placeholder="DD/MM/YYYY" />
 				</label>
+				{#if c.track === 'intern'}
+					<label class="offer-field">
+						<span>Internship end date</span>
+						<input name="endDate" value={ol.endDate} placeholder="DD/MM/YYYY" />
+						<small>Clause 1: "scheduled to start effective from &lt;start&gt; to &lt;end&gt;".</small>
+					</label>
+				{/if}
 				<label class="offer-field">
 					<span>Employment type</span>
 					<select name="employmentType" value={ol.employmentType}>
@@ -537,15 +549,12 @@
 					</select>
 				</label>
 				<label class="offer-field">
-					<!-- The consultant/contract letter states this figure as a monthly sum,
-					     the appointment letter as annual CTC — label it for the letter the
-					     candidate will actually receive. -->
-					<span>{isConsultantLetter ? 'Professional fees (monthly)' : 'CTC (annual)'}</span>
-					<input
-						name="ctcAmount"
-						value={ol.ctcAmount}
-						placeholder={isConsultantLetter ? 'e.g. 40,000' : 'e.g. INR 8,00,000'}
-					/>
+					<!-- The same stored figure is rendered as a monthly stipend, annual CTC
+					     or a monthly fee depending on the track — ask for the one this
+					     candidate's letter will actually quote. -->
+					<span>{compField.label}</span>
+					<input name="ctcAmount" value={ol.ctcAmount} placeholder={compField.placeholder} />
+					<small>{compField.hint}</small>
 				</label>
 				{#if c.track !== 'intern' && !isConsultantLetter}
 					<label class="offer-field">
@@ -558,10 +567,25 @@
 						<small>Shown in clause 1 beside annual CTC. Leave blank to omit.</small>
 					</label>
 				{/if}
-				<label class="offer-field">
-					<span>Notice period {#if c.track !== 'intern' && !isConsultantLetter}<em>(during probation)</em>{/if}</span>
-					<input name="noticePeriod" value={ol.noticePeriod} placeholder="e.g. 30 days" />
-				</label>
+				<!-- The internship agreement terminates "without any notice" and never
+				     quotes a notice period, so the field is not shown for interns. -->
+				{#if c.track !== 'intern'}
+					<label class="offer-field">
+						<span>Notice period {#if !isConsultantLetter}<em>(during probation)</em>{/if}</span>
+						<input
+							name="noticePeriod"
+							value={ol.noticePeriod}
+							placeholder={isConsultantLetter ? 'e.g. 15 days' : 'e.g. 30 days'}
+						/>
+						<small>
+							{#if isConsultantLetter}
+								Clause 9. Defaults to 15 days if left blank.
+							{:else}
+								Clause 5, during probation. Defaults to 30 days if left blank.
+							{/if}
+						</small>
+					</label>
+				{/if}
 				{#if c.track !== 'intern' && !isConsultantLetter}
 					<label class="offer-field">
 						<span>Notice period <em>(after confirmation)</em></span>

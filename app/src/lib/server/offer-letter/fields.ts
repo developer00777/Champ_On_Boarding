@@ -1,7 +1,7 @@
 // Maps DB documents + recruiter input onto the exact `[Placeholder]` keys the
 // offer letter template expects. Pure mapping — no persistence, no I/O.
 import type { CandidateDoc, OfferLetterDoc } from '$lib/server/db/schema';
-import type { Track } from '$lib/shared/matrix';
+import { COMPENSATION_FIELD_BY_TRACK, TRACKS, type Track } from '$lib/shared/matrix';
 
 export const EMPLOYMENT_TYPE_LABELS = {
 	full_time: 'Full-time',
@@ -22,17 +22,12 @@ export const LETTER_TYPE_BY_TRACK: Record<Track, string> = {
 	contract: 'Contract Letter'
 };
 
-/** Compensation field label per track — same underlying `ctcAmount` DB field. */
-export const COMPENSATION_LABEL_BY_TRACK: Record<Track, string> = {
-	intern: 'Stipend (monthly)',
-	fresher: 'CTC (annual)',
-	experienced: 'CTC (annual)',
-	// Both render through the Consultant Agreement's clause 5, which states the
-	// figure as "Total sum of <amount>/- per month" — so these must be monthly.
-	// Contract previously read "CTC (annual)" while using the appointment letter.
-	consultant: 'Professional fees (monthly)',
-	contract: 'Professional fees (monthly)'
-};
+/** Compensation field label per track — same underlying `ctcAmount` DB field.
+ *  Derived from the shared definition the admin form renders, so the label a
+ *  recruiter reads and the one quoted elsewhere cannot drift apart. */
+export const COMPENSATION_LABEL_BY_TRACK: Record<Track, string> = Object.fromEntries(
+	TRACKS.map((t) => [t, COMPENSATION_FIELD_BY_TRACK[t].label])
+) as Record<Track, string>;
 
 export interface OfferLetterInput {
 	jobTitle: string;
@@ -87,8 +82,8 @@ export const DEFAULT_INTERN_CRITERIA = [
 export const DEFAULT_CONSULTANT_PAYMENT_CLAUSE =
 	'You shall be paid as Total sum of {amount}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.';
 
-/** Fields required before an offer letter can be sent (all recruiter inputs). */
-export const REQUIRED_OFFER_LETTER_FIELDS: Array<keyof OfferLetterInput> = [
+/** Fields every letter needs, whatever the track. */
+const REQUIRED_ALL_TRACKS: Array<keyof OfferLetterInput> = [
 	'jobTitle',
 	'department',
 	'reportingManager',
@@ -96,11 +91,30 @@ export const REQUIRED_OFFER_LETTER_FIELDS: Array<keyof OfferLetterInput> = [
 	'joiningDate',
 	'employmentType',
 	'ctcAmount',
-	'noticePeriod',
 	'acceptanceDueDate',
 	'signatoryName',
 	'signatoryDesignation'
 ];
+
+/** What each track additionally needs, mirroring the field its letter renders and
+ *  the admin form shows. Required-ness must stay track-aware: a field the
+ *  recruiter cannot see must never block sending, and one the letter quotes must
+ *  never be silently blank. */
+export function requiredOfferLetterFields(track: Track): Array<keyof OfferLetterInput> {
+	switch (track) {
+		// The internship agreement quotes an end date, and terminates "without any
+		// notice" — so it needs endDate and has no notice period at all.
+		case 'intern':
+			return [...REQUIRED_ALL_TRACKS, 'endDate'];
+		// Clause 9 quotes a notice period; clauses 3 and 4 are per-person.
+		case 'consultant':
+		case 'contract':
+			return [...REQUIRED_ALL_TRACKS, 'noticePeriod', 'weeklyExpectation', 'keyResponsibilities'];
+		// Appointment letter clause 5 quotes the probation notice period.
+		default:
+			return [...REQUIRED_ALL_TRACKS, 'noticePeriod'];
+	}
+}
 
 export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> = {
 	jobTitle: 'Job title',
@@ -124,10 +138,17 @@ export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> =
 	paymentClause: 'Payment clause'
 };
 
-export function missingOfferLetterFields(input: OfferLetterInput): string[] {
-	return REQUIRED_OFFER_LETTER_FIELDS.filter((key) => !input[key].trim()).map(
-		(key) => OFFER_LETTER_FIELD_LABELS[key]
-	);
+export function missingOfferLetterFields(input: OfferLetterInput, track: Track): string[] {
+	return requiredOfferLetterFields(track)
+		.filter((key) => !input[key].trim())
+		.map((key) =>
+			// Name the compensation field the way this track's form labels it, so
+			// "missing: CTC amount" cannot point an intern's recruiter at a field
+			// their form calls "Stipend (monthly)".
+			key === 'ctcAmount'
+				? COMPENSATION_FIELD_BY_TRACK[track].label
+				: OFFER_LETTER_FIELD_LABELS[key]
+		);
 }
 
 export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLetterInput {
@@ -156,8 +177,8 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 	};
 }
 
-export function isOfferLetterComplete(input: OfferLetterInput): boolean {
-	return REQUIRED_OFFER_LETTER_FIELDS.every((key) => input[key].trim().length > 0);
+export function isOfferLetterComplete(input: OfferLetterInput, track: Track): boolean {
+	return requiredOfferLetterFields(track).every((key) => input[key].trim().length > 0);
 }
 
 export function buildOfferLetterFields(

@@ -21,6 +21,43 @@ export const TRACK_LABELS: Record<Track, string> = {
  *  because the admin form needs it to decide which fields to show. */
 export const CONSULTANT_LETTER_TRACKS: Track[] = ['consultant', 'contract'];
 
+/** What the single `ctcAmount` field means in each track's letter, and how to
+ *  ask for it. The same stored number is rendered three different ways — a
+ *  monthly stipend for interns, annual CTC in the appointment letter's clause 1,
+ *  a monthly fee in the consultant/contract clause 5 — so the recruiter must be
+ *  told which one they are entering. Getting this wrong sends a candidate a real
+ *  number with the wrong period attached. */
+export const COMPENSATION_FIELD_BY_TRACK: Record<
+	Track,
+	{ label: string; placeholder: string; hint: string }
+> = {
+	intern: {
+		label: 'Stipend (monthly)',
+		placeholder: 'e.g. 17,000',
+		hint: 'Paid per month. Written into clause 1 as a figure and in words.'
+	},
+	fresher: {
+		label: 'CTC (annual)',
+		placeholder: 'e.g. 3,60,000',
+		hint: 'Total cost to company per year. Clause 1 states this as an annual figure.'
+	},
+	experienced: {
+		label: 'CTC (annual)',
+		placeholder: 'e.g. 8,50,000',
+		hint: 'Total cost to company per year. Clause 1 states this as an annual figure.'
+	},
+	consultant: {
+		label: 'Professional fees (monthly)',
+		placeholder: 'e.g. 40,000',
+		hint: 'Paid per month. Clause 5 states this as "Total sum of <amount>/- per month".'
+	},
+	contract: {
+		label: 'Professional fees (monthly)',
+		placeholder: 'e.g. 45,000',
+		hint: 'Paid per month. Clause 5 states this as "Total sum of <amount>/- per month".'
+	}
+};
+
 export interface DocSlot {
 	type: string;
 	label: string;
