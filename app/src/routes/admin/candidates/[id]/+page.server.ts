@@ -391,13 +391,16 @@ export const actions: Actions = {
 			endDate: String(form.get('endDate') ?? '').trim(),
 			employmentType: String(form.get('employmentType') ?? '').trim() as OfferLetterInput['employmentType'],
 			ctcAmount: String(form.get('ctcAmount') ?? '').trim(),
+			monthlyCompensation: String(form.get('monthlyCompensation') ?? '').trim(),
 			noticePeriod: String(form.get('noticePeriod') ?? '').trim(),
+			confirmedNoticePeriod: String(form.get('confirmedNoticePeriod') ?? '').trim(),
 			acceptanceDueDate: String(form.get('acceptanceDueDate') ?? '').trim(),
 			signatoryName: String(form.get('signatoryName') ?? '').trim(),
 			signatoryDesignation: String(form.get('signatoryDesignation') ?? '').trim(),
 			signatoryImageBase64,
 			weeklyExpectation: String(form.get('weeklyExpectation') ?? '').trim(),
-			keyResponsibilities: String(form.get('keyResponsibilities') ?? '').trim()
+			keyResponsibilities: String(form.get('keyResponsibilities') ?? '').trim(),
+			internCriteria: String(form.get('internCriteria') ?? '').trim()
 		};
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });

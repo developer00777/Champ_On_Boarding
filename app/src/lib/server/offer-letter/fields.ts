@@ -40,7 +40,15 @@ export interface OfferLetterInput {
 	endDate: string;
 	employmentType: EmploymentType | '';
 	ctcAmount: string;
+	/** Offer-of-appointment only: the monthly take-home quoted alongside annual
+	 *  CTC in clause 1. Not CTC/12 — the real letters quote an independent
+	 *  figure — so it is entered, never derived. */
+	monthlyCompensation: string;
 	noticePeriod: string;
+	/** Offer-of-appointment clause 5: notice owed once probation is confirmed.
+	 *  Bold in the signed letters and distinct from `noticePeriod` (which applies
+	 *  during probation), so it is its own field rather than a fixed string. */
+	confirmedNoticePeriod: string;
 	acceptanceDueDate: string;
 	signatoryName: string;
 	signatoryDesignation: string;
@@ -50,7 +58,20 @@ export interface OfferLetterInput {
 	weeklyExpectation: string;
 	/** Consultant-only: clause-4 key responsibilities, one bullet per line. */
 	keyResponsibilities: string;
+	/** Intern-only: the Intern Agreement evaluation criteria, one bullet per
+	 *  line. Recruiter-editable per intern (the profile differs by team), so it
+	 *  is stored rather than fixed in the template. Blank → DEFAULT_INTERN_CRITERIA. */
+	internCriteria: string;
 }
+
+/** The four criteria the signed internship agreements carry. Used to pre-fill
+ *  the recruiter's textarea and as the fallback when it is left blank. */
+export const DEFAULT_INTERN_CRITERIA = [
+	'Hands-on experience in innovative tech projects.',
+	'Collaboration with a diverse and dynamic team.',
+	'Learning opportunities through workshops and training sessions.',
+	'Exposure to cutting-edge technologies and industry trends.'
+].join('\n');
 
 /** Fields required before an offer letter can be sent (all recruiter inputs). */
 export const REQUIRED_OFFER_LETTER_FIELDS: Array<keyof OfferLetterInput> = [
@@ -76,13 +97,16 @@ export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> =
 	endDate: 'End date',
 	employmentType: 'Employment type',
 	ctcAmount: 'CTC amount',
-	noticePeriod: 'Notice period',
+	monthlyCompensation: 'Monthly compensation',
+	noticePeriod: 'Notice period (during probation)',
+	confirmedNoticePeriod: 'Notice period (after confirmation)',
 	acceptanceDueDate: 'Acceptance due date',
 	signatoryName: 'Authorized signatory name',
 	signatoryDesignation: "Signatory's designation",
 	signatoryImageBase64: 'Signature image',
 	weeklyExpectation: 'Weekly expectation',
-	keyResponsibilities: 'Key responsibilities'
+	keyResponsibilities: 'Key responsibilities',
+	internCriteria: 'Intern evaluation criteria'
 };
 
 export function missingOfferLetterFields(input: OfferLetterInput): string[] {
@@ -101,13 +125,18 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 		endDate: draft?.endDate ?? '',
 		employmentType: (draft?.employmentType as EmploymentType | null) ?? '',
 		ctcAmount: draft?.ctcAmount ?? '',
+		monthlyCompensation: draft?.monthlyCompensation ?? '',
 		noticePeriod: draft?.noticePeriod ?? '',
+		confirmedNoticePeriod: draft?.confirmedNoticePeriod ?? '',
 		acceptanceDueDate: draft?.acceptanceDueDate ?? '',
 		signatoryName: draft?.signatoryName ?? '',
 		signatoryDesignation: draft?.signatoryDesignation ?? '',
 		signatoryImageBase64: draft?.signatoryImageBase64 ?? '',
 		weeklyExpectation: draft?.weeklyExpectation ?? '',
-		keyResponsibilities: draft?.keyResponsibilities ?? ''
+		keyResponsibilities: draft?.keyResponsibilities ?? '',
+		// Pre-fill the standard four so the recruiter edits a real list rather
+		// than facing an empty box and retyping the boilerplate.
+		internCriteria: draft?.internCriteria ?? DEFAULT_INTERN_CRITERIA
 	};
 }
 

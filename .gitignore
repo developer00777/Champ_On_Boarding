@@ -3,3 +3,12 @@ node_modules/
 .env.*
 !.env.example
 *.log
+
+# Generated offer letter samples — regenerate with:
+#   cd app && npx vite-node scripts/gen-offer-samples.ts
+offer_samples/
+
+# Real candidates' signed letters/agreements are personal data and must never
+# be committed. Keep reference copies outside the repo.
+*.pdf
+!Onboarding Required Documents*.pdf

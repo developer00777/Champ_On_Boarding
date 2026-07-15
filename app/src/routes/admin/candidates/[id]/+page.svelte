@@ -530,10 +530,32 @@
 					<span>CTC (annual)</span>
 					<input name="ctcAmount" value={ol.ctcAmount} placeholder="e.g. INR 8,00,000" />
 				</label>
+				{#if c.track !== 'intern' && c.track !== 'consultant'}
+					<label class="offer-field">
+						<span>Monthly compensation <em>(optional)</em></span>
+						<input
+							name="monthlyCompensation"
+							value={ol.monthlyCompensation}
+							placeholder="e.g. 20,000"
+						/>
+						<small>Shown in clause 1 beside annual CTC. Leave blank to omit.</small>
+					</label>
+				{/if}
 				<label class="offer-field">
-					<span>Notice period</span>
+					<span>Notice period {#if c.track !== 'intern' && c.track !== 'consultant'}<em>(during probation)</em>{/if}</span>
 					<input name="noticePeriod" value={ol.noticePeriod} placeholder="e.g. 30 days" />
 				</label>
+				{#if c.track !== 'intern' && c.track !== 'consultant'}
+					<label class="offer-field">
+						<span>Notice period <em>(after confirmation)</em></span>
+						<input
+							name="confirmedNoticePeriod"
+							value={ol.confirmedNoticePeriod}
+							placeholder="e.g. 60 days"
+						/>
+						<small>Clause 5. Defaults to 60 days if left blank.</small>
+					</label>
+				{/if}
 				<label class="offer-field">
 					<span>Acceptance due date</span>
 					<input name="acceptanceDueDate" value={ol.acceptanceDueDate} placeholder="DD/MM/YYYY" />
@@ -556,6 +578,14 @@
 					<label class="offer-field sig-field">
 						<span>Key responsibilities (one per line — becomes bullets in clause 4)</span>
 						<textarea name="keyResponsibilities" rows="6" class="kra-textarea" placeholder={"Content Volume & Consistency: Publish 4 pieces every week\nContent Quality: Score 90%+ on internal checklist\nContent Performance: Achieve 200+ views per piece"}>{ol.keyResponsibilities ?? ''}</textarea>
+					</label>
+				{/if}
+
+				{#if c.track === 'intern'}
+					<!-- Intern-only: the Intern Agreement evaluation criteria bullets -->
+					<label class="offer-field sig-field">
+						<span>Evaluation criteria (one per line — becomes the bullets in the Intern Agreement)</span>
+						<textarea name="internCriteria" rows="5" class="kra-textarea">{ol.internCriteria ?? ''}</textarea>
 					</label>
 				{/if}
 

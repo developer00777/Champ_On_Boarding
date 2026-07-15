@@ -15,7 +15,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { OfferLetterInput } from './fields';
-import { EMPLOYMENT_TYPE_LABELS } from './fields';
+import { EMPLOYMENT_TYPE_LABELS, DEFAULT_INTERN_CRITERIA } from './fields';
 import type { CandidateDoc } from '$lib/server/db/schema';
 import type { Track } from '$lib/shared/matrix';
 
@@ -32,6 +32,25 @@ function hexToRgb(hex: string): [number, number, number] {
 
 async function fetchLogoBytes(brand: BrandTheme): Promise<Uint8Array | null> {
 	if (brand.logo.src.endsWith('.webp')) return null;
+
+	// Read straight off disk where the bundle ships `static/` alongside the
+	// server (adapter-node, local scripts). Avoids the server HTTP-fetching its
+	// own asset, which silently degrades the letter to a text monogram whenever
+	// PUBLIC_BASE_URL is unset or the port isn't listening yet.
+	try {
+		const { readFile } = await import('node:fs/promises');
+		const { join } = await import('node:path');
+		for (const dir of ['static', 'client', join('build', 'client')]) {
+			try {
+				return new Uint8Array(await readFile(join(process.cwd(), dir, brand.logo.src)));
+			} catch {
+				/* try next candidate root */
+			}
+		}
+	} catch {
+		/* no fs (edge runtime) — fall through to HTTP */
+	}
+
 	try {
 		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
 		const res = await fetch(`${base}${brand.logo.src}`, { signal: AbortSignal.timeout(4000) });
@@ -72,6 +91,49 @@ function formatMoney(raw: string): string {
 	const num = parseInt(cleaned, 10);
 	if (isNaN(num)) return raw;
 	return 'Rs. ' + num.toLocaleString('en-IN');
+}
+
+/** Digits with no currency prefix — "17000" → "17,000" (the intern letter
+ *  writes the stipend bare, with the currency carried by the words after it). */
+function formatPlainAmount(raw: string): string {
+	const num = parseInt(raw.replace(/[^0-9.]/g, ''), 10);
+	return isNaN(num) ? raw : num.toLocaleString('en-IN');
+}
+
+const ONES = [
+	'', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+	'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'
+];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+function twoDigits(n: number): string {
+	if (n < 20) return ONES[n];
+	const t = TENS[Math.floor(n / 10)];
+	const o = ONES[n % 10];
+	return o ? `${t}-${o}` : t;
+}
+
+/** 17000 → "Seventeen Thousand" using the Indian system (lakh/crore), matching
+ *  how the signed letters spell the stipend out beside the figure. */
+function amountInWords(raw: string): string {
+	let n = parseInt(raw.replace(/[^0-9]/g, ''), 10);
+	if (isNaN(n) || n <= 0) return '';
+	const parts: string[] = [];
+	const units: Array<[number, string]> = [
+		[10000000, 'Crore'],
+		[100000, 'Lakh'],
+		[1000, 'Thousand'],
+		[100, 'Hundred']
+	];
+	for (const [value, label] of units) {
+		const count = Math.floor(n / value);
+		if (count > 0) {
+			parts.push(`${twoDigits(count)} ${label}`);
+			n %= value;
+		}
+	}
+	if (n > 0) parts.push(twoDigits(n));
+	return parts.join(' ');
 }
 
 // ── layout engine ────────────────────────────────────────────────────────────
@@ -252,6 +314,68 @@ function gap(ctx: Ctx, pts: number) {
 	ctx.y -= pts;
 }
 
+/** Force the next content onto a fresh page (no-op if already at the top, so a
+ *  reflow that lands the break naturally never emits a blank page). */
+function pageBreak(ctx: Ctx) {
+	if (ctx.y < ctx.topY) newPage(ctx);
+}
+
+/** Right-aligned rule + centred caption, e.g. the "Intern Signature" the
+ *  internship agreement repeats mid-document so each page carries a sign-off. */
+function signatureLineRight(ctx: Ctx, caption: string, opts: { width?: number } = {}) {
+	const width = opts.width ?? 170;
+	ensure(ctx, 34);
+	ctx.y -= 14;
+	const x = ctx.W - ctx.M - width;
+	ctx.page.drawRectangle({ x, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	ctx.y -= 12;
+	const t = sanitize(caption);
+	const tw = ctx.fontB.widthOfTextAtSize(t, 9.5);
+	ctx.page.drawText(t, { x: x + (width - tw) / 2, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
+	ctx.y -= 16;
+}
+
+/** Two side-by-side signature columns (Intern | Mentor) with an optional
+ *  "Date: ____" row beneath, mirroring the internship acceptance block. */
+function signatureColumns(
+	ctx: Ctx,
+	left: string,
+	right: string,
+	opts: { dateRow?: boolean } = {}
+) {
+	const colW = 170;
+	const leftX = ctx.M;
+	const rightX = ctx.M + ctx.CW - colW;
+	ensure(ctx, opts.dateRow ? 60 : 34);
+	ctx.y -= 14;
+	for (const x of [leftX, rightX]) {
+		ctx.page.drawRectangle({ x, y: ctx.y, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	}
+	ctx.y -= 12;
+	for (const [x, label] of [[leftX, left], [rightX, right]] as const) {
+		const t = sanitize(label);
+		const tw = ctx.fontB.widthOfTextAtSize(t, 9.5);
+		ctx.page.drawText(t, { x: x + (colW - tw) / 2, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
+	}
+	ctx.y -= 18;
+	if (opts.dateRow) {
+		for (const x of [leftX, rightX]) {
+			ctx.page.drawText(sanitize('Date: _____________________'), {
+				x, y: ctx.y, font: ctx.fontR, size: 9.5, color: BLACK
+			});
+		}
+		ctx.y -= 18;
+	}
+}
+
+/** Run `block` on a single page: if it needs more room than remains, break first.
+ *  Keeps signature/acceptance blocks from splitting across a page boundary — a
+ *  document people physically sign should never orphan "Date:" onto its own page. */
+function keepTogether(ctx: Ctx, need: number, block: () => void) {
+	ensure(ctx, need);
+	block();
+}
+
 // ── header block (Name / Contact / Email + Place / Date) ─────────────────────
 
 function drawApplicantHeader(
@@ -320,11 +444,20 @@ function renderOfferOfAppointment(
 	subHeading(ctx, `The starting date of your employment will be no later than ${o.joiningDate || '____________'}`, { gapAfter: 8 });
 
 	const ctc = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
-	clause(ctx, '1.', `Your Total Cost To Company per Annum is ${ctc}/- inclusive of Standard statutory deductions. *Refer Annexure*`);
+	// The real letters quote an independent monthly take-home alongside annual
+	// CTC; when HR leaves it blank the clause collapses to the CTC-only form.
+	const monthly = o.monthlyCompensation?.trim() ? formatMoney(o.monthlyCompensation) : '';
+	clause(
+		ctx,
+		'1.',
+		monthly
+			? `Your Total Cost To Company per Annum is ${ctc}/- out of which your monthly compensation is ${monthly}/- inclusive of Standard statutory deductions. *Refer Annexure*`
+			: `Your Total Cost To Company per Annum is ${ctc}/- inclusive of Standard statutory deductions. *Refer Annexure*`
+	);
 	clause(ctx, '2.', `Statutory deductions and other standard benefits from the Company are as per the Rules and regulations.`);
 	clause(ctx, '3.', `All rewards and increments will be based purely on your performance on the job and your Contribution to the company and subject to Company Rules and regulations as mentioned in company HRIS portal and Intranet.`);
 	clause(ctx, '4.', `You will be required to observe the rules and regulations applicable to all employees of the Company. You will not engage in any trade or profession or undertaken employment, full or part-time, while in the services of the Company.`);
-	clause(ctx, '5.', `You will on probation period of 6 months, after which you will be due for the confirmation. During this probation period, you required to give a notice period of ${o.noticePeriod || '30 days'} in the event of your resigning from the services of the company in normal circumstances but if training provided you are entitled to follow company process. However the notice period will be 60 days after confirmation. Further ${company} can terminate this employment by serving you either by one-month notice or a month salary in lieu of notice, during the period of employment.`);
+	clause(ctx, '5.', `You will on probation period of 6 months, after which you will be due for the confirmation. During this probation period, you required to give a notice period of ${o.noticePeriod || '30 days'} in the event of your resigning from the services of the company in normal circumstances but if training provided you are entitled to follow company process. However the notice period will be ${o.confirmedNoticePeriod?.trim() || '60 days'} after confirmation. Further ${company} can terminate this employment by serving you either by one-month notice or a month salary in lieu of notice, during the period of employment.`);
 	clause(ctx, '6.', `In addition to holding all confidential information as a key member of our organization, you will not directly or indirectly engage in services with any of our competitors or start your own consultancy of similar nature during your tenure of employment or two years after leaving the company.`);
 	clause(ctx, '7.', `You are entitled for Leave as per the rules and regulations of the company.`);
 	clause(ctx, '8.', `You will have to work as per the scheduled time allotted to you except, Holidays. You will have to be flexible with your timings depending upon the company's requirements.`);
@@ -336,15 +469,17 @@ function renderOfferOfAppointment(
 	para(ctx, `As a token of acceptance of the above terms and conditions, you are requested to sign a copy of this letter and return to us.`, { gapAfter: 6 });
 	para(ctx, `Wish you a long and enjoyable career with ${company}.`, { gapAfter: 16 });
 
-	// Employer signature
-	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4 });
-	signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
+	// Employer signature + candidate acceptance: one indivisible block (~150pt).
+	keepTogether(ctx, 150, () => {
+		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4 });
+		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
 
-	gap(ctx, 10);
-	para(ctx, `I hereby accept the above-mentioned terms and conditions`, { gapAfter: 14 });
-	para(ctx, `Name:`, { gapAfter: 14 });
-	para(ctx, `Signature:`, { gapAfter: 14 });
-	para(ctx, `Date:`, { gapAfter: 0 });
+		gap(ctx, 10);
+		para(ctx, `I hereby accept the above-mentioned terms and conditions`, { gapAfter: 14 });
+		para(ctx, `Name:`, { gapAfter: 14 });
+		para(ctx, `Signature:`, { gapAfter: 14 });
+		para(ctx, `Date:`, { gapAfter: 0 });
+	});
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -367,7 +502,10 @@ function renderInternship(
 
 	const start = o.joiningDate || '____________';
 	const end = o.endDate || '____________';
-	const stipend = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
+	// "17,000/- per month (Rupees-Seventeen Thousand only)" — figure and words,
+	// as the signed letters write it.
+	const stipend = o.ctcAmount ? formatPlainAmount(o.ctcAmount) : '____________';
+	const stipendWords = o.ctcAmount ? amountInWords(o.ctcAmount) : '';
 
 	para(
 		ctx,
@@ -377,12 +515,24 @@ function renderInternship(
 
 	subHeading(ctx, 'Terms and conditions of the internship Program.', { gapAfter: 8 });
 
-	clause(ctx, '1.', `As intern you will be paid ${stipend}/- per month, which is including Statutory deductions if any.`);
+	clause(
+		ctx,
+		'1.',
+		stipendWords
+			? `As intern you will be paid ${stipend}/- per month (Rupees-${stipendWords} only), which is including Statutory deductions if any.`
+			: `As intern you will be paid ${stipend}/- per month, which is including Statutory deductions if any.`
+	);
 	clause(ctx, '2.', `You are expected to operate with the highest degree of initiative, economy, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not no time do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without notice.`);
 	clause(ctx, '3.', `During the internship program intern is abide by the company working hours, shifts and holidays based on the project allotted.`);
 	clause(ctx, '4.', `During the course of Internship, you shall not accept any other employment, either full-time or part-time, either for remuneration or otherwise.`);
 	clause(ctx, '5.', `Internship program can be terminated based on the company policy and procedure or based on code of the intern during the internship by without giving any notice to the Intern or by one day Updation with or without pay.`);
 	clause(ctx, '6.', `You are responsible for your own accommodation and commuting office place.`, { gapAfter: 10 });
+
+	signatureLineRight(ctx, 'Intern Signature');
+
+	// The signed original breaks here: page 1 closes on clause 6 + the intern's
+	// signature, so each page stands alone as a signing unit.
+	pageBreak(ctx);
 
 	// NDA clause 7
 	subHeading(ctx, `7.  Non-Disclosure Agreement during the Internship with ${company}.`, { gapAfter: 6 });
@@ -390,34 +540,64 @@ function renderInternship(
 	clause(ctx, 'b.', `You are obliged to sign a Non-disclosure agreement specific to a particular client as and when required by ${company}.`);
 	clause(ctx, 'c.', `Prior to joining ${company}, you will be free from any contractual restrictions preventing you from accepting this offer or starting work on your Internship.`, { gapAfter: 8 });
 
-	// Intern agreement
-	subHeading(ctx, 'Intern Agreement:', { gapAfter: 6 });
-	para(ctx, `I ${c.name} acknowledge that I have been given a unique opportunity to gain valuable professional experience. I will be able to fulfil the Intern Profile described in a timely and professional manner. I also acknowledge that this internship is to be considered as a professional experience and that my performance will be evaluated based upon the following criteria:`, { gapAfter: 6 });
-	bullet(ctx, 'Hands-on experience in innovative tech projects.');
-	bullet(ctx, 'Collaboration with a diverse and dynamic team.');
-	bullet(ctx, 'Learning opportunities through workshops and training sessions.');
-	bullet(ctx, 'Exposure to cutting-edge technologies and industry trends.');
+	// Intern agreement. Recruiter-editable criteria; blank → the standard four.
+	const criteria = (o.internCriteria?.trim() ? o.internCriteria : DEFAULT_INTERN_CRITERIA)
+		.split('\n')
+		.map((l) => l.trim())
+		.filter(Boolean);
+	const internAgreementText = `I ${c.name} acknowledge that I have been given a unique opportunity to gain valuable professional experience. I will be able to fulfil the Intern Profile described in a timely and professional manner. I also acknowledge that this internship is to be considered as a professional experience and that my performance will be evaluated based upon the following criteria:`;
+
+	// Measure the heading + paragraph + every bullet so the list never orphans a
+	// criterion onto the next page. Measured, not guessed: recruiters can add or
+	// reword bullets, and a hardcoded height would silently stop matching.
+	const bulletLines = criteria.reduce(
+		(n, cr) => n + wrap(ctx, cr, ctx.fontR, 9.5, ctx.CW - 26).length,
+		0
+	);
+	const internAgreementNeed =
+		16 + // "Intern Agreement:" sub-heading
+		wrap(ctx, internAgreementText, ctx.fontR, 9.5, ctx.CW).length * 13 +
+		bulletLines * 13 +
+		criteria.length * 3 +
+		6;
+
+	keepTogether(ctx, internAgreementNeed, () => {
+		subHeading(ctx, 'Intern Agreement:', { gapAfter: 6 });
+		para(ctx, internAgreementText, { gapAfter: 6 });
+		for (const cr of criteria) bullet(ctx, cr);
+	});
 	gap(ctx, 6);
 
 	// Mentor agreement
 	subHeading(ctx, 'Mentor Agreement', { gapAfter: 6 });
 	const mentor = o.reportingManager || '____________';
-	para(ctx, `I ${mentor} agree to mentor intern ${c.name} at ${company}. I acknowledge that this will be a professional experience for the intern, and agree to provide learning assistance and supervision throughout the internship. I agree to consult with both the intern and the internship coordinator before making any changes to the work plan.`, { gapAfter: 14 });
+	para(ctx, `I ${mentor} agree to mentor intern ${c.name} at ${company}. I acknowledge that this will be a professional experience for the intern, and agree to provide learning assistance and supervision throughout the internship. I agree to consult with both the intern and the internship coordinator before making any changes to the work plan.`, { gapAfter: 8 });
 
-	// Acceptance
+	signatureLineRight(ctx, 'Intern Signature');
+	gap(ctx, 6);
+
+	// Acceptance — the original's page 3, opening on "For <company>".
+	pageBreak(ctx);
+
 	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 6 });
 	para(ctx, `If you accept the above terms and conditions of service, please signify your acceptance on the duplicate copy of the internship letter provided to you and report for duty as indicated above.`, { gapAfter: 6 });
+	para(ctx, `I am sure that you will find your Internship with ${company} a great challenge and I look forward to a long and mutually beneficial association.`, { gapAfter: 6 });
 	para(ctx, `Again, congratulations and we look forward to working with you.`, { gapAfter: 12 });
 
-	subHeading(ctx, 'Acceptance Signature:', { gapAfter: 10 });
-	signatureLine(ctx, 'Intern Name');
-	signatureLine(ctx, 'Intern Signature');
-	para(ctx, `Date: ____________________`, { gapAfter: 12 });
+	// The signed letters carry the whole acceptance block — both signature grids,
+	// the date row, and the company counter-signature — on a page of its own.
+	keepTogether(ctx, 330, () => {
+		subHeading(ctx, 'Acceptance Signature:', { gapAfter: 10 });
+		signatureColumns(ctx, 'Intern Name', 'Mentor Name');
+		gap(ctx, 10);
+		signatureColumns(ctx, 'Intern Signature', 'Mentor Signature', { dateRow: true });
+		gap(ctx, 6);
 
-	para(ctx, `For ${company}:`, { font: ctx.fontB, gapAfter: 10 });
-	signatureLine(ctx, 'Name');
-	signatureLine(ctx, 'Signature');
-	para(ctx, `Date: ____________________`, { gapAfter: 0 });
+		para(ctx, `For ${company}:`, { font: ctx.fontB, gapAfter: 10 });
+		signatureLine(ctx, 'Name');
+		signatureLine(ctx, 'Signature');
+		para(ctx, `Date: ____________________`, { gapAfter: 0 });
+	});
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -511,13 +691,15 @@ function renderConsultant(
 	para(ctx, `This letter constitutes the complete understanding between you and the company regarding terms of employment with the company. This supersedes any and all other agreements, either written or oral, between you and the company regarding your employment. Any modification of this agreement will be effective only if it is in writing signed by both the parties. Any arbitration arising out of this contract will be held between employee and employer at Bangalore Head Office with company nominated person on one to one basis.`, { gapAfter: 6 });
 	para(ctx, `I am sure that you will find your employment with ${company} a great challenge and we look forward to a long and mutually beneficial association.`, { gapAfter: 14 });
 
-	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 10 });
-	signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
-	para(ctx, `Date:`, { gapAfter: 12 });
+	keepTogether(ctx, 190, () => {
+		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 10 });
+		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
+		para(ctx, `Date:`, { gapAfter: 12 });
 
-	para(ctx, `I have read, understood and accepted the above: I understand that the terms and conditions are pre - conditions to my being offered employment with the company. I am under no obligation or duress to accept these terms and conditions of employment. I accept them of my own free choice and will.`, { gapAfter: 14 });
-	para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14 });
-	para(ctx, `Signature:`, { font: ctx.fontB, gapAfter: 0 });
+		para(ctx, `I have read, understood and accepted the above: I understand that the terms and conditions are pre - conditions to my being offered employment with the company. I am under no obligation or duress to accept these terms and conditions of employment. I accept them of my own free choice and will.`, { gapAfter: 14 });
+		para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14 });
+		para(ctx, `Signature:`, { font: ctx.fontB, gapAfter: 0 });
+	});
 }
 
 // ── entry point ──────────────────────────────────────────────────────────────
@@ -549,8 +731,15 @@ export async function generateOfferLetterPdf(
 			for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
 			return arr;
 		};
-		fontR = await doc.embedFont(toBytes(CARLITO_REGULAR_BASE64), { subset: true });
-		fontB = await doc.embedFont(toBytes(CARLITO_BOLD_BASE64), { subset: true });
+		// liga/clig off: Carlito's `ti`/`tt` ligatures embed as single glyphs with
+		// no reverse mapping to their characters, so "conditions" rendered as
+		// "conditi ons" and extracted from the text layer as "condi ons". Turning
+		// the substitution off keeps Calibri's metrics while leaving every glyph
+		// individually addressable. subset:false for the same reason — subsetting
+		// drops glyphs the layout engine still references.
+		const features = { liga: false, clig: false };
+		fontR = await doc.embedFont(toBytes(CARLITO_REGULAR_BASE64), { subset: false, features });
+		fontB = await doc.embedFont(toBytes(CARLITO_BOLD_BASE64), { subset: false, features });
 	} catch {
 		fontR = await doc.embedFont(StandardFonts.Helvetica);
 		fontB = await doc.embedFont(StandardFonts.HelveticaBold);

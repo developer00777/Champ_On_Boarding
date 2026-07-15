@@ -190,7 +190,9 @@ const offerLetterSchema = new Schema(
 		endDate: { type: String, default: null },
 		employmentType: { type: String, enum: ['full_time', 'part_time', 'contract', 'consultant'], default: null },
 		ctcAmount: { type: String, default: null },
+		monthlyCompensation: { type: String, default: null },
 		noticePeriod: { type: String, default: null },
+		confirmedNoticePeriod: { type: String, default: null },
 		acceptanceDueDate: { type: String, default: null },
 		signatoryName: { type: String, default: null },
 		signatoryDesignation: { type: String, default: null },
@@ -199,6 +201,9 @@ const offerLetterSchema = new Schema(
 		// (one responsibility per line). Ignored for other tracks.
 		weeklyExpectation: { type: String, default: null },
 		keyResponsibilities: { type: String, default: null },
+		// Intern-track only: the "evaluated based upon the following criteria"
+		// bullets (one per line). Null falls back to the standard four.
+		internCriteria: { type: String, default: null },
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
