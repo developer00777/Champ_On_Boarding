@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Working name** | ChampOnboard (placeholder) |
+| **Name** | ChampHR |
 | **Organisation** | Champions Group |
 | **Document** | PRD v3.0 — DigitalOcean revision (supersedes the Cloudflare draft v0.1 and Champ_HR_Portal v2.0) |
 | **Date** | 12 June 2026 |

@@ -832,7 +832,7 @@ export async function generateOfferLetterPdf(
 	doc.registerFontkit(fontkit);
 	doc.setTitle(`Offer Letter - ${candidate.fullName ?? candidate.email}`);
 	doc.setAuthor(companyName);
-	doc.setCreator('ChampOnboard');
+	doc.setCreator('ChampHR');
 
 	// Embed Carlito (metric-compatible with Calibri) to match the original Word
 	// templates. Falls back to Helvetica only if the font modules fail to load.

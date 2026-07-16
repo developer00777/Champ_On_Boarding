@@ -1,4 +1,4 @@
-# ChampOnboard — Candidate Onboarding Portal
+# ChampHR — Candidate Onboarding Portal
 
 Single-link, OCR-assisted onboarding for Champions Group. One SvelteKit app serves both the
 candidate portal (`/c/<token>`) and the HR admin dashboard (`/admin`). Documents go to

@@ -6,13 +6,13 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>ChampOnboard</title>
+	<title>ChampHR</title>
 </svelte:head>
 
 {@render children()}
 
 <style>
-	/* ====== LakeB2B design tokens (ChampOnboard design canvas) ====== */
+	/* ====== LakeB2B design tokens (ChampHR design canvas) ====== */
 	:global(:root) {
 		--purple: #6d08be;
 		--gold: #ffb703;

@@ -46,4 +46,4 @@ services:
         type: SECRET
       - key: MAIL_FROM
         scope: RUN_TIME
-        value: 'ChampOnboard <onboard@example.com>'
+        value: 'ChampHR <onboard@example.com>'

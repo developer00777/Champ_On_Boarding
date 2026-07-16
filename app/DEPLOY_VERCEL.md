@@ -1,4 +1,4 @@
-# Deploying ChampOnboard to Vercel
+# Deploying ChampHR to Vercel
 
 This is a **full-stack SvelteKit app** — the `src/routes/**/+server.ts` and
 `+page.server.ts` files are the backend. The whole thing deploys to Vercel as one

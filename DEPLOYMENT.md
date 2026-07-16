@@ -1,4 +1,4 @@
-# ChampOnboard — Live Deployment (droplet 64.227.154.215)
+# ChampHR — Live Deployment (droplet 64.227.154.215)
 
 Deployed 2026-06-12. Live, masked URL: **https://champonboarding.loca.lt**
 Admin login: email `deep@championsmail.com`, password set via `SEED_ADMIN_PASSWORD` in the (gitignored) `.env` — not stored in this repo.

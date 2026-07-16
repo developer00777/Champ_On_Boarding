@@ -51,7 +51,7 @@ services:
       ORIGIN: ${PUBLIC_BASE_URL:-http://localhost:3000}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      MAIL_FROM: ${MAIL_FROM:-ChampOnboard <onboarding@offer.championsmail.com>}
+      MAIL_FROM: ${MAIL_FROM:-ChampHR <onboarding@offer.championsmail.com>}
       OFFER_MAIL_FROM: ${OFFER_MAIL_FROM:-}
     depends_on:
       mongo:
