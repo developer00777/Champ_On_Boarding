@@ -106,8 +106,8 @@
 		{#each data.candidates as c (c.id)}
 			<a class="trow" href="/admin/candidates/{c.id}">
 				<div>
-					<div style="font-weight:700;font-size:14px;color:var(--ink)">{c.fullName || c.email}</div>
-					<div style="font-size:12px;color:var(--smoke)">{c.email}</div>
+					<div style="font-weight:500;font-size:14px;color:var(--ae-text)">{c.fullName || c.email}</div>
+					<div style="font-family:var(--ae-font-mono);font-size:11px;color:var(--ae-muted)">{c.email}</div>
 				</div>
 				<div class="tcell">{c.company}</div>
 				<div class="tcell">{TRACK_LABELS[c.track as Track]}</div>
@@ -116,7 +116,7 @@
 						{statusMeta[c.status]?.label ?? c.status}
 					</span>
 				</div>
-				<div class="tcell nums" style="color:var(--smoke)">{when(c.createdAt)}</div>
+				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{when(c.createdAt)}</div>
 				<div class="review-cta">
 					Review
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" /></svg>
@@ -136,54 +136,56 @@
 	}
 	.seg {
 		display: inline-flex;
-		background: #fff;
-		border: 1px solid var(--border-2);
+		background: #14171f;
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 9px;
 		padding: 2px;
 		gap: 2px;
 	}
 	.seg-b {
 		font-size: 12.5px;
-		font-weight: 650;
-		color: var(--smoke);
+		font-weight: 500;
+		color: var(--ae-muted);
 		padding: 6px 12px;
 		border-radius: 7px;
 		text-decoration: none;
 		transition: background 0.12s, color 0.12s;
 	}
 	.seg-b:hover {
-		color: var(--ink);
+		color: var(--ae-text);
 	}
 	.seg-b.on {
-		background: var(--purple);
-		color: #fff;
+		background: rgba(255, 125, 85, 0.14);
+		color: var(--ae-ember-glow);
 	}
 	/* The global input/select rule sets width:100%, which stretches these across
 	   the row; a filter control should be as wide as its content. */
 	.filterbar select {
 		width: auto;
 		min-width: 130px;
-		border: 1.5px solid var(--border-2);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 9px;
 		padding: 7px 10px;
 		font-size: 12.5px;
-		font-weight: 600;
-		background: #fff;
-		color: var(--ink);
+		font-weight: 500;
+		background: var(--ae-input-bg);
+		color: var(--ae-text);
 	}
 	.count {
 		margin-left: auto;
-		font-size: 12.5px;
-		color: var(--smoke);
+		font-family: var(--ae-font-mono);
+		font-size: 11.5px;
+		color: var(--ae-muted);
 		font-variant-numeric: tabular-nums;
 	}
 	.count b {
-		color: var(--ink);
+		color: var(--ae-text);
+		font-weight: 600;
 	}
 	.clear {
 		margin-left: 8px;
-		color: var(--purple);
-		font-weight: 650;
+		color: var(--ae-ember-glow);
+		font-weight: 500;
 	}
 	.nums {
 		font-variant-numeric: tabular-nums;

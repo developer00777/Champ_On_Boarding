@@ -131,9 +131,11 @@
 
 <style>
 	.page-title {
-		font-size: 30px;
-		font-weight: 800;
+		font-family: var(--ae-font-display);
+		font-size: 34px;
+		font-weight: 600;
 		margin: 0 0 4px;
+		color: var(--ae-text);
 	}
 	.gen-grid {
 		display: grid;
@@ -143,39 +145,41 @@
 	}
 	.linkbox {
 		margin-top: 16px;
-		background: #f6fcfc;
-		border: 1px solid #cfebed;
-		border-radius: 14px;
+		background: rgba(62, 207, 154, 0.06);
+		border: 1px solid rgba(62, 207, 154, 0.2);
+		border-radius: 10px;
 		padding: 15px 16px;
 	}
 	.linkcode {
+		font-family: var(--ae-font-mono);
 		font-size: 13px;
-		background: #fff;
-		border: 1px solid #cfebed;
-		border-radius: 8px;
+		background: #0b0d12;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 7px;
 		padding: 7px 11px;
-		color: var(--teal);
+		color: var(--ae-ember-glow);
 		overflow-wrap: anywhere;
-		font-weight: 700;
+		font-weight: 400;
 	}
 	.teal-pill-btn {
-		border: 1px solid #cfebed;
-		background: #fff;
-		color: var(--teal);
-		font-family: 'Montserrat', Arial, sans-serif;
-		font-weight: 700;
+		border: 1px solid var(--ae-line-strong);
+		background: var(--ae-input-bg);
+		color: var(--ae-text-2);
+		font-family: var(--ae-font-body);
+		font-weight: 500;
 		font-size: 12px;
 		padding: 7px 13px;
-		border-radius: 999px;
+		border-radius: 8px;
 		cursor: pointer;
 		text-decoration: none;
 	}
 	.table-card {
-		background: #fff;
-		border: 1px solid var(--border);
-		border-radius: 20px;
-		padding: 8px 8px 6px;
-		box-shadow: 0 4px 12px rgba(11, 7, 24, 0.05);
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		border-radius: var(--ae-card-radius);
+		box-shadow: var(--ae-card-shadow);
+		backdrop-filter: var(--ae-card-blur);
+		-webkit-backdrop-filter: var(--ae-card-blur);
 		overflow: hidden;
 	}
 	.thead,
@@ -187,18 +191,21 @@
 		align-items: center;
 	}
 	.thead {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--smoke);
+		color: var(--ae-muted);
+		background: var(--ae-input-bg);
+		border-bottom: 1px solid var(--ae-line-strong);
 	}
 	.trow {
-		border-top: 1px solid var(--mist);
+		border-bottom: 1px solid var(--ae-line-soft);
 	}
 	.tcell {
 		font-size: 13px;
-		color: var(--fg-2);
+		color: var(--ae-text-2);
 	}
 	.row-actions {
 		display: flex;

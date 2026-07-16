@@ -16,10 +16,10 @@
 	};
 
 	const stats = $derived([
-		{ label: 'Total candidates', value: data.stats.total, color: 'var(--ink)' },
-		{ label: 'Awaiting review', value: data.stats.awaitingReview, color: 'var(--gold)' },
-		{ label: 'In progress', value: data.stats.inProgress, color: 'var(--purple)' },
-		{ label: 'Approved', value: data.stats.approved, color: 'var(--teal)' }
+		{ label: 'Total candidates', value: data.stats.total, color: 'var(--ae-text)' },
+		{ label: 'Awaiting review', value: data.stats.awaitingReview, color: 'var(--ae-ember-glow)' },
+		{ label: 'In progress', value: data.stats.inProgress, color: 'var(--ae-azure)' },
+		{ label: 'Approved', value: data.stats.approved, color: 'var(--ae-verdant)' }
 	]);
 
 	function copyLink(link: string) {
@@ -79,8 +79,8 @@
 	{#if form?.message}<p class="error">{form.message}</p>{/if}
 	{#if form?.link}
 		<div class="linkbox">
-			<div style="font-size:13px;color:var(--fg-2);margin-bottom:8px">
-				Link created and emailed to <strong>{form.email}</strong>:
+			<div style="font-size:13px;color:var(--ae-text-2);margin-bottom:9px">
+				Link created and emailed to <strong style="color:var(--ae-text);font-weight:500">{form.email}</strong>
 			</div>
 			<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
 				<code class="linkcode">{form.link}</code>
@@ -102,8 +102,8 @@
 		{#each data.recent as c (c.id)}
 			<a class="trow" href="/admin/candidates/{c.id}">
 				<div>
-					<div style="font-weight:700;font-size:14px;color:var(--ink)">{c.fullName || c.email}</div>
-					<div style="font-size:12px;color:var(--smoke)">{c.email}</div>
+					<div style="font-weight:500;font-size:14px;color:var(--ae-text)">{c.fullName || c.email}</div>
+					<div style="font-family:var(--ae-font-mono);font-size:11px;color:var(--ae-muted)">{c.email}</div>
 				</div>
 				<div class="tcell">{c.company}</div>
 				<div class="tcell">{TRACK_LABELS[c.track as Track]}</div>
@@ -124,14 +124,15 @@
 		justify-content: space-between;
 		gap: 12px;
 		padding: 12px 18px 10px;
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--ink);
+		font-family: var(--ae-font-display);
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--ae-text);
 	}
 	.seeall {
 		font-size: 12.5px;
-		font-weight: 650;
-		color: var(--purple);
+		font-weight: 500;
+		color: var(--ae-ember-glow);
 		text-decoration: none;
 	}
 	.seeall:hover {
@@ -140,27 +141,31 @@
 	.stats {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
-		gap: 14px;
-		margin-bottom: 22px;
+		gap: 13px;
+		margin-bottom: 20px;
 	}
 	.stat-card {
-		background: #fff;
-		border: 1px solid var(--border);
-		border-radius: 16px;
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		border-radius: var(--ae-card-radius);
+		box-shadow: var(--ae-card-shadow);
+		backdrop-filter: var(--ae-card-blur);
+		-webkit-backdrop-filter: var(--ae-card-blur);
 		padding: 18px 20px;
-		box-shadow: 0 4px 12px rgba(11, 7, 24, 0.05);
 	}
 	.stat-label {
-		font-size: 11px;
-		font-weight: 700;
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		font-weight: 600;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
-		color: var(--smoke);
-		margin-bottom: 8px;
+		color: var(--ae-muted);
+		margin-bottom: 10px;
 	}
 	.stat-value {
-		font-size: 32px;
-		font-weight: 800;
+		font-family: var(--ae-font-display);
+		font-size: 30px;
+		font-weight: 600;
 		letter-spacing: -0.02em;
 	}
 	.gen-grid {
@@ -171,29 +176,30 @@
 	}
 	.linkbox {
 		margin-top: 16px;
-		background: #f6fcfc;
-		border: 1px solid #cfebed;
-		border-radius: 14px;
+		background: rgba(62, 207, 154, 0.06);
+		border: 1px solid rgba(62, 207, 154, 0.2);
+		border-radius: 10px;
 		padding: 15px 16px;
 	}
 	.linkcode {
+		font-family: var(--ae-font-mono);
 		font-size: 12.5px;
-		background: #fff;
-		border: 1px solid #cfebed;
-		border-radius: 8px;
+		background: #0b0d12;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 7px;
 		padding: 7px 11px;
-		color: var(--teal);
+		color: var(--ae-ember-glow);
 		overflow-wrap: anywhere;
 	}
 	.teal-pill-btn {
-		border: 1px solid #cfebed;
-		background: #fff;
-		color: var(--teal);
-		font-family: 'Montserrat', Arial, sans-serif;
-		font-weight: 700;
+		border: 1px solid var(--ae-line-strong);
+		background: var(--ae-input-bg);
+		color: var(--ae-text-2);
+		font-family: var(--ae-font-body);
+		font-weight: 500;
 		font-size: 12px;
 		padding: 7px 13px;
-		border-radius: 999px;
+		border-radius: 8px;
 		cursor: pointer;
 		text-decoration: none;
 	}

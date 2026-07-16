@@ -171,9 +171,11 @@
 
 <style>
 	.card-title {
-		font-size: 15px;
-		font-weight: 700;
-		margin: 0 0 14px;
+		font-family: var(--ae-font-display);
+		font-size: 18px;
+		font-weight: 600;
+		margin: 0 0 16px;
+		color: var(--ae-text);
 	}
 	.add-grid {
 		display: grid;
@@ -186,9 +188,9 @@
 		gap: 5px;
 	}
 	.field > span {
-		font-size: 12.5px;
-		font-weight: 650;
-		color: var(--smoke);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ae-text-2);
 	}
 	.field em {
 		font-style: normal;
@@ -196,7 +198,7 @@
 	}
 	.field small {
 		font-size: 11.5px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 	}
 	.logo-field {
 		grid-column: 1 / -1;
@@ -215,13 +217,15 @@
 		display: grid;
 		place-items: center;
 		overflow: hidden;
-		background: #fff;
+		background: #f4f4f0;
+		border-color: var(--ae-line-strong);
 		flex: none;
 	}
 	.logo-prev.empty {
 		border-style: dashed;
 		font-size: 11px;
-		color: var(--smoke);
+		color: var(--ae-muted);
+		background: var(--ae-sub-bg);
 	}
 	.logo-prev img {
 		max-width: 100%;
@@ -230,20 +234,22 @@
 	}
 
 	.ent-head {
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
-		font-size: 12px;
-		font-weight: 650;
-		color: var(--smoke);
+		padding: 12px 18px;
+		background: var(--ae-input-bg);
+		border-bottom: 1px solid var(--ae-line-strong);
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--ae-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.1em;
 	}
 	.ent {
 		display: flex;
 		align-items: center;
 		gap: 14px;
 		padding: 11px 16px;
-		border-bottom: 1px solid var(--border);
+		border-bottom: 1px solid var(--ae-line-soft);
 		flex-wrap: wrap;
 	}
 	.ent:last-child {
@@ -255,9 +261,9 @@
 		flex: none;
 		display: grid;
 		place-items: center;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 6px;
-		background: #fff;
+		background: #f4f4f0;
 		overflow: hidden;
 	}
 	.ent-logo img {
@@ -266,26 +272,29 @@
 		object-fit: contain;
 	}
 	.mono {
+		font-family: var(--ae-font-mono);
 		font-size: 11px;
-		font-weight: 800;
-		color: var(--smoke);
+		font-weight: 600;
+		color: var(--ae-muted);
 	}
 	.ent-main {
 		flex: 1;
 		min-width: 160px;
 	}
 	.ent-name {
-		font-weight: 650;
+		font-weight: 500;
 		font-size: 14px;
+		color: var(--ae-text);
 	}
 	.ent-sub {
-		font-size: 12px;
-		color: var(--smoke);
+		font-family: var(--ae-font-mono);
+		font-size: 11px;
+		color: var(--ae-muted);
 		font-variant-numeric: tabular-nums;
 	}
 	.ent-brand {
 		font-size: 12.5px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 	}
 	.ent-form {
 		display: flex;
@@ -304,13 +313,14 @@
 		overflow: hidden;
 		display: inline-flex;
 		align-items: center;
-		border: 1px solid var(--border-2);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 8px;
 		padding: 6px 11px;
 		font-size: 12.5px;
-		font-weight: 600;
+		font-weight: 500;
 		cursor: pointer;
-		background: #fff;
+		background: var(--ae-input-bg);
+		color: var(--ae-text-2);
 	}
 	.filebtn input {
 		position: absolute;
@@ -325,12 +335,14 @@
 		margin: 0 0 16px;
 	}
 	.flash.err {
-		background: #fdecef;
-		color: var(--red);
+		background: rgba(240, 117, 117, 0.12);
+		border: 1px solid rgba(240, 117, 117, 0.3);
+		color: var(--ae-crimson);
 	}
 	.flash.ok {
-		background: #e6f6f7;
-		color: var(--teal);
+		background: rgba(62, 207, 154, 0.08);
+		border: 1px solid rgba(62, 207, 154, 0.25);
+		color: var(--ae-verdant);
 	}
 	@media (max-width: 640px) {
 		.add-grid {

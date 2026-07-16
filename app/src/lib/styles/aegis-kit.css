@@ -1,0 +1,218 @@
+/* =========================================================
+   AEGIS KIT — glass re-skin of the shared component classes.
+   ---------------------------------------------------------
+   routes/+layout.svelte defines .card/.btn/.pill/.eyebrow/
+   .muted/.error globally, in light LakeB2B colours. Those
+   same classes are used by BOTH the admin tree and the
+   white-labelled candidate portal, so they cannot be
+   repointed at glass wholesale.
+
+   Everything here is therefore prefixed `.aegis` and only
+   bites inside the admin shell. The candidate portal keeps
+   the light originals untouched.
+   ========================================================= */
+
+.aegis {
+	background: var(--ae-page-bg);
+	background-attachment: fixed;
+	color: var(--ae-text);
+	font-family: var(--ae-font-body);
+	min-height: 100vh;
+}
+
+.aegis ::selection {
+	background: rgba(255, 125, 85, 0.3);
+}
+
+.aegis h1,
+.aegis h2,
+.aegis h3 {
+	font-family: var(--ae-font-display);
+	font-weight: 600;
+	color: var(--ae-text);
+	letter-spacing: -0.02em;
+}
+
+/* ---------- surfaces ---------- */
+.aegis .card,
+.aegis .table-card {
+	background: var(--ae-card-bg);
+	border: 1px solid var(--ae-card-border);
+	border-radius: var(--ae-card-radius);
+	box-shadow: var(--ae-card-shadow);
+	backdrop-filter: var(--ae-card-blur);
+	-webkit-backdrop-filter: var(--ae-card-blur);
+	color: var(--ae-text);
+}
+
+/* ---------- type ---------- */
+.aegis .eyebrow {
+	font-family: var(--ae-font-mono);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.15em;
+	text-transform: uppercase;
+	color: var(--ae-ember);
+}
+.aegis .muted {
+	color: var(--ae-muted);
+	font-size: 13px;
+}
+.aegis .error {
+	color: var(--ae-crimson);
+	font-size: 12.5px;
+	font-weight: 500;
+	margin-top: 5px;
+}
+.aegis .page-title {
+	font-family: var(--ae-font-display);
+	font-weight: 600;
+	color: var(--ae-text);
+}
+
+/* ---------- form controls ---------- */
+/* routes/+layout.svelte sets `font-family:'Montserrat'` directly on input/select/
+   textarea and button as :global rules. Those are same-specificity and load
+   first, but these are scoped tighter (.aegis + element), so they win. */
+.aegis input,
+.aegis select,
+.aegis textarea,
+.aegis button {
+	font-family: var(--ae-font-body);
+}
+.aegis input,
+.aegis select,
+.aegis textarea {
+	background: var(--ae-input-bg);
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 8px;
+	color: var(--ae-text);
+	transition: all 0.12s;
+}
+.aegis input::placeholder,
+.aegis textarea::placeholder {
+	color: var(--ae-muted);
+}
+.aegis input:focus,
+.aegis select:focus,
+.aegis textarea:focus {
+	border-color: var(--ae-ember);
+	box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
+}
+/* Native widgets (select popups, the file-picker button, date pickers,
+   scrollbars) render in the OS light palette unless told otherwise. */
+.aegis {
+	color-scheme: dark;
+}
+.aegis label {
+	color: var(--ae-text-2);
+	font-weight: 500;
+	font-size: 12px;
+}
+.aegis input[type='checkbox'] {
+	accent-color: var(--ae-ember);
+	width: auto;
+}
+
+/* ---------- buttons ---------- */
+.aegis .btn {
+	background: var(--ae-ember);
+	color: #fff;
+	border: none;
+	border-radius: 8px;
+	font-family: var(--ae-font-body);
+	font-weight: 500;
+	box-shadow: 0 0 24px rgba(255, 125, 85, 0.3);
+	text-transform: none;
+	transition: all 0.22s var(--ae-spring);
+}
+.aegis .btn:hover:not(:disabled) {
+	background: var(--ae-ember-glow);
+	transform: translateY(-1px);
+	box-shadow: 0 0 32px rgba(255, 125, 85, 0.5);
+}
+.aegis .btn:disabled {
+	background: var(--ae-input-bg);
+	color: var(--ae-muted);
+	box-shadow: none;
+	opacity: 1;
+}
+.aegis .btn.ghost {
+	background: var(--ae-input-bg);
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	color: var(--ae-text);
+	box-shadow: none;
+}
+.aegis .btn.ghost:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.12);
+	border-color: rgba(255, 255, 255, 0.14);
+	color: var(--ae-text);
+}
+/* `.teal` is the light system's approve/confirm colour; in Aegis that reads green. */
+.aegis .btn.teal {
+	background: var(--ae-verdant);
+	color: #06231a;
+	box-shadow: 0 0 24px rgba(62, 207, 154, 0.3);
+}
+.aegis .btn.teal:hover:not(:disabled) {
+	background: #5bdbad;
+	box-shadow: 0 0 32px rgba(62, 207, 154, 0.45);
+}
+.aegis .btn.grad {
+	background: linear-gradient(135deg, var(--ae-ember), var(--ae-ember-deep));
+	box-shadow: 0 0 24px rgba(255, 125, 85, 0.35);
+}
+.aegis .btn.small {
+	padding: 6px 13px;
+	font-size: 11.5px;
+	box-shadow: none;
+}
+
+/* ---------- pills / badges ---------- */
+.aegis .pill {
+	font-family: var(--ae-font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	border-radius: 999px;
+	padding: 4px 9px;
+	background: var(--ae-input-bg);
+	border: 1px solid var(--ae-line-strong);
+	color: var(--ae-text-2);
+}
+.aegis .pill.purple {
+	background: rgba(123, 167, 240, 0.14);
+	border-color: rgba(123, 167, 240, 0.3);
+	color: var(--ae-azure);
+}
+.aegis .pill.gold {
+	background: rgba(242, 177, 92, 0.14);
+	border-color: rgba(242, 177, 92, 0.3);
+	color: var(--ae-amber);
+}
+.aegis .pill.teal {
+	background: rgba(62, 207, 154, 0.14);
+	border-color: rgba(62, 207, 154, 0.3);
+	color: var(--ae-verdant);
+}
+.aegis .pill.red {
+	background: rgba(240, 117, 117, 0.14);
+	border-color: rgba(240, 117, 117, 0.3);
+	color: var(--ae-crimson);
+}
+
+/* ---------- misc ---------- */
+.aegis .divider {
+	background: var(--ae-line);
+}
+.aegis code {
+	font-family: var(--ae-font-mono);
+	background: #0b0d12;
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 7px;
+	color: var(--ae-ember-glow);
+}
+.aegis a {
+	color: var(--ae-ember-glow);
+}

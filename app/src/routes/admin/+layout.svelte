@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import '$lib/styles/aegis.css';
+	import '$lib/styles/aegis-kit.css';
 
 	let { data, children } = $props();
 
@@ -12,7 +14,15 @@
 	}
 </script>
 
-<div class="shell" class:signed-in={!!data.admin}>
+<svelte:head>
+	<!-- Admin-only: the candidate portal loads its own per-brand families. -->
+	<link
+		href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Fraunces:ital,opsz,wght@1,9..144,400&display=swap"
+		rel="stylesheet"
+	/>
+</svelte:head>
+
+<div class="shell aegis" class:signed-in={!!data.admin}>
 	{#if data.admin}
 		<nav class="rail" aria-label="Admin sections">
 			<a href="/admin" class="rail-brand">
@@ -77,7 +87,10 @@
 		min-height: 100vh;
 	}
 	.rail {
-		background: var(--ink);
+		background: var(--ae-rail-bg);
+		backdrop-filter: blur(20px) saturate(160%);
+		-webkit-backdrop-filter: blur(20px) saturate(160%);
+		border-right: 1px solid var(--ae-line);
 		padding: 16px 12px;
 		display: flex;
 		flex-direction: column;
@@ -97,11 +110,12 @@
 		object-fit: contain;
 	}
 	.rail-sec {
-		font-size: 10.5px;
+		font-family: var(--ae-font-mono);
+		font-size: 9.5px;
 		text-transform: uppercase;
-		letter-spacing: 0.09em;
-		color: #6c6480;
-		font-weight: 700;
+		letter-spacing: 0.14em;
+		color: var(--ae-faint);
+		font-weight: 600;
 		padding: 14px 8px 5px;
 	}
 	.navitem {
@@ -110,11 +124,11 @@
 		gap: 10px;
 		padding: 8px 9px;
 		border-radius: 8px;
-		color: #b9b2c7;
+		color: var(--ae-muted-2);
 		text-decoration: none;
-		font-size: 13.5px;
-		font-weight: 600;
-		transition: background 0.13s, color 0.13s;
+		font-size: 13px;
+		font-weight: 500;
+		transition: background 0.15s, color 0.15s;
 	}
 	.navitem svg {
 		width: 15px;
@@ -124,44 +138,49 @@
 	}
 	.navitem:hover {
 		background: rgba(255, 255, 255, 0.06);
-		color: #fff;
+		color: var(--ae-text);
 	}
 	.navitem.on {
-		background: var(--purple);
-		color: #fff;
+		background: rgba(255, 125, 85, 0.14);
+		color: var(--ae-ember-glow);
 	}
 	.navitem:focus-visible {
-		outline: 2px solid var(--gold);
+		outline: 2px solid var(--ae-ember);
 		outline-offset: 1px;
 	}
 	.rail-foot {
 		margin-top: auto;
-		border-top: 1px solid rgba(255, 255, 255, 0.09);
-		padding: 10px 8px 0;
-		font-size: 11.5px;
-		color: #6c6480;
+		border-top: 1px solid rgba(255, 255, 255, 0.08);
+		padding: 12px 8px 0;
+		font-size: 11px;
+		color: var(--ae-muted);
 	}
 	.who {
-		color: #b9b2c7;
+		font-family: var(--ae-font-mono);
+		font-size: 10.5px;
+		color: var(--ae-muted-2);
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.role {
-		margin-bottom: 6px;
+		margin: 3px 0 8px;
 	}
 	.logout {
 		background: none;
 		border: none;
-		color: #6c6480;
+		color: var(--ae-muted);
 		font: inherit;
+		font-family: var(--ae-font-body);
 		font-size: 11.5px;
-		font-weight: 650;
+		font-weight: 500;
 		padding: 0;
 		cursor: pointer;
 		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 	.logout:hover {
-		color: #fff;
+		color: var(--ae-text);
 	}
 	.content {
 		padding: 28px 28px 80px;
@@ -173,17 +192,22 @@
 	   <style> because Home, Candidates and Entities all render the same table and
 	   headings — duplicating them per page is how they silently drift apart. */
 	.content :global(.page-title) {
-		font-size: 26px;
-		font-weight: 800;
+		font-family: var(--ae-font-display);
+		font-size: 34px;
+		font-weight: 600;
 		margin: 0 0 4px;
 		letter-spacing: -0.02em;
+		color: var(--ae-text);
 	}
+	/* No inner padding: the header row is a full-bleed tinted band in Aegis,
+	   so it must reach the card edge. */
 	.content :global(.table-card) {
-		background: #fff;
-		border: 1px solid var(--border);
-		border-radius: 20px;
-		padding: 8px 8px 6px;
-		box-shadow: 0 4px 12px rgba(11, 7, 24, 0.05);
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		border-radius: var(--ae-card-radius);
+		box-shadow: var(--ae-card-shadow);
+		backdrop-filter: var(--ae-card-blur);
+		-webkit-backdrop-filter: var(--ae-card-blur);
 		overflow: hidden;
 	}
 	.content :global(.thead),
@@ -195,28 +219,30 @@
 		align-items: center;
 	}
 	.content :global(.thead) {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--smoke);
+		color: var(--ae-muted);
+		background: var(--ae-input-bg);
+		border-bottom: 1px solid var(--ae-line-strong);
 	}
 	.content :global(.trow) {
-		border-top: 1px solid var(--mist);
+		border-bottom: 1px solid var(--ae-line-soft);
 		text-decoration: none;
-		border-radius: 12px;
 		transition: background 0.15s;
 	}
 	.content :global(.trow:hover) {
-		background: #faf8fd;
+		background: var(--ae-hover);
 	}
 	.content :global(.tcell) {
 		font-size: 13px;
-		color: var(--fg-2);
+		color: var(--ae-text-2);
 	}
 	.content :global(.review-cta) {
-		color: var(--purple);
-		font-weight: 700;
+		color: var(--ae-ember-glow);
+		font-weight: 500;
 		font-size: 13px;
 		display: inline-flex;
 		align-items: center;

@@ -35,16 +35,20 @@
 	.login-card {
 		width: 100%;
 		max-width: 400px;
-		border-radius: 24px;
+		border-radius: 20px;
 		overflow: hidden;
-		background: #fff;
-		box-shadow: 0 24px 60px -12px rgba(11, 7, 24, 0.22);
-		border: 1px solid var(--border);
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		box-shadow: var(--ae-card-shadow);
+		backdrop-filter: var(--ae-card-blur);
+		-webkit-backdrop-filter: var(--ae-card-blur);
 	}
 	.login-hero {
 		position: relative;
 		padding: 28px 28px 26px;
-		background: linear-gradient(135deg, #6d08be 0%, #7a2bd0 42%, #e8033a 100%);
+		background: linear-gradient(140deg, rgba(146, 120, 255, 0.2) 0%, rgba(22, 25, 40, 0.5) 52%),
+			radial-gradient(circle at 85% 10%, rgba(255, 125, 85, 0.22), transparent 55%);
+		border-bottom: 1px solid var(--ae-line);
 		display: flex;
 		align-items: center;
 		gap: 14px;

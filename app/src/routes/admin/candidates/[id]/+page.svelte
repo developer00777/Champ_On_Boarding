@@ -173,18 +173,25 @@
 
 <div class="head">
 	<div class="avatar">{initial}</div>
-	<div style="flex:1;min-width:200px">
+	<div style="flex:1 1 320px;min-width:260px">
 		<div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
-			<h1 style="font-size:26px;font-weight:800;margin:0">{c.fullName || c.email}</h1>
+			<h1 style="font-family:var(--ae-font-display);font-size:26px;font-weight:600;margin:0;white-space:nowrap">
+				{c.fullName || c.email}
+			</h1>
 			<span class="pill {statusMeta[c.status]?.cls}">{statusMeta[c.status]?.label ?? c.status}</span>
+			<!-- On the Aegis dark chrome the plating inverts: white logo art needs no
+			     plate at all, while dark art needs a light one to stay legible. -->
 			<img
 				src={data.brand.logo.src}
 				alt={data.brand.name}
 				title="Recruiting for {data.brand.name}"
-				style="height:26px;width:auto;max-width:200px;object-fit:contain;margin-left:auto;border-radius:8px;{data.brand.logo.onDark ? `background:${data.brand.colors.ink};padding:6px 10px` : ''}"
+				style="height:26px;width:auto;max-width:200px;object-fit:contain;margin-left:auto;border-radius:8px;{data
+					.brand.logo.onDark
+					? ''
+					: 'background:#F4F4F0;padding:6px 10px'}"
 			/>
 		</div>
-		<div class="muted" style="margin-top:4px;font-size:13.5px">
+		<div class="muted" style="margin-top:5px;font-family:var(--ae-font-mono);font-size:11.5px">
 			{c.email} · <span>{TRACK_LABELS[c.track as Track]}</span> · {data.companyName}
 			{#if c.submittedAt}· Submitted {new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{/if}
 			{#if c.consentAt}· Consent recorded{/if}
@@ -227,8 +234,8 @@
 			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
 		</div>
 		<div style="flex:1">
-			<div style="font-weight:800;font-size:15px;color:var(--ink)">Ready for review</div>
-			<div style="font-size:12.5px;color:var(--smoke);margin-top:2px">
+			<div style="font-weight:800;font-size:15px;color:var(--ae-text)">Ready for review</div>
+			<div style="font-size:12.5px;color:var(--ae-muted);margin-top:2px">
 				{c.fullName || c.email} has submitted all documentation. Review below and approve or request changes.
 			</div>
 		</div>
@@ -276,15 +283,15 @@
 					</div>
 				{/each}
 				{#if c.status === 'revoked'}
-					<div class="journey-step active" style="--step-color:var(--red)">
-						<div class="j-dot" style="background:var(--red)"></div>
+					<div class="journey-step active" style="--step-color:var(--ae-crimson)">
+						<div class="j-dot" style="background:var(--ae-crimson)"></div>
 						<div class="j-line" style="display:none"></div>
 						<div class="j-label"><span class="j-icon">🚫</span><span>Revoked</span></div>
 					</div>
 				{/if}
 			</div>
 			{#if c.submittedAt}
-				<div class="muted" style="font-size:11px;margin-top:10px;padding-top:10px;border-top:1px solid var(--mist)">
+				<div class="muted" style="font-size:11px;margin-top:10px;padding-top:10px;border-top:1px solid var(--ae-line-soft)">
 					Submitted {new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
 				</div>
 			{/if}
@@ -346,7 +353,7 @@
 							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></svg>
 						</span>
 						<div style="flex:1">
-							<div class="doc-name" style="color:var(--smoke)">{slot.label}</div>
+							<div class="doc-name" style="color:var(--ae-muted)">{slot.label}</div>
 							<div class="doc-sub">Not uploaded</div>
 						</div>
 						{#if slot.mandatory}<span class="pill red">MISSING</span>{/if}
@@ -694,7 +701,7 @@
 							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5" /></svg>
 						{/if}
 					</button>
-					<span style="flex:1;font-size:13.5px;font-weight:600;color:var(--fg-2)">{item.label}</span>
+					<span style="flex:1;font-size:13.5px;font-weight:600;color:var(--ae-text-2)">{item.label}</span>
 					<span class="phys-status" class:got={item.received}>
 						{item.received
 							? `Received${item.receivedAt ? ' · ' + new Date(item.receivedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}`
@@ -716,7 +723,7 @@
 		gap: 6px;
 		font-weight: 700;
 		font-size: 13px;
-		color: var(--purple);
+		color: var(--ae-ember-glow);
 		text-decoration: none;
 		margin-bottom: 18px;
 	}
@@ -730,28 +737,30 @@
 	.avatar {
 		width: 60px;
 		height: 60px;
-		border-radius: 16px;
-		background: linear-gradient(135deg, #6d08be 0%, #7a2bd0 100%);
+		border-radius: 14px;
+		background: linear-gradient(135deg, #ff7d55, #d85a35);
+		box-shadow: 0 0 20px rgba(255, 125, 85, 0.3);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		color: #fff;
-		font-weight: 800;
+		font-family: var(--ae-font-display);
+		font-weight: 600;
 		font-size: 24px;
 		flex-shrink: 0;
 	}
 	.danger-hover:hover {
-		border-color: var(--red) !important;
-		color: var(--red) !important;
+		border-color: var(--ae-crimson) !important;
+		color: var(--ae-crimson) !important;
 	}
 	.flagbox {
-		background: #fffbeb;
-		border: 1px solid #fcd34d;
+		background: rgba(242,177,92,.08);
+		border: 1px solid rgba(242,177,92,.3);
 		border-radius: 16px;
 		padding: 14px 18px;
 		margin-bottom: 20px;
 		font-size: 13px;
-		color: var(--fg-2);
+		color: var(--ae-text-2);
 	}
 	.cols {
 		display: grid;
@@ -775,10 +784,10 @@
 		grid-template-columns: 18px 1fr;
 		grid-template-rows: auto auto;
 		column-gap: 10px;
-		--step-color: var(--teal);
+		--step-color: var(--ae-verdant);
 	}
-	.journey-step.pending { --step-color: var(--fog); }
-	.journey-step.active  { --step-color: var(--purple); }
+	.journey-step.pending { --step-color: var(--ae-faint); }
+	.journey-step.active  { --step-color: var(--ae-ember-glow); }
 	.j-dot {
 		grid-column: 1;
 		grid-row: 1;
@@ -795,21 +804,21 @@
 		transition: background 0.2s;
 	}
 	.journey-step.pending .j-dot {
-		background: var(--mist);
-		border: 2px solid var(--fog);
+		background: var(--ae-line-soft);
+		border: 2px solid var(--ae-faint);
 	}
 	.j-pulse {
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: #fff;
+		background: var(--ae-sub-bg);
 	}
 	.j-line {
 		grid-column: 1;
 		grid-row: 2;
 		width: 2px;
 		min-height: 18px;
-		background: var(--mist);
+		background: var(--ae-line-soft);
 		margin: 0 auto;
 	}
 	.journey-step:last-child .j-line { display: none; }
@@ -822,10 +831,10 @@
 		padding: 1px 0 14px;
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--smoke);
+		color: var(--ae-muted);
 	}
-	.journey-step.done .j-label  { color: var(--ink); }
-	.journey-step.active .j-label { color: var(--purple); font-weight: 800; }
+	.journey-step.done .j-label  { color: var(--ae-text); }
+	.journey-step.active .j-label { color: var(--ae-ember-glow); font-weight: 800; }
 	.j-icon { font-size: 13px; line-height: 1.3; flex-shrink: 0; }
 
 	/* Employee code widget */
@@ -837,9 +846,9 @@
 		font-family: ui-monospace, monospace;
 		font-size: 14px;
 		font-weight: 800;
-		color: var(--teal);
-		background: #f0fdf8;
-		border: 1.5px solid #6ee7b7;
+		color: var(--ae-verdant);
+		background: rgba(62,207,154,.08);
+		border: 1.5px solid rgba(62,207,154,.3);
 		border-radius: 9px;
 		padding: 8px 11px;
 		margin-bottom: 10px;
@@ -855,13 +864,13 @@
 		font-size: 13px;
 		font-family: ui-monospace, monospace;
 		padding: 7px 9px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 8px;
-		color: var(--ink);
+		color: var(--ae-text);
 	}
 	.emp-input:disabled {
-		background: var(--paper);
-		color: var(--fog);
+		background: var(--ae-sub-bg);
+		color: var(--ae-faint);
 		cursor: not-allowed;
 	}
 	.emp-hint {
@@ -869,7 +878,7 @@
 		align-items: center;
 		gap: 4px;
 		font-size: 10.5px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 		margin-top: 6px;
 	}
 	.docrow {
@@ -877,21 +886,21 @@
 		align-items: center;
 		gap: 12px;
 		padding: 11px 0;
-		border-bottom: 1px solid var(--mist);
+		border-bottom: 1px solid var(--ae-line-soft);
 	}
 	.doc-ico {
 		width: 36px;
 		height: 36px;
 		border-radius: 9px;
-		background: var(--mist);
+		background: var(--ae-line-soft);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
-		color: var(--purple);
+		color: var(--ae-ember-glow);
 	}
 	.doc-ico.empty {
-		color: var(--fog);
+		color: var(--ae-faint);
 	}
 	.doc-name {
 		font-weight: 700;
@@ -899,12 +908,12 @@
 	}
 	.doc-sub {
 		font-size: 11.5px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 	}
 	pre {
 		white-space: pre-wrap;
 		font-size: 11px;
-		background: var(--paper);
+		background: var(--ae-sub-bg);
 		padding: 8px 10px;
 		border-radius: 8px;
 		max-height: 180px;
@@ -915,14 +924,14 @@
 		display: flex;
 		gap: 8px;
 		padding: 8px 0 12px 48px;
-		border-bottom: 1px solid var(--mist);
+		border-bottom: 1px solid var(--ae-line-soft);
 	}
 	.group-title {
 		font-weight: 800;
 		font-size: 11px;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--fog);
+		color: var(--ae-faint);
 		margin: 14px 0 4px;
 	}
 	.frow {
@@ -930,12 +939,12 @@
 		align-items: center;
 		gap: 10px;
 		padding: 8px 0;
-		border-bottom: 1px solid var(--mist);
+		border-bottom: 1px solid var(--ae-line-soft);
 	}
 	.flabel {
 		flex: 1;
 		font-size: 12.5px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 	}
 	.fvalue {
 		font-size: 13.5px;
@@ -948,14 +957,14 @@
 	}
 	.lock-hint {
 		font-size: 11px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 		margin-top: 8px;
 		display: flex;
 		align-items: center;
 		gap: 5px;
 	}
 	.red-eyebrow {
-		color: var(--red);
+		color: var(--ae-crimson);
 	}
 	.offer-form {
 		display: grid;
@@ -967,17 +976,17 @@
 		flex-direction: column;
 		gap: 4px;
 		font-size: 11.5px;
-		color: var(--smoke);
+		color: var(--ae-muted);
 		font-weight: 600;
 	}
 	.offer-field input,
 	.offer-field select {
 		font-size: 13px;
 		padding: 7px 9px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 8px;
 		font-family: inherit;
-		color: var(--fg-2);
+		color: var(--ae-text-2);
 	}
 	.sig-field {
 		grid-column: 1 / -1;
@@ -985,10 +994,10 @@
 	.kra-textarea {
 		font-size: 12.5px;
 		padding: 8px 10px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 8px;
 		font-family: inherit;
-		color: var(--fg-2);
+		color: var(--ae-text-2);
 		resize: vertical;
 		line-height: 1.5;
 	}
@@ -997,19 +1006,19 @@
 		align-items: center;
 		gap: 8px;
 		padding: 9px 16px;
-		border: 1.5px dashed var(--border);
+		border: 1.5px dashed var(--ae-line-strong);
 		border-radius: 10px;
 		font-size: 13px;
 		font-weight: 700;
-		color: var(--purple);
-		background: #faf8fd;
+		color: var(--ae-ember-glow);
+		background: rgba(255,255,255,.03);
 		cursor: pointer;
 		transition: border-color 0.15s, background 0.15s;
 		width: fit-content;
 	}
 	.sig-upload-btn:hover {
-		border-color: var(--purple);
-		background: #f3effe;
+		border-color: var(--ae-ember-glow);
+		background: rgba(255,125,85,.08);
 	}
 	.sig-file-hidden {
 		display: none;
@@ -1019,9 +1028,9 @@
 		align-items: center;
 		gap: 14px;
 		padding: 10px 14px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 10px;
-		background: #fafafa;
+		background: var(--ae-sub-bg);
 		width: fit-content;
 	}
 	.sig-img {
@@ -1029,7 +1038,7 @@
 		max-width: 160px;
 		object-fit: contain;
 		border-radius: 4px;
-		background: #fff;
+		background: var(--ae-sub-bg);
 	}
 	.sig-replace-btn {
 		display: inline-flex;
@@ -1037,16 +1046,16 @@
 		gap: 5px;
 		font-size: 11.5px;
 		font-weight: 700;
-		color: var(--purple);
+		color: var(--ae-ember-glow);
 		cursor: pointer;
 		padding: 5px 10px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 7px;
-		background: #fff;
+		background: var(--ae-sub-bg);
 		white-space: nowrap;
 	}
 	.sig-replace-btn:hover {
-		border-color: var(--purple);
+		border-color: var(--ae-ember-glow);
 	}
 	@media (max-width: 700px) {
 		.offer-form {
@@ -1064,17 +1073,17 @@
 		width: 140px;
 		font-size: 13px;
 		padding: 5px 9px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 8px;
 		font-family: ui-monospace, monospace;
 	}
 	.saved-chip {
 		font-size: 12px;
 		font-weight: 700;
-		color: var(--teal);
+		color: var(--ae-verdant);
 	}
 	.verif {
-		border: 1px solid var(--mist);
+		border: 1px solid var(--ae-line-soft);
 		border-radius: 12px;
 		padding: 12px 14px;
 		margin-bottom: 12px;
@@ -1093,8 +1102,8 @@
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: var(--smoke);
-		background: var(--mist);
+		color: var(--ae-muted);
+		background: var(--ae-line-soft);
 		padding: 2px 7px;
 		border-radius: 999px;
 	}
@@ -1108,8 +1117,8 @@
 		width: 22px;
 		height: 22px;
 		border-radius: 7px;
-		border: 1.5px solid var(--fog);
-		background: #fff;
+		border: 1.5px solid var(--ae-faint);
+		background: var(--ae-sub-bg);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1117,16 +1126,16 @@
 		padding: 0;
 	}
 	.phys-check.on {
-		border-color: var(--teal);
-		background: var(--teal);
+		border-color: var(--ae-verdant);
+		background: var(--ae-verdant);
 	}
 	.phys-status {
 		font-size: 11.5px;
 		font-weight: 700;
-		color: var(--smoke);
+		color: var(--ae-muted);
 	}
 	.phys-status.got {
-		color: var(--teal);
+		color: var(--ae-verdant);
 	}
 	@media (max-width: 1100px) {
 		.cols {
@@ -1151,8 +1160,8 @@
 		display: flex;
 		align-items: center;
 		gap: 16px;
-		background: linear-gradient(135deg, #f0fdf8 0%, #e6faf4 100%);
-		border: 1.5px solid #6ee7b7;
+		background: linear-gradient(135deg, rgba(62,207,154,.08) 0%, rgba(62,207,154,.1) 100%);
+		border: 1.5px solid rgba(62,207,154,.3);
 		border-radius: 18px;
 		padding: 18px 22px;
 		margin-bottom: 20px;
@@ -1162,11 +1171,12 @@
 		width: 52px;
 		height: 52px;
 		border-radius: 14px;
-		background: var(--teal);
+		background: var(--ae-verdant);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: #fff;
+		/* Dark glyph on the green fill: #fff on #3ECF9A is only ~1.8:1. */
+		color: #06231a;
 		flex-shrink: 0;
 	}
 </style>

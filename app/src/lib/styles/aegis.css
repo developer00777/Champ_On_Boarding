@@ -1,0 +1,107 @@
+/* =========================================================
+   AEGIS — Champ Suite design language, admin scope only.
+   ---------------------------------------------------------
+   Scoped to `.aegis`, NOT :root. The candidate portal
+   (routes/c/[token]) is white-labelled across the 9 light
+   brands in lib/shared/brands.ts and must keep its own
+   theming — see the `.brand-scope` wrapper there. Bleeding
+   these tokens onto :root would repaint every brand ember.
+
+   Surface variants: glass (default) | aegis | clay.
+   Swap by changing the class on the admin shell:
+   `.aegis` -> `.aegis.surface-aegis` / `.aegis.surface-clay`.
+   Values mirror the `surface()` method in the prototype
+   (scripts/Onboarding Application (2)/ChampOnboard.dc.html).
+   ========================================================= */
+
+.aegis {
+	/* --- palette (glass variant; softened vs. the flat-aegis README) --- */
+	--ae-ember: #ff7d55;
+	--ae-ember-glow: #ffa184;
+	--ae-ember-deep: #d85a35;
+	--ae-verdant: #3ecf9a;
+	--ae-amber: #f2b15c;
+	--ae-crimson: #f07575;
+	--ae-azure: #7ba7f0;
+
+	--ae-text: #fafaf7;
+	--ae-text-2: #cbd1de;
+	--ae-muted: #8a91a5;
+	--ae-muted-2: #a8afc0;
+	--ae-faint: #4b5160;
+	--ae-numeral: #3a3f4d;
+
+	--ae-line: rgba(255, 255, 255, 0.07);
+	--ae-line-soft: rgba(255, 255, 255, 0.05);
+	--ae-line-strong: rgba(255, 255, 255, 0.1);
+
+	--ae-font-display: 'Space Grotesk', system-ui, sans-serif;
+	--ae-font-body: 'Inter', system-ui, sans-serif;
+	--ae-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+	--ae-font-accent: 'Fraunces', Georgia, serif;
+
+	--ae-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+	/* --- surface: glass (default) --- */
+	--ae-frost: 18px;
+	--ae-page-bg: radial-gradient(1000px 640px at 82% -8%, rgba(255, 125, 85, 0.26), transparent 60%),
+		radial-gradient(880px 660px at -12% 32%, rgba(146, 120, 255, 0.28), transparent 58%),
+		radial-gradient(760px 560px at 52% 116%, rgba(62, 207, 180, 0.18), transparent 62%),
+		linear-gradient(160deg, #171430 0%, #10131f 55%, #121a2a 100%);
+	--ae-card-bg: linear-gradient(150deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+	--ae-card-border: rgba(255, 255, 255, 0.2);
+	--ae-card-radius: 20px;
+	--ae-card-shadow: 0 24px 55px -18px rgba(6, 4, 22, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+	--ae-card-blur: blur(var(--ae-frost)) saturate(175%);
+	--ae-input-bg: rgba(255, 255, 255, 0.07);
+	--ae-sub-bg: rgba(255, 255, 255, 0.05);
+	--ae-rail-bg: rgba(14, 17, 26, 0.55);
+	--ae-hover: rgba(255, 255, 255, 0.07);
+}
+
+/* Flat variant — the README's "aegis". Cheapest to render, highest contrast. */
+.aegis.surface-aegis {
+	--ae-page-bg: #0b0d12;
+	--ae-card-bg: #14171f;
+	--ae-card-border: rgba(255, 255, 255, 0.06);
+	--ae-card-radius: 12px;
+	--ae-card-shadow: none;
+	--ae-card-blur: none;
+	--ae-input-bg: #1e222d;
+	--ae-sub-bg: #1a1e27;
+	--ae-rail-bg: #0e111a;
+}
+
+/* Soft-UI variant. */
+.aegis.surface-clay {
+	--ae-page-bg: #0f121a;
+	--ae-card-bg: #1d2230;
+	--ae-card-border: transparent;
+	--ae-card-radius: 24px;
+	--ae-card-shadow: 10px 10px 24px rgba(0, 0, 0, 0.5), -8px -8px 20px rgba(255, 255, 255, 0.045),
+		inset 2px 2px 5px rgba(255, 255, 255, 0.05), inset -3px -3px 6px rgba(0, 0, 0, 0.35);
+	--ae-card-blur: none;
+	--ae-input-bg: #161a25;
+	--ae-sub-bg: #242a3a;
+	--ae-rail-bg: #131722;
+}
+
+/* backdrop-filter is GPU-costly and unsupported on older engines. Without it the
+   translucent card gradient reads as near-invisible on the aurora, so fall back
+   to an opaque surface rather than a washed-out one. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.aegis {
+		--ae-card-bg: #1a1e2b;
+		--ae-card-border: rgba(255, 255, 255, 0.12);
+		--ae-card-blur: none;
+		--ae-rail-bg: #0e111a;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.aegis * {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
