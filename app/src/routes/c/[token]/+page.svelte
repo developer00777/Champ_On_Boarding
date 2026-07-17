@@ -116,12 +116,11 @@
 		{ label: 'Bank', keys: ['bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'] }
 	];
 	const fieldsTotal = SECTIONS.reduce((a, s) => a + s.keys.length, 0);
-	const docsDone = $derived(
-		data.checklist.filter((s) =>
-			// Optional slots (e.g. previous offer letters) count as done so the ring can reach 100%.
-			!s.mandatory || s.docs.some((d) => d.reviewStatus !== 'reupload_requested')
-		).length
-	);
+	// `satisfied` comes from the server, which already accounts for optional slots
+	// (they count as done so the ring can reach 100%) and for grouped alternatives
+	// — a bank statement marks the payslip slot done too. Recomputing that here
+	// would leave the ring stuck below 100% for whichever alternative was skipped.
+	const docsDone = $derived(data.checklist.filter((s) => s.satisfied).length);
 	const sectionStates = $derived(
 		SECTIONS.map((sec) => {
 			const done = sec.keys.filter((k) =>
@@ -388,6 +387,13 @@
 										{#if slot.ocr}<span style="font-size:12px">✨</span>{/if}
 									</div>
 									<div class="doc-hint">{slot.hint}</div>
+									{#if slot.group && slot.satisfied && active.length === 0}
+										<!-- Satisfied by a sibling alternative. Say so explicitly: an empty
+										     card that is nonetheless not blocking otherwise reads as a bug. -->
+										<div class="doc-hint" style="color:#0a7c5a;font-weight:600;margin-top:4px">
+											Covered by {slot.alternatives?.join(' / ')} — not needed
+										</div>
+									{/if}
 								</div>
 								<div style="margin-top:auto;display:flex;flex-direction:column;gap:7px">
 									{#each reup as doc}

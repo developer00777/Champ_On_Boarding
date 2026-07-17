@@ -2,7 +2,7 @@ import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Candidate, Company, Admin, OfferLetter } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
-import { checklistFor } from '$lib/server/checklist';
+import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { audit } from '$lib/server/audit';
 import { encrypt } from '$lib/server/crypto';
 import { validateMasterSheet, titleCase, maskAadhaar } from '$lib/shared/validation';
@@ -139,9 +139,13 @@ export const actions: Actions = {
 		// demand documents the portal told the candidate were optional.
 		const company = await Company.findById(candidate.companyId).lean();
 		const checklist = await checklistFor(candidate.id, candidate.track as Track, company?.brandSlug);
-		const missing = checklist.filter((s) => s.mandatory && !s.satisfied);
-		for (const slot of missing) {
-			errors.push({ field: slot.type, message: `${slot.label} has not been uploaded` });
+		for (const slot of missingMandatory(checklist)) {
+			// Grouped slots collapse to one entry, so name the alternatives rather
+			// than demanding this specific document.
+			const message = slot.alternatives?.length
+				? `Upload either ${slot.label} or ${slot.alternatives.join(' or ')}`
+				: `${slot.label} has not been uploaded`;
+			errors.push({ field: slot.type, message });
 		}
 		if (errors.length) return fail(400, { errors, fields });
 
