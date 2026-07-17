@@ -6,7 +6,6 @@ import { resolveCandidateToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { uploadBytesToGridFS, deleteFromGridFS, gridFSFileSize } from '$lib/server/storage';
 import { runOcr, hasOcrSchema } from '$lib/server/ocr';
-import { checkConformance } from '$lib/server/conformance';
 import { slotByType, ACCEPTED_MIMES, MAX_FILE_BYTES } from '$lib/shared/matrix';
 
 const EXT: Record<string, string> = {
@@ -106,15 +105,10 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 				docId: String(doc._id),
 				ocrStatus: 'unreadable',
 				suggestions: {},
-				conformance: checkConformance(slot.type, result.raw, true),
 				message:
 					'We could not read this image. Please retake it: flat surface, good light, all corners visible.'
 			});
 		}
-
-		// Graded against the slot's registered standard, from the values OCR just
-		// returned. The client has always read this field; nothing used to send it.
-		const conformance = checkConformance(slot.type, result.raw, false);
 
 		const suggestions: Record<string, string> = { ...result.fields };
 		if (slot.ocr === 'aadhaar_back') {
@@ -134,18 +128,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		});
 		await audit({ candidateId: candidate.id, actor: 'system', action: 'ocr_parsed', field: doc.docType });
 
-		// A conformance failure flags the document for HR rather than rejecting the
-		// upload: the file is already stored and the candidate may be right and the
-		// check wrong. `reupload_requested` stays HR's call — an automatic bounce
-		// on a checksum the model misread would strand a candidate with a valid card.
-		if (conformance.status === 'fail') {
-			await Document.findByIdAndUpdate(doc._id, {
-				reviewStatus: 'flagged',
-				reviewNote: conformance.reasons.join(' ')
-			});
-		}
-
-		return json({ docId: String(doc._id), ocrStatus: 'parsed', suggestions, conformance });
+		return json({ docId: String(doc._id), ocrStatus: 'parsed', suggestions });
 	} catch (e) {
 		console.error('[ocr] failed:', e);
 		await Document.findByIdAndUpdate(doc._id, { ocrStatus: 'failed' });
