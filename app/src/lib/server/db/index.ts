@@ -39,7 +39,7 @@ async function seedCompanies() {
 		// moving candidate records is not something a boot-time seed should do.
 		const canonical = rows.find((r) => r.name === co.name) ?? rows[0];
 		for (const row of rows) {
-			const patch = { brandSlug: co.brandSlug, active: true };
+			const patch: Record<string, unknown> = { brandSlug: co.brandSlug, active: true };
 			if (String(row._id) === String(canonical._id) && row.name !== co.name) patch.name = co.name;
 			await Company.findByIdAndUpdate(row._id, patch);
 		}

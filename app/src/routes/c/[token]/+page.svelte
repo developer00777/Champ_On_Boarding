@@ -111,7 +111,9 @@
 		{ label: 'Personal', keys: ['fullName', 'dob', 'mobile', 'fatherName', 'motherName'] },
 		{ label: 'Address', keys: ['presentAddress', 'presentPin', 'permanentAddress', 'permanentPin'] },
 		{ label: 'Identification', keys: ['aadhaarNo', 'panNo'] },
-		{ label: 'Bank', keys: ['bankName', 'accountNo', 'ifsc', 'branch'] }
+		// accountNoConfirm is deliberately absent: it is a typo guard, not a field
+		// the candidate has to "complete", and counting it would stall the ring.
+		{ label: 'Bank', keys: ['bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'] }
 	];
 	const fieldsTotal = SECTIONS.reduce((a, s) => a + s.keys.length, 0);
 	const docsDone = $derived(
@@ -573,9 +575,11 @@
 						</div>
 						<h3>Salary account</h3>
 						<div class="form-grid">
+							{@render field('bankAccountName', 'Employee name (as per bank passbook)', { required: true })}
 							{@render field('bankName', 'Bank name', { required: true })}
 							{@render field('accountNo', 'Account number', { required: true })}
-							{@render field('ifsc', 'IFSC code', { placeholder: 'AAAA0XXXXXX', required: true })}
+							{@render field('accountNoConfirm', 'Reconfirm account number', { required: true })}
+							{@render field('ifsc', 'IFSC code (as per bank passbook)', { placeholder: 'AAAA0XXXXXX', required: true })}
 							{@render field('branch', 'Branch', { required: true })}
 						</div>
 					</section>

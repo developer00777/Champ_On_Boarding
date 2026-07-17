@@ -129,6 +129,7 @@
 		{
 			title: 'Bank',
 			rows: [
+				['Name as per passbook', c.bankAccountName],
 				['Bank name', c.bankName],
 				['Account number', c.accountNo],
 				['IFSC', c.ifsc],

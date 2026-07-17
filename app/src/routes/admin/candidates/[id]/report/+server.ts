@@ -231,6 +231,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 		['DL No.', candidate.dlNo ?? ''],
 		['Passport No.', candidate.passportNo ?? ''],
 		['LinkedIn', candidate.linkedinId ?? ''],
+		['Name As Per Passbook', candidate.bankAccountName ?? ''],
 		['Bank Name', candidate.bankName ?? ''],
 		['Account No.', candidate.accountNo ?? ''],
 		['IFSC', candidate.ifsc ?? ''],

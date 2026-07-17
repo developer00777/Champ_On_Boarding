@@ -66,6 +66,10 @@ const candidateSchema = new Schema(
 		dlNo: String,
 		passportNo: String,
 		linkedinId: String,
+		// The name printed on the passbook, which is not always the candidate's
+		// fullName — maiden names, initials spelled out, a name the bank never
+		// updated. Payroll needs the bank's spelling to make a transfer land.
+		bankAccountName: String,
 		bankName: String,
 		accountNo: String,
 		ifsc: String,

@@ -76,8 +76,10 @@ export function validateMasterSheet(f: Record<string, string>): FieldError[] {
 	req('permanentHouseNo', 'Permanent house number');
 	req('aadhaarNo', 'Aadhaar number');
 	req('panNo', 'PAN number');
+	req('bankAccountName', 'Employee name as per bank passbook');
 	req('bankName', 'Bank name');
 	req('accountNo', 'Account number');
+	req('accountNoConfirm', 'Reconfirm account number');
 	req('ifsc', 'IFSC code');
 	req('branch', 'Branch name');
 
@@ -87,6 +89,15 @@ export function validateMasterSheet(f: Record<string, string>): FieldError[] {
 		errors.push({ field: 'panNo', message: 'PAN must match AAAAA9999A' });
 	if (f.ifsc?.trim() && !isValidIfsc(f.ifsc))
 		errors.push({ field: 'ifsc', message: 'IFSC must match AAAA0XXXXXX' });
+	// The reconfirm field exists to catch a mistyped account number at entry, so
+	// it is compared and then dropped — never stored. Two copies of the same
+	// number in the record could drift apart, leaving neither trustworthy.
+	// Spaces are ignored: passbooks print account numbers in groups.
+	if (f.accountNo?.trim() && f.accountNoConfirm?.trim()) {
+		const strip = (v: string) => v.replace(/\s/g, '');
+		if (strip(f.accountNo) !== strip(f.accountNoConfirm))
+			errors.push({ field: 'accountNoConfirm', message: 'Account numbers do not match' });
+	}
 	for (const [field, label] of [
 		['presentPin', 'Present PIN'],
 		['permanentPin', 'Permanent PIN']

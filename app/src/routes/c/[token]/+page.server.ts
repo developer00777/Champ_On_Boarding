@@ -22,12 +22,16 @@ const FIELDS = [
 	'presentAddress', 'presentPin', 'presentHouseNo',
 	'permanentAddress', 'permanentPin', 'permanentHouseNo',
 	'panNo', 'uanNo', 'dlNo', 'passportNo', 'linkedinId',
-	'bankName', 'accountNo', 'ifsc', 'branch'
+	'bankAccountName', 'bankName', 'accountNo', 'accountNoConfirm', 'ifsc', 'branch'
 ] as const;
 
 const TITLE_CASE_FIELDS = new Set([
-	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName', 'bankName', 'branch'
+	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName',
+	'bankAccountName', 'bankName', 'branch'
 ]);
+
+/** Read back to the candidate and validated, but never stored: see validation.ts. */
+const TRANSIENT_FIELDS = ['accountNoConfirm'] as const;
 
 function formToFields(form: FormData): Record<string, string> {
 	const out: Record<string, string> = {};
@@ -108,6 +112,7 @@ export const actions: Actions = {
 		const fields = formToFields(await request.formData());
 		const update: Record<string, unknown> = { ...fields };
 		delete update.aadhaarNo;
+		for (const f of TRANSIENT_FIELDS) delete update[f];
 		if (fields.aadhaarNo) {
 			update.aadhaarNoEncrypted = encrypt(fields.aadhaarNo);
 			update.aadhaarLast4 = fields.aadhaarNo.slice(-4);
@@ -142,6 +147,7 @@ export const actions: Actions = {
 
 		const update: Record<string, unknown> = { ...fields };
 		delete update.aadhaarNo;
+		for (const f of TRANSIENT_FIELDS) delete update[f];
 		update.aadhaarNoEncrypted = encrypt(fields.aadhaarNo);
 		update.aadhaarLast4 = fields.aadhaarNo.slice(-4);
 		update.status = 'submitted';

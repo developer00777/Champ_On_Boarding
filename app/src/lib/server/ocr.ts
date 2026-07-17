@@ -42,7 +42,10 @@ const OCR_SCHEMAS: Record<string, OcrSchema> = {
 	bank_proof: {
 		docDescription: 'an Indian bank passbook front page or cancelled cheque',
 		fieldMap: {
-			account_holder_name: 'fullName',
+			// The passbook's holder name fills the bank-specific name field, not
+			// fullName: the two legitimately differ, and a passbook spelling should
+			// not overwrite the name the candidate gave for their personal details.
+			account_holder_name: 'bankAccountName',
 			bank_name: 'bankName',
 			account_number: 'accountNo',
 			ifsc_code: 'ifsc',
