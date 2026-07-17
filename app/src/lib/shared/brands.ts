@@ -296,6 +296,66 @@ export const BRANDS: BrandTheme[] = [
 		logo: { src: '/brands/iconic-studio.png', monogram: 'IS', onDark: true }
 	},
 	{
+		// Colours sampled from the supplied logo art (orange wordmark on white);
+		// swap in the official palette when the brand book lands.
+		slug: 'champion-landzone',
+		name: 'Champion LandZone',
+		legalName: 'Champion LandZone',
+		tagline: 'Land development and plotted layouts.',
+		colors: {
+			primary: '#E07000',
+			primaryDark: '#B85A00',
+			accent: '#E8033A',
+			ink: '#2B1A0A',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#1A1A1A',
+			muted: '#6B6B6B',
+			border: '#E8E8E8',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #2B1A0A 0%, #B85A00 60%, #E07000 130%)'
+		},
+		fonts: {
+			heading: "'Montserrat', Arial, sans-serif",
+			body: "'Montserrat', Arial, sans-serif",
+			googleFamilies: ['Montserrat:wght@400;500;600;700;800']
+		},
+		buttonRadius: 6,
+		cardRadius: 12,
+		uppercaseCta: false,
+		logo: { src: '/brands/champion-landzone.png', monogram: 'CLZ' }
+	},
+	{
+		// Logo art ships on a grey plate rather than transparent, so it is placed
+		// on the brand ink surface (onDark) instead of the page background.
+		slug: 'champions-luxury-resorts',
+		name: 'Champions Luxury Resorts',
+		legalName: 'Champions Luxury Resorts',
+		tagline: 'Luxury resort stays and hospitality.',
+		colors: {
+			primary: '#E01020',
+			primaryDark: '#B00C19',
+			accent: '#F08020',
+			ink: '#2A0A0C',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#1A1A1A',
+			muted: '#6B6B6B',
+			border: '#E8E8E8',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #2A0A0C 0%, #B00C19 60%, #F08020 130%)'
+		},
+		fonts: {
+			heading: "'Montserrat', Arial, sans-serif",
+			body: "'Montserrat', Arial, sans-serif",
+			googleFamilies: ['Montserrat:wght@400;500;600;700;800']
+		},
+		buttonRadius: 6,
+		cardRadius: 12,
+		uppercaseCta: false,
+		logo: { src: '/brands/champions-luxury-resorts.png', monogram: 'CLR', onDark: true }
+	},
+	{
 		slug: '100x-longevity',
 		name: '100X Longevity',
 		legalName: '100X Longevity Pvt Ltd',
