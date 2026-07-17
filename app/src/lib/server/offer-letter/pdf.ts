@@ -174,7 +174,9 @@ const BLACK = rgb(0.13, 0.13, 0.13);
 const GREY = rgb(0.4, 0.4, 0.4);
 const LIGHT = rgb(0.6, 0.6, 0.6);
 
-const HEADER_H = 66;
+// Clears the tallest header drawChrome() can draw: 14pt top gap + a 46pt logo
+// + 3pt + the 9pt entity name beneath it, plus breathing room before the body.
+const HEADER_H = 84;
 const FOOTER_H = 26;
 
 /** Default body text size. The offer-of-appointment and consultant letters are
@@ -239,14 +241,78 @@ function drawChrome(ctx: Ctx, page: PDFPage) {
 	const { W, H, M, brand, companyName } = ctx;
 	// Top accent stripe
 	page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: ctx.primaryColor });
-	// Logo top-right
+
+	// Logo top-right, with the entity name beneath it.
+	//
+	// Sizing is by AREA, not scaleToFit(box): the brand logos range from 1.6:1
+	// (Infometrics) to 6.8:1 (Champions Club), and fitting those to one box makes
+	// the tall ones render at 42% of the width the wide ones get — they read as
+	// different sizes on the page. Matching area instead makes them look like
+	// siblings. The box is still enforced as a ceiling so nothing overruns.
+	const NAME_SIZE = 9;
+	const nameText = sanitize(brand.legalName || companyName);
+	const nameW = ctx.fontB.widthOfTextAtSize(nameText, NAME_SIZE);
+	let logoBottom = H - 30;
+
+	// Print the name beneath the logo only when the artwork does not already
+	// spell it out. A wordmark logo (hasWordmark) plus a printed name showed the
+	// company name twice. A bare mark, or the monogram fallback when the image is
+	// missing, still needs the printed name — it is the only place it appears.
+	const showName = !(ctx.logo && brand.logo.hasWordmark);
+
+	// The logo hugs the page edge more tightly than the text margin — it reads as
+	// letterhead, which sits further into the corner than the body block.
+	const LOGO_M = 34;
+
 	if (ctx.logo) {
-		const dims = ctx.logo.scaleToFit(150, 40);
-		page.drawImage(ctx.logo, { x: W - M - dims.width, y: H - 8 - dims.height, width: dims.width, height: dims.height });
+		const { width: iw, height: ih } = ctx.logo.scale(1);
+		const TARGET_AREA = 182 * 50; // optical area every logo aims to fill
+		const byArea = Math.sqrt(TARGET_AREA / (iw * ih));
+		// Ceilings: width up to ~half the page (wide wordmarks like IP Momentum at
+		// 7:1 are dominated by the width cap, so it is generous), height held clear
+		// of the accent stripe. Floor the height so a very wide logo never shrinks
+		// to an unreadable strip.
+		const scale = Math.min(byArea, 285 / iw, 58 / ih);
+		const h0 = ih * scale;
+		const finalScale = h0 < 30 ? Math.min(30 / ih, 285 / iw) : scale;
+		const w = iw * finalScale;
+		const h = ih * finalScale;
+		logoBottom = H - 12 - h;
+
+		// `onDark` logos are white artwork meant for a dark surface. The page is
+		// white, so without a plate behind them the wordmark is white-on-white and
+		// simply disappears — Champion Products and Infratech were rendering as a
+		// blank corner. brandCssVars() does the same thing for the web app
+		// (brands.ts), the PDF just never did.
+		if (brand.logo.onDark) {
+			const PAD_X = 8;
+			const PAD_Y = 5;
+			page.drawRectangle({
+				x: W - LOGO_M - w - PAD_X,
+				y: logoBottom - PAD_Y,
+				width: w + PAD_X * 2,
+				height: h + PAD_Y * 2,
+				color: ctx.inkColor
+			});
+		}
+		page.drawImage(ctx.logo, { x: W - LOGO_M - w, y: logoBottom, width: w, height: h });
 	} else {
 		const mono = sanitize(brand.logo.monogram);
-		const w = ctx.fontB.widthOfTextAtSize(mono, 18);
-		page.drawText(mono, { x: W - M - w, y: H - 40, font: ctx.fontB, size: 18, color: ctx.inkColor });
+		const w = ctx.fontB.widthOfTextAtSize(mono, 20);
+		logoBottom = H - 36;
+		page.drawText(mono, { x: W - LOGO_M - w, y: logoBottom, font: ctx.fontB, size: 20, color: ctx.inkColor });
+	}
+
+	// The entity name is set under the logo rather than left to the 7.5pt footer,
+	// but only when the logo does not already carry it (see showName above).
+	if (showName) {
+		page.drawText(nameText, {
+			x: W - LOGO_M - nameW,
+			y: logoBottom - NAME_SIZE - 3,
+			font: ctx.fontB,
+			size: NAME_SIZE,
+			color: ctx.inkColor
+		});
 	}
 	// Footer rule + confidential line + company name
 	page.drawRectangle({ x: M, y: FOOTER_H, width: ctx.CW, height: 0.5, color: rgb(0.85, 0.85, 0.85) });

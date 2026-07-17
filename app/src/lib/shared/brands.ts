@@ -67,6 +67,13 @@ export interface BrandTheme {
 		 * The UI then places it on the brand's `ink` surface so it stays legible.
 		 */
 		onDark?: boolean;
+		/**
+		 * True when the logo artwork already spells out the company name (a
+		 * wordmark). The offer letter then does NOT print the name again beneath
+		 * it — that was doubling the name. False/absent for a bare mark or a
+		 * monogram fallback, where the printed name is the only one shown.
+		 */
+		hasWordmark?: boolean;
 	};
 }
 
@@ -74,7 +81,7 @@ export const BRANDS: BrandTheme[] = [
 	{
 		slug: 'champion-infratech',
 		name: 'Champion Infratech',
-		legalName: 'Champion Infratech',
+		legalName: 'Champion Infratech Pvt Ltd',
 		tagline: 'Coastal luxury real estate & beach-lagoon development.',
 		colors: {
 			primary: '#1E73BE',
@@ -97,12 +104,12 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 5,
 		cardRadius: 14,
 		uppercaseCta: true,
-		logo: { src: '/brands/champion-infratech.png', monogram: 'CI', onDark: true }
+		logo: { src: '/brands/champion-infratech.png', monogram: 'CI', onDark: true, hasWordmark: true }
 	},
 	{
 		slug: 'champions-club',
 		name: 'Champions Club',
-		legalName: 'Champions Club',
+		legalName: 'Champions Club Pvt Ltd',
 		tagline: 'Ultra-premium luxury lifestyle — yachts, air charters, curated experiences.',
 		colors: {
 			primary: '#DAA548',
@@ -125,12 +132,12 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 3,
 		cardRadius: 10,
 		uppercaseCta: true,
-		logo: { src: '/brands/champions-club.png', monogram: 'CC', onDark: true }
+		logo: { src: '/brands/champions-club.png', monogram: 'CC', onDark: true, hasWordmark: true }
 	},
 	{
 		slug: 'ip-momentum',
 		name: 'IP Momentum',
-		legalName: 'IP Momentum',
+		legalName: 'IP Momentum Pvt Ltd',
 		tagline: 'B2B VoIP products & solutions — tech-forward and energetic.',
 		colors: {
 			primary: '#07294F',
@@ -153,12 +160,12 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 50,
 		cardRadius: 9,
 		uppercaseCta: false,
-		logo: { src: '/brands/ip-momentum.png', monogram: 'IP' }
+		logo: { src: '/brands/ip-momentum.png', monogram: 'IP', hasWordmark: true }
 	},
 	{
 		slug: 'champion-products',
 		name: 'Champion Products',
-		legalName: 'Champion Products',
+		legalName: 'Champion Products Pvt Ltd',
 		tagline: 'B2B foodservice & janitorial supply — clean, functional, product-first.',
 		colors: {
 			primary: '#252F3D',
@@ -181,12 +188,14 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 4,
 		cardRadius: 8,
 		uppercaseCta: false,
-		logo: { src: '/brands/champion-products.webp', monogram: 'CP', onDark: true }
+		// PNG, not the original WebP: the offer-letter PDF embeds PNG or JPEG only,
+		// so the WebP threw and silently fell back to the "CP" monogram.
+		logo: { src: '/brands/champion-products.png', monogram: 'CP', onDark: true, hasWordmark: true }
 	},
 	{
 		slug: 'champion-infometrics',
 		name: 'Champion Infometrics',
-		legalName: 'Champion Infometrics',
+		legalName: 'Champion Infometrics Pvt Ltd',
 		tagline: 'B2B sales intelligence, marketing services & GCC solutions.',
 		colors: {
 			primary: '#00529C',
@@ -209,12 +218,12 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 4,
 		cardRadius: 10,
 		uppercaseCta: false,
-		logo: { src: '/brands/champion-infometrics.png', monogram: 'CIM' }
+		logo: { src: '/brands/champion-infometrics.png', monogram: 'CIM', hasWordmark: true }
 	},
 	{
 		slug: 'champions-yacht-club',
 		name: 'Champions Yacht Club',
-		legalName: 'Champions Yacht Club',
+		legalName: 'Champions Yacht Club Pvt Ltd',
 		tagline: 'Luxury yacht charter & experiences in Goa — aspirational, nautical.',
 		colors: {
 			primary: '#D69551',
@@ -237,12 +246,12 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 4,
 		cardRadius: 5,
 		uppercaseCta: false,
-		logo: { src: '/brands/champions-yacht-club.png', monogram: 'CYC' }
+		logo: { src: '/brands/champions-yacht-club.png', monogram: 'CYC', hasWordmark: true }
 	},
 	{
 		slug: 'cirrologix',
 		name: 'Cirrologix',
-		legalName: 'Cirrologix',
+		legalName: 'Cirrologix Technologies Pvt Ltd',
 		tagline: 'Enterprise CRM, ATS, VoIP & workforce automation.',
 		colors: {
 			primary: '#007aff',
@@ -265,7 +274,9 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 0,
 		cardRadius: 0,
 		uppercaseCta: true,
-		logo: { src: '/brands/cirrologix.png', monogram: 'CL' }
+		// onDark: the wordmark is white (83% of the art's opaque pixels), so on a
+		// white page only the coloured "CL" mark showed and the name vanished.
+		logo: { src: '/brands/cirrologix.png', monogram: 'CL', onDark: true, hasWordmark: true }
 	},
 	{
 		slug: 'iconic-studio',
@@ -300,7 +311,7 @@ export const BRANDS: BrandTheme[] = [
 		// swap in the official palette when the brand book lands.
 		slug: 'champion-landzone',
 		name: 'Champion LandZone',
-		legalName: 'Champion LandZone',
+		legalName: 'Champion LandZone Pvt Ltd',
 		tagline: 'Land development and plotted layouts.',
 		colors: {
 			primary: '#E07000',
@@ -323,14 +334,12 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 6,
 		cardRadius: 12,
 		uppercaseCta: false,
-		logo: { src: '/brands/champion-landzone.png', monogram: 'CLZ' }
+		logo: { src: '/brands/champion-landzone.png', monogram: 'CLZ', hasWordmark: true }
 	},
 	{
-		// Logo art ships on a grey plate rather than transparent, so it is placed
-		// on the brand ink surface (onDark) instead of the page background.
 		slug: 'champions-luxury-resorts',
 		name: 'Champions Luxury Resorts',
-		legalName: 'Champions Luxury Resorts',
+		legalName: 'Champions Luxury Resorts Pvt Ltd',
 		tagline: 'Luxury resort stays and hospitality.',
 		colors: {
 			primary: '#E01020',
@@ -353,7 +362,9 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 6,
 		cardRadius: 12,
 		uppercaseCta: false,
-		logo: { src: '/brands/champions-luxury-resorts.png', monogram: 'CLR', onDark: true }
+		// The grey plate the art shipped with has been cleared to transparency, so
+		// this no longer needs onDark — the mark is red/orange and reads on white.
+		logo: { src: '/brands/champions-luxury-resorts.png', monogram: 'CLR', hasWordmark: true }
 	},
 	{
 		slug: '100x-longevity',
@@ -381,7 +392,9 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 50,
 		cardRadius: 16,
 		uppercaseCta: false,
-		logo: { src: '/brands/100x-longevity.png', monogram: '1X', onDark: true }
+		// Extracted from the brand sheet: blue wordmark on transparent, so no
+		// onDark plate, and the name is in the art (hasWordmark).
+		logo: { src: '/brands/100x-longevity.png', monogram: '1X', hasWordmark: true }
 	}
 ];
 

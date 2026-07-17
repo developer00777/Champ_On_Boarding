@@ -7,12 +7,12 @@ const COMPANIES = [
 	{ name: 'Champion Infratech Pvt Ltd',      brandSlug: 'champion-infratech',  aliases: ['Champion Infratech'] },
 	{ name: 'Champions Club Pvt Ltd',           brandSlug: 'champions-club',       aliases: ['Champions Club'] },
 	{ name: 'Cirrologix Technologies Pvt Ltd',  brandSlug: 'cirrologix',           aliases: ['Cirrologix'] },
-	{ name: 'IP Momentum',                      brandSlug: 'ip-momentum',          aliases: [] },
+	{ name: 'IP Momentum Pvt Ltd',              brandSlug: 'ip-momentum',          aliases: ['IP Momentum'] },
 	{ name: 'Champion Products Pvt Ltd',        brandSlug: 'champion-products',    aliases: ['Champion Products'] },
 	{ name: 'Champion Infometrics Pvt Ltd',     brandSlug: 'champion-infometrics', aliases: ['Champion Infometrics'] },
-	{ name: 'Champions Yacht Club Pvt',         brandSlug: 'champions-yacht-club', aliases: ['Champions Yacht Club'] },
-	{ name: 'Champion LandZone',                brandSlug: 'champion-landzone',    aliases: ['Landzone', 'LandZone'] },
-	{ name: 'Champions Luxury Resorts',         brandSlug: 'champions-luxury-resorts', aliases: ['Champion Luxury Resorts'] },
+	{ name: 'Champions Yacht Club Pvt Ltd',     brandSlug: 'champions-yacht-club', aliases: ['Champions Yacht Club', 'Champions Yacht Club Pvt'] },
+	{ name: 'Champion LandZone Pvt Ltd',        brandSlug: 'champion-landzone',    aliases: ['Landzone', 'LandZone', 'Champion LandZone'] },
+	{ name: 'Champions Luxury Resorts Pvt Ltd', brandSlug: 'champions-luxury-resorts', aliases: ['Champion Luxury Resorts', 'Champions Luxury Resorts'] },
 ];
 
 async function seedCompanies() {
