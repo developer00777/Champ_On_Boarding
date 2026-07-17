@@ -212,8 +212,11 @@
 		list-style: none;
 		max-height: 280px;
 		overflow-y: auto;
-		/* The glass, matching the cards. */
-		background: linear-gradient(150deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+		/* Frosted glass: a dark translucent base gives it an opacity floor so the
+		   list never reads as see-through (it floats over arbitrary content, unlike
+		   the cards which sit on the page gradient), with the white sheen on top. */
+		background: linear-gradient(150deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+			linear-gradient(180deg, rgba(23, 27, 40, 0.9), rgba(18, 21, 31, 0.92));
 		border: 1px solid var(--ae-card-border);
 		border-radius: 12px;
 		box-shadow: var(--ae-card-shadow);
