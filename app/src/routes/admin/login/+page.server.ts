@@ -17,7 +17,6 @@ export const actions: Actions = {
 
 		try {
 			const admin = await Admin.findOne({ email }).lean();
-			console.log('[login] admin lookup:', email, 'found:', !!admin, 'status:', admin?.status);
 
 			if (!admin || admin.status !== 'active') {
 				await audit({ actor: email, action: 'login_failed', ip: getClientAddress() });
