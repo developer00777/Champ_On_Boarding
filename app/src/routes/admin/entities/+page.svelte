@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
+
+	// GlassSelect is controlled: seed the "add company" brand to no-brand,
+	// and keep a per-company map so each row's dropdown submits its own value.
+	let newBrandSlug = $state('');
+	let rowBrandSlug = $state<Record<string, string>>(
+		Object.fromEntries(data.companies.map((c: { id: string; brandSlug: string | null }) => [c.id, c.brandSlug ?? '']))
+	);
 
 	/** Preview the chosen logo before it is uploaded, so a wrong file is caught
 	 *  here rather than after it is live on a candidate's portal. */
@@ -70,12 +78,15 @@
 
 				<label class="field">
 					<span>Brand theme <em>(optional)</em></span>
-					<select name="brandSlug">
-						<option value="">— No brand (default) —</option>
-						{#each data.brandOptions as b}
-							<option value={b.slug}>{b.name}</option>
-						{/each}
-					</select>
+					<GlassSelect
+						name="brandSlug"
+						ariaLabel="Brand theme"
+						bind:value={newBrandSlug}
+						options={[
+							{ value: '', label: '— No brand (default) —' },
+							...data.brandOptions.map((b: { slug: string; name: string }) => ({ value: b.slug, label: b.name }))
+						]}
+					/>
 					<small>Sets the colours and fonts of the candidate portal.</small>
 				</label>
 
@@ -133,12 +144,15 @@
 			{#if data.isSuperAdmin}
 				<form method="POST" action="?/setCompanyBrand" use:enhance class="ent-form">
 					<input type="hidden" name="companyId" value={c.id} />
-					<select name="brandSlug">
-						<option value="" selected={!c.brandSlug}>— No brand —</option>
-						{#each data.brandOptions as b}
-							<option value={b.slug} selected={c.brandSlug === b.slug}>{b.name}</option>
-						{/each}
-					</select>
+					<GlassSelect
+						name="brandSlug"
+						ariaLabel="Brand theme"
+						bind:value={rowBrandSlug[c.id]}
+						options={[
+							{ value: '', label: '— No brand —' },
+							...data.brandOptions.map((b: { slug: string; name: string }) => ({ value: b.slug, label: b.name }))
+						]}
+					/>
 					<button class="btn ghost small">Save</button>
 				</form>
 
@@ -301,10 +315,12 @@
 		align-items: center;
 		gap: 6px;
 	}
-	/* Opt out of the global width:100% on selects — these sit inline in a row. */
-	.ent-form select {
+	/* Keep the inline-row dropdown compact — GlassSelect fills its container. */
+	.ent-form :global(.gs) {
 		width: auto;
-		min-width: 150px;
+		min-width: 180px;
+	}
+	.ent-form :global(.gs-trigger) {
 		padding: 7px 10px;
 		font-size: 12.5px;
 	}

@@ -1,8 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { TRACK_LABELS, type Track } from '$lib/shared/matrix';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
+
+	// GlassSelect is controlled, so the invite form needs its values in state.
+	// Seed to the first option, matching how the native <select> defaulted.
+	let inviteTrack = $state<string>(data.tracks[0] ?? '');
+	let inviteCompany = $state<string>(data.companies[0]?.id ?? '');
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
 		created: { label: 'LINK SENT', cls: '' },
@@ -59,19 +65,25 @@
 			</div>
 			<div>
 				<label for="track">Track</label>
-				<select id="track" name="track" required>
-					{#each data.tracks as track}
-						<option value={track}>{TRACK_LABELS[track as Track]}</option>
-					{/each}
-				</select>
+				<GlassSelect
+					id="track"
+					name="track"
+					ariaLabel="Track"
+					required
+					bind:value={inviteTrack}
+					options={data.tracks.map((t: Track) => ({ value: t, label: TRACK_LABELS[t] }))}
+				/>
 			</div>
 			<div>
 				<label for="companyId">Company</label>
-				<select id="companyId" name="companyId" required>
-					{#each data.companies as company}
-						<option value={company.id}>{company.name}</option>
-					{/each}
-				</select>
+				<GlassSelect
+					id="companyId"
+					name="companyId"
+					ariaLabel="Company"
+					required
+					bind:value={inviteCompany}
+					options={data.companies.map((c: { id: string; name: string }) => ({ value: c.id, label: c.name }))}
+				/>
 			</div>
 			<button class="btn">Generate &amp; email</button>
 		</div>

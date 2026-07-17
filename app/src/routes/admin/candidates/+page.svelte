@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { TRACK_LABELS, type Track } from '$lib/shared/matrix';
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data } = $props();
 
@@ -55,25 +56,29 @@
 		{/each}
 	</div>
 
-	<select
-		aria-label="Track"
-		onchange={(e) => (window.location.href = href({ track: e.currentTarget.value }))}
-	>
-		<option value="" selected={!data.track}>All tracks</option>
-		{#each data.tracks as t}
-			<option value={t} selected={data.track === t}>{TRACK_LABELS[t as Track]}</option>
-		{/each}
-	</select>
+	<div class="filter-select">
+		<GlassSelect
+			ariaLabel="Track"
+			value={data.track ?? ''}
+			options={[
+				{ value: '', label: 'All tracks' },
+				...data.tracks.map((t: Track) => ({ value: t, label: TRACK_LABELS[t] }))
+			]}
+			onChange={(v) => (window.location.href = href({ track: v }))}
+		/>
+	</div>
 
-	<select
-		aria-label="Status"
-		onchange={(e) => (window.location.href = href({ status: e.currentTarget.value }))}
-	>
-		<option value="" selected={!data.status}>All statuses</option>
-		{#each STATUSES as s}
-			<option value={s} selected={data.status === s}>{statusMeta[s].label}</option>
-		{/each}
-	</select>
+	<div class="filter-select">
+		<GlassSelect
+			ariaLabel="Status"
+			value={data.status ?? ''}
+			options={[
+				{ value: '', label: 'All statuses' },
+				...STATUSES.map((s) => ({ value: s, label: statusMeta[s].label }))
+			]}
+			onChange={(v) => (window.location.href = href({ status: v }))}
+		/>
+	</div>
 
 	<span class="count">
 		{#if isFiltered}
@@ -158,18 +163,12 @@
 		background: rgba(255, 125, 85, 0.14);
 		color: var(--ae-ember-glow);
 	}
-	/* The global input/select rule sets width:100%, which stretches these across
-	   the row; a filter control should be as wide as its content. */
-	.filterbar select {
+	/* Filter dropdowns are content-width, not the full toolbar row. */
+	.filter-select {
 		width: auto;
-		min-width: 130px;
-		border: 1px solid var(--ae-line-strong);
-		border-radius: 9px;
-		padding: 7px 10px;
+		min-width: 150px;
 		font-size: 12.5px;
 		font-weight: 500;
-		background: var(--ae-input-bg);
-		color: var(--ae-text);
 	}
 	.count {
 		margin-left: auto;

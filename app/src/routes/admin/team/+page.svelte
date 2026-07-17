@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
 
@@ -7,6 +8,9 @@
 		hr_admin: 'HR / Recruiter',
 		super_admin: 'Super admin'
 	};
+
+	// GlassSelect is controlled; seed to the first option like the native select.
+	let newRole = $state('hr_admin');
 
 	function copy(value: string) {
 		navigator.clipboard.writeText(value);
@@ -31,10 +35,17 @@
 			</div>
 			<div>
 				<label for="role">Role</label>
-				<select id="role" name="role" required>
-					<option value="hr_admin">HR / Recruiter</option>
-					<option value="super_admin">Super admin</option>
-				</select>
+				<GlassSelect
+					id="role"
+					name="role"
+					ariaLabel="Role"
+					required
+					bind:value={newRole}
+					options={[
+						{ value: 'hr_admin', label: 'HR / Recruiter' },
+						{ value: 'super_admin', label: 'Super admin' }
+					]}
+				/>
 			</div>
 			<div>
 				<label for="password">Temporary password</label>

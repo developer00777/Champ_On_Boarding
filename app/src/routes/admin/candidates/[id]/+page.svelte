@@ -7,6 +7,7 @@
 		TRACK_LABELS,
 		type Track
 	} from '$lib/shared/matrix';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
 
@@ -25,10 +26,18 @@
 	const compField = $derived(COMPENSATION_FIELD_BY_TRACK[c.track as Track]);
 
 	const employmentTypeOptions = [
+		{ value: '', label: 'Select…' },
 		{ value: 'full_time', label: 'Full-time' },
 		{ value: 'part_time', label: 'Part-time' },
 		{ value: 'contract', label: 'Contract' }
 	];
+
+	// GlassSelect is controlled; mirror the offer letter's stored value and keep
+	// it in sync when a different offer letter loads.
+	let employmentType = $state('');
+	$effect(() => {
+		employmentType = ol.employmentType ?? '';
+	});
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
 		created: { label: 'LINK SENT', cls: '' },
@@ -547,15 +556,15 @@
 						<small>Clause 1: "scheduled to start effective from &lt;start&gt; to &lt;end&gt;".</small>
 					</label>
 				{/if}
-				<label class="offer-field">
+				<div class="offer-field">
 					<span>Employment type</span>
-					<select name="employmentType" value={ol.employmentType}>
-						<option value="" selected={!ol.employmentType}>Select…</option>
-						{#each employmentTypeOptions as opt}
-							<option value={opt.value} selected={ol.employmentType === opt.value}>{opt.label}</option>
-						{/each}
-					</select>
-				</label>
+					<GlassSelect
+						name="employmentType"
+						ariaLabel="Employment type"
+						bind:value={employmentType}
+						options={employmentTypeOptions}
+					/>
+				</div>
 				<label class="offer-field">
 					<!-- The same stored figure is rendered as a monthly stipend, annual CTC
 					     or a monthly fee depending on the track — ask for the one this
@@ -980,8 +989,12 @@
 		color: var(--ae-muted);
 		font-weight: 600;
 	}
-	.offer-field input,
-	.offer-field select {
+	/* Match the compact offer-field inputs. */
+	.offer-field :global(.gs-trigger) {
+		padding: 7px 9px;
+		font-size: 13px;
+	}
+	.offer-field input {
 		font-size: 13px;
 		padding: 7px 9px;
 		border: 1px solid var(--ae-line-strong);
