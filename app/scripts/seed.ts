@@ -24,7 +24,9 @@ const COMPANIES = [
 	{ name: 'Champions Yacht Club', brandSlug: 'champions-yacht-club' },
 	{ name: 'Cirrologix', brandSlug: 'cirrologix' },
 	{ name: 'Iconic Studio Pvt Ltd', brandSlug: 'iconic-studio' },
-	{ name: '100X Longevity Pvt Ltd', brandSlug: '100x-longevity' }
+	{ name: '100X Longevity Pvt Ltd', brandSlug: '100x-longevity' },
+	{ name: 'Champion LandZone', brandSlug: 'champion-landzone' },
+	{ name: 'Champions Luxury Resorts', brandSlug: 'champions-luxury-resorts' }
 ];
 
 for (const { name, brandSlug } of COMPANIES) {

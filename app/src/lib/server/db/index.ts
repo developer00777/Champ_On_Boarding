@@ -11,6 +11,8 @@ const COMPANIES = [
 	{ name: 'Champion Products Pvt Ltd',        brandSlug: 'champion-products',    aliases: ['Champion Products'] },
 	{ name: 'Champion Infometrics Pvt Ltd',     brandSlug: 'champion-infometrics', aliases: ['Champion Infometrics'] },
 	{ name: 'Champions Yacht Club Pvt',         brandSlug: 'champions-yacht-club', aliases: ['Champions Yacht Club'] },
+	{ name: 'Champion LandZone',                brandSlug: 'champion-landzone',    aliases: ['Landzone', 'LandZone'] },
+	{ name: 'Champions Luxury Resorts',         brandSlug: 'champions-luxury-resorts', aliases: ['Champion Luxury Resorts'] },
 ];
 
 async function seedCompanies() {

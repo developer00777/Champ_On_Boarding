@@ -101,8 +101,44 @@ export const DOC_SLOTS: DocSlot[] = [
 	{ type: 'photo_soft', label: 'Passport-size photo (soft copy)', hint: 'One recent passport-size photo, plain background', tracks: ALL, mandatory: true, maxFiles: 1 }
 ];
 
-export function slotsForTrack(track: Track): DocSlot[] {
-	return DOC_SLOTS.filter((s) => s.tracks.includes(track));
+/** Per-entity exceptions to the track matrix above, keyed on brand slug.
+ *
+ *  The matrix is otherwise track-only: every company asks for the same documents
+ *  for a given track. These entities recruit for roles where schooling past the
+ *  10th is not a hiring requirement, so HR marks the 12th/PUC certificate
+ *  optional rather than blocking submission on it. The 10th stays mandatory.
+ *  Bank proof is optional for the same intake: joiners are often onboarded
+ *  before an account exists, so it is collected later rather than blocking day one.
+ *
+ *  Keyed on brandSlug, not company name or id, so duplicate or renamed company
+ *  rows for the same entity all pick the rule up (there are two "Champion
+ *  Products" rows today), and a new row needs no extra wiring.
+ *
+ *  Only `mandatory` can be overridden. An entity cannot invent a document or
+ *  remove one — that would fork the matrix and defeat it as the source of truth.
+ */
+export const ENTITY_DOC_OVERRIDES: Record<string, Record<string, { mandatory: boolean }>> = {
+	'champion-landzone': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } },
+	'champions-luxury-resorts': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } },
+	'champion-products': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } }
+};
+
+/** The slots for a track, with any entity-level exception applied.
+ *
+ *  `brandSlug` is optional and unknown slugs fall through untouched, so callers
+ *  that have no entity in hand still get the plain track matrix.
+ */
+export function slotsForTrack(track: Track, brandSlug?: string | null): DocSlot[] {
+	const overrides = brandSlug ? ENTITY_DOC_OVERRIDES[brandSlug] : undefined;
+	return DOC_SLOTS.filter((s) => s.tracks.includes(track)).map((slot) => {
+		const o = overrides?.[slot.type];
+		if (!o) return slot;
+		// The label carries "(optional)" for every other optional slot; keep that
+		// consistent here or the portal reads as mandatory while accepting a skip.
+		const label =
+			o.mandatory === false && !/optional/i.test(slot.label) ? `${slot.label} (optional)` : slot.label;
+		return { ...slot, ...o, label };
+	});
 }
 
 export function slotByType(type: string): DocSlot | undefined {

@@ -43,7 +43,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const { candidate, company } = row;
 
 	const [checklist, physical, verificationDocs, offerLetter] = await Promise.all([
-		checklistFor(String(candidate._id), candidate.track as Track),
+		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
 		Verification.find({ candidateId: candidate._id }).lean(),
 		OfferLetter.findOne({ candidateId: candidate._id }).lean()
@@ -152,7 +152,11 @@ export const actions: Actions = {
 		if (candidate.status !== 'submitted')
 			return fail(409, { message: 'Only submitted candidates can be approved.' });
 
-		const checklist = await checklistFor(String(candidate._id), candidate.track as Track);
+		const checklist = await checklistFor(
+			String(candidate._id),
+			candidate.track as Track,
+			row.company?.brandSlug
+		);
 		if (missingMandatory(checklist).length)
 			return fail(400, { message: 'Mandatory documents are missing — cannot approve.' });
 

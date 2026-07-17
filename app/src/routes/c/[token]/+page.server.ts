@@ -47,7 +47,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const company = await Company.findById(candidate.companyId).lean();
 	const [checklist, offerLetter] = await Promise.all([
-		checklistFor(candidate.id, candidate.track as Track),
+		checklistFor(candidate.id, candidate.track as Track, company?.brandSlug),
 		OfferLetter.findOne({ candidateId: candidate.id }).lean()
 	]);
 	const brand = brandBySlug(company?.brandSlug ?? undefined);
@@ -129,7 +129,11 @@ export const actions: Actions = {
 		const fields = formToFields(await request.formData());
 		const errors = validateMasterSheet(fields);
 
-		const checklist = await checklistFor(candidate.id, candidate.track as Track);
+		// Fetched here rather than at the alert-email step below because the
+		// mandatory-document gate needs the entity too: without it this would
+		// demand documents the portal told the candidate were optional.
+		const company = await Company.findById(candidate.companyId).lean();
+		const checklist = await checklistFor(candidate.id, candidate.track as Track, company?.brandSlug);
 		const missing = checklist.filter((s) => s.mandatory && !s.satisfied);
 		for (const slot of missing) {
 			errors.push({ field: slot.type, message: `${slot.label} has not been uploaded` });
@@ -147,7 +151,6 @@ export const actions: Actions = {
 		await audit({ candidateId: candidate.id, actor: 'candidate', action: 'submitted', ip: getClientAddress() });
 
 		// Alert the HR admin who created this candidate's link
-		const company = await Company.findById(candidate.companyId).lean();
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
 		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
 		const reviewUrl = `${base}/admin/candidates/${candidate.id}`;
