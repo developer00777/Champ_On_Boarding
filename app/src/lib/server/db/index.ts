@@ -18,13 +18,30 @@ const COMPANIES = [
 async function seedCompanies() {
 	const Company = mongoose.model('Company');
 	for (const co of COMPANIES) {
-		const existing = await Company.findOne({ name: { $in: [co.name, ...co.aliases] } });
-		if (existing) {
-			if (existing.name !== co.name || existing.brandSlug !== co.brandSlug) {
-				await Company.findByIdAndUpdate(existing._id, { name: co.name, brandSlug: co.brandSlug, active: true });
-			}
-		} else {
+		// Match on brandSlug as well as the names: a row already carrying the slug
+		// is this entity even if someone has since edited its name in the admin UI.
+		const rows = await Company.find({
+			$or: [{ name: { $in: [co.name, ...co.aliases] } }, { brandSlug: co.brandSlug }]
+		}).sort({ _id: 1 });
+
+		if (rows.length === 0) {
 			await Company.create({ name: co.name, brandSlug: co.brandSlug, active: true });
+			continue;
+		}
+
+		// Repair brandSlug on every match, not just the first. Renaming only one
+		// left the others stranded without a slug, which is what the doc matrix
+		// keys on, so candidates on a stranded row silently got the wrong rules.
+		//
+		// The name is only claimed if no other row holds it — `name` is unique, so
+		// renaming a duplicate onto the canonical name throws and takes boot down.
+		// Duplicates are merged by scripts/merge-duplicate-companies.mjs, not here:
+		// moving candidate records is not something a boot-time seed should do.
+		const canonical = rows.find((r) => r.name === co.name) ?? rows[0];
+		for (const row of rows) {
+			const patch = { brandSlug: co.brandSlug, active: true };
+			if (String(row._id) === String(canonical._id) && row.name !== co.name) patch.name = co.name;
+			await Company.findByIdAndUpdate(row._id, patch);
 		}
 	}
 }
