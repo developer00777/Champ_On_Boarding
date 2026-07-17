@@ -16,3 +16,10 @@ design/
 # be committed. Keep reference copies outside the repo.
 *.pdf
 !Onboarding Required Documents*.pdf
+
+# Sample identity documents used to test OCR are real Aadhaar/PAN scans. A
+# commit puts them in history permanently, so keep them out by name as well as
+# by the *.png rule they would otherwise slip past.
+*_documents/
+*_documents (*)/
+Sarang_*/
