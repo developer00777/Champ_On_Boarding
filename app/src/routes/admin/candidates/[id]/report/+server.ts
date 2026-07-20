@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { Candidate, Company } from '$lib/server/db/schema';
+import { Candidate, Company, OfferLetter } from '$lib/server/db/schema';
 import { decrypt } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 import ExcelJS from 'exceljs';
@@ -13,6 +13,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 
 	const company = await Company.findById(candidate.companyId).lean();
 	const companyName = company?.name ?? '';
+	const offer = await OfferLetter.findOne({ candidateId: params.id }).lean();
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : '';
 
@@ -98,10 +99,10 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 	const permAddrParts = (candidate.permanentAddress ?? '').split(',');
 
 	const payrollData = [
-		1, '', '', candidate.fullName ?? '', '', '', '',
+		1, candidate.employeeId ?? '', '', candidate.fullName ?? '', '', '', '',
 		candidate.fatherName ?? '', candidate.motherName ?? '', candidate.dob ?? '',
 		candidate.gender ?? '', candidate.maritalStatus ?? '', candidate.spouseName ?? '',
-		'', '', '', '', '', '',
+		offer?.jobTitle ?? '', '', offer?.department ?? '', '', '', '',
 		candidate.accountNo ?? '', candidate.bankName ?? '', '', '',
 		// Present address (cols 24-30)
 		'', '', presentAddrParts[0]?.trim() ?? '', presentAddrParts[1]?.trim() ?? '',
@@ -111,7 +112,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 		permAddrParts[2]?.trim() ?? '', '', candidate.permanentPin ?? '',
 		// Contact
 		candidate.email ?? '', '', '', candidate.mobile ?? '',
-		'', '', '', '',
+		offer?.joiningDate ?? '', '', '', '',
 		'', '', '',
 		'', '', '', '', '', '',
 		candidate.panNo ?? '', '', '', candidate.uanNo ?? '', candidate.ifsc ?? '', aadhaarPlain, ''
@@ -165,10 +166,10 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 	mHeaderRow.eachCell((cell) => styleHeader(cell));
 
 	const masterData = [
-		1, '', '', candidate.fullName ?? '', '',
-		'', '', '', candidate.gender ?? '',
+		1, candidate.employeeId ?? '', candidate.employeeId ?? '', candidate.fullName ?? '', offer?.jobTitle ?? '',
+		'', offer?.department ?? '', offer?.joiningDate ?? '', candidate.gender ?? '',
 		candidate.mobile ?? '', candidate.email ?? '', '', '',
-		'', '', '', candidate.linkedinId ?? '',
+		offer?.reportingManager ?? '', '', '', candidate.linkedinId ?? '',
 		'', candidate.dob ?? '', candidate.dob ?? '',
 		candidate.fatherName ?? '', '', candidate.fatherMobile ?? '',
 		candidate.motherName ?? '', candidate.motherDob ?? '', candidate.motherMobile ?? '',
@@ -181,7 +182,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 		aadhaarPlain, candidate.panNo ?? '', candidate.uanNo ?? '',
 		candidate.dlNo ?? '', '', candidate.passportNo ?? '',
 		companyName, candidate.mobile ?? '',
-		candidate.accountNo ?? '', '', candidate.bankName ?? '', candidate.ifsc ?? '', ''
+		candidate.accountNo ?? '', candidate.bankAccountName ?? '', candidate.bankName ?? '', candidate.ifsc ?? '', ''
 	];
 
 	const mDataRow = master.addRow(masterData);
@@ -207,6 +208,11 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 		['Track', candidate.track],
 		['Company', companyName],
 		['Status', candidate.status],
+		['Employee Code', candidate.employeeId ?? ''],
+		['Designation', offer?.jobTitle ?? ''],
+		['Department', offer?.department ?? ''],
+		['Reporting Manager', offer?.reportingManager ?? ''],
+		['Date of Joining', offer?.joiningDate ?? ''],
 		['Date of Birth', candidate.dob ?? ''],
 		['Gender', candidate.gender ?? ''],
 		['Marital Status', candidate.maritalStatus ?? ''],
