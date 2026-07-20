@@ -58,6 +58,25 @@ export function hasOcrSchema(key: string | undefined): key is string {
 	return !!key && key in OCR_SCHEMAS;
 }
 
+const OCR_TIMEOUT_MS = 20_000;
+
+/** One retry on network failure or a transient (5xx/429) response — OCR calls
+ *  are on the candidate submission path and a single blip shouldn't force a
+ *  manual re-upload. Non-transient errors (4xx auth/validation) fail fast. */
+async function fetchWithRetry(url: string, init: RequestInit, attempt = 1): Promise<Response> {
+	let res: Response;
+	try {
+		res = await fetch(url, { ...init, signal: AbortSignal.timeout(OCR_TIMEOUT_MS) });
+	} catch (e) {
+		if (attempt >= 2) throw e;
+		return fetchWithRetry(url, init, attempt + 1);
+	}
+	if (attempt < 2 && (res.status === 429 || res.status >= 500)) {
+		return fetchWithRetry(url, init, attempt + 1);
+	}
+	return res;
+}
+
 export async function runOcr(ocrKey: string, gridfsId: ObjectId, mime: string): Promise<OcrResult> {
 	const schema = OCR_SCHEMAS[ocrKey];
 	const bytes = await getGridFSBytes(gridfsId);
@@ -84,7 +103,7 @@ export async function runOcr(ocrKey: string, gridfsId: ObjectId, mime: string): 
 					{ type: 'image_url', image_url: { url: dataUrl } }
 				];
 
-	const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+	const res = await fetchWithRetry('https://openrouter.ai/api/v1/chat/completions', {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,

@@ -24,7 +24,6 @@ export const actions: Actions = {
 			}
 
 			const ok = await verifyPassword(admin.passwordHash, password);
-			console.log('[login] password verify:', ok);
 
 			if (!ok) {
 				await audit({ actor: email, action: 'login_failed', ip: getClientAddress() });

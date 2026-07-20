@@ -64,6 +64,21 @@ export const actions: Actions = {
 		if (!company) return fail(400, { message: 'Pick a company.' });
 		const brand = brandBySlug(company.brandSlug ?? undefined);
 
+		// A candidate can legitimately be re-linked after their record is revoked
+		// or fully onboarded (rehire, new track), but never while an existing
+		// link for the same email + company is still active — otherwise HR ends
+		// up with silent duplicate records mid-review.
+		const activeDuplicate = await Candidate.findOne({
+			email,
+			companyId,
+			status: { $nin: ['revoked', 'complete'] }
+		}).lean();
+		if (activeDuplicate) {
+			return fail(409, {
+				message: `${email} already has an active onboarding link for this company (status: ${activeDuplicate.status}). Revoke it before creating a new one.`
+			});
+		}
+
 		const candidate = await Candidate.create({
 			email,
 			track,

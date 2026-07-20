@@ -1,5 +1,6 @@
 import { hash, verify } from '@node-rs/argon2';
 import type { Cookies } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { Admin } from './db/schema';
 import { getRedis } from './redis';
 import { randomToken, sha256 } from './crypto';
@@ -20,7 +21,7 @@ export async function createSession(cookies: Cookies, adminId: string) {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
-		secure: process.env.NODE_ENV === 'production',
+		secure: !dev,
 		expires: expiresAt
 	});
 }

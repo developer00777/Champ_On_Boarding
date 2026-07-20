@@ -39,7 +39,7 @@ const candidateSchema = new Schema(
 		fullName: String,
 		dob: String,
 		gender: String,
-		email: { type: String, required: true },
+		email: { type: String, required: true, index: true },
 		mobile: String,
 		fatherName: String,
 		fatherMobile: String,

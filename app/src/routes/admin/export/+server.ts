@@ -1,4 +1,5 @@
 import type { RequestHandler } from './$types';
+import { error } from '@sveltejs/kit';
 import { Candidate, Company } from '$lib/server/db/schema';
 import { decrypt } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
@@ -6,6 +7,8 @@ import { audit } from '$lib/server/audit';
 const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
+	if (!locals.admin) error(401, 'Not authenticated');
+
 	const candidates = await Candidate.find().sort({ createdAt: -1 }).lean();
 	const companyIds = [...new Set(candidates.map((c) => String(c.companyId)))];
 	const companies = await Company.find({ _id: { $in: companyIds } }).lean();

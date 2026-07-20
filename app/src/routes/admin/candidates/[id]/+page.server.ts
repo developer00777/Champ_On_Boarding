@@ -451,7 +451,22 @@ export const actions: Actions = {
 		}
 
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
-		await sendOfferLetterMail(candidate, company?.name ?? '', draft, brand);
+		try {
+			await sendOfferLetterMail(candidate, company?.name ?? '', draft, brand);
+		} catch (e) {
+			console.error(`[offer-letter] send failed for candidate=${params.id}:`, e);
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'offer_letter_send_failed',
+				newValue: candidate.email,
+				ip: getClientAddress()
+			});
+			return fail(502, {
+				offerLetterError: true,
+				message: 'Could not send the offer letter email — the draft was not marked as sent. Check the mail provider and try again.'
+			});
+		}
 
 		draft.status = 'sent';
 		draft.sentAt = new Date();

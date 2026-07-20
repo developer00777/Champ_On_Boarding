@@ -6,6 +6,8 @@ import { audit } from '$lib/server/audit';
 import ExcelJS from 'exceljs';
 
 export const GET: RequestHandler = async ({ params, locals, getClientAddress }) => {
+	if (!locals.admin) error(401, 'Not authenticated');
+
 	const candidate = await Candidate.findById(params.id).lean();
 	if (!candidate) error(404, 'Candidate not found');
 

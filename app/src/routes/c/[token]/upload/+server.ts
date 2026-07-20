@@ -15,6 +15,25 @@ const EXT: Record<string, string> = {
 	'application/pdf': 'pdf'
 };
 
+/** Magic-byte signatures for the file types ACCEPTED_MIMES allows. The
+ *  browser-supplied Content-Type on the form field is client-controlled and
+ *  proves nothing — a renamed executable can declare "image/png". This checks
+ *  the actual bytes so the declared MIME can't be spoofed past validation. */
+const MAGIC_BYTES: Record<string, (bytes: Uint8Array) => boolean> = {
+	'image/jpeg': (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+	'image/png': (b) =>
+		b.length >= 8 &&
+		b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 &&
+		b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a,
+	'application/pdf': (b) =>
+		b.length >= 5 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 && b[4] === 0x2d
+};
+
+function matchesMagicBytes(mime: string, bytes: Uint8Array): boolean {
+	const check = MAGIC_BYTES[mime];
+	return check ? check(bytes) : true; // no signature defined (e.g. webp) — skip, MIME check still applies
+}
+
 // Single-step upload: multipart POST → stored in GridFS → OCR runs server-side.
 export const POST: RequestHandler = async ({ params, request, getClientAddress }) => {
 	const candidate = await resolveCandidateToken(params.token);
@@ -69,6 +88,9 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		error(400, `Maximum ${slot.maxFiles} file(s) for this slot`);
 
 	const bytes = new Uint8Array(await fileField.arrayBuffer());
+	if (!matchesMagicBytes(mime, bytes)) {
+		error(400, 'File content does not match its declared type. Please upload a genuine JPG, PNG or PDF.');
+	}
 	const filename = `${candidate.id}/${slot.type}/${crypto.randomUUID()}.${EXT[mime]}`;
 	const gridfsId = await uploadBytesToGridFS(bytes, filename, mime);
 

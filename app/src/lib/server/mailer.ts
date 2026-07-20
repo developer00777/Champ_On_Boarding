@@ -67,16 +67,26 @@ export async function sendMail(to: string, subject: string, text: string, option
 			content: a.content.toString('base64')
 		}));
 	}
-	const res = await fetch('https://api.resend.com/emails', {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${env.RESEND_API_KEY}`,
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify(payload)
-	});
+	let res: Response;
+	try {
+		res = await fetch('https://api.resend.com/emails', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${env.RESEND_API_KEY}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(payload),
+			signal: AbortSignal.timeout(15_000)
+		});
+	} catch (e) {
+		console.error(`[mail] Resend request failed for to=${to}:`, e);
+		throw new Error(`Failed to send email to ${to}: ${e instanceof Error ? e.message : String(e)}`);
+	}
 	const body = await res.text();
 	console.log(`[mail] Resend ${res.status}: ${body.slice(0, 300)}`);
+	if (!res.ok) {
+		throw new Error(`Resend rejected email to ${to}: ${res.status} ${body.slice(0, 300)}`);
+	}
 }
 
 /** Wraps plain-text body in a minimal branded HTML shell with the brand's logo. */

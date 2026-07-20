@@ -7,6 +7,8 @@ import { audit } from '$lib/server/audit';
 
 // Documents are never public — streamed directly from GridFS after RBAC check (PRD §9).
 export const GET: RequestHandler = async ({ params, locals, getClientAddress }) => {
+	if (!locals.admin) error(401, 'Not authenticated');
+
 	const doc = await Document.findOne({ _id: params.docId, candidateId: params.id }).lean();
 	if (!doc) error(404, 'Document not found');
 
