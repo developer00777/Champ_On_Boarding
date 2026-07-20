@@ -37,9 +37,13 @@ async function seedCompanies() {
 		// renaming a duplicate onto the canonical name throws and takes boot down.
 		// Duplicates are merged by scripts/merge-duplicate-companies.mjs, not here:
 		// moving candidate records is not something a boot-time seed should do.
+		//
+		// `active` is deliberately left untouched here: an admin can soft-delete
+		// one of these seed companies from /admin/entities, and this boot-time
+		// repair must not silently resurrect it on the next deploy/restart.
 		const canonical = rows.find((r) => r.name === co.name) ?? rows[0];
 		for (const row of rows) {
-			const patch: Record<string, unknown> = { brandSlug: co.brandSlug, active: true };
+			const patch: Record<string, unknown> = { brandSlug: co.brandSlug };
 			if (String(row._id) === String(canonical._id) && row.name !== co.name) patch.name = co.name;
 			await Company.findByIdAndUpdate(row._id, patch);
 		}
