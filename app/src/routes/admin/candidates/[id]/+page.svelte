@@ -233,6 +233,13 @@
 				<button class="btn ghost danger-hover">Revoke link</button>
 			</form>
 		{/if}
+		{#if data.isSuperAdmin}
+			<form method="POST" action="?/deleteCandidate" use:enhance onsubmit={(e) => {
+				if (!confirm(`Permanently delete ${c.fullName || c.email}? This removes their profile, uploaded documents, and offer letter. This cannot be undone.`)) e.preventDefault();
+			}}>
+				<button class="btn ghost danger-hover">Delete candidate</button>
+			</form>
+		{/if}
 	</div>
 </div>
 

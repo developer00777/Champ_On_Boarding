@@ -1,8 +1,9 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Candidate, Company, Document, PhysicalItem, LinkToken, Verification, OfferLetter } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { decrypt } from '$lib/server/crypto';
+import { deleteFromGridFS } from '$lib/server/storage';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
@@ -37,7 +38,7 @@ function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | 
 	return validateMasterSheet(fields).map((e) => e.message);
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const row = await getCandidate(params.id);
 	if (!row) error(404, 'Candidate not found');
 	const { candidate, company } = row;
@@ -139,7 +140,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			...offerLetterInputFromDraft(offerLetter),
 			status: offerLetter?.status ?? 'draft',
 			sentAt: offerLetter?.sentAt?.toISOString() ?? null
-		}
+		},
+		isSuperAdmin: locals.admin?.role === 'super_admin'
 	};
 };
 
@@ -309,6 +311,40 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { ok: true };
+	},
+
+	deleteCandidate: async ({ params, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Forbidden.' });
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const { candidate } = row;
+
+		const docs = await Document.find({ candidateId: params.id }).lean();
+		for (const doc of docs) {
+			await deleteFromGridFS(doc.gridfsId as import('mongodb').ObjectId).catch((e) =>
+				console.error(`[delete-candidate] failed to remove GridFS blob ${doc.gridfsId}:`, e)
+			);
+		}
+
+		await Promise.all([
+			Document.deleteMany({ candidateId: params.id }),
+			LinkToken.deleteMany({ candidateId: params.id }),
+			PhysicalItem.deleteMany({ candidateId: params.id }),
+			Verification.deleteMany({ candidateId: params.id }),
+			OfferLetter.deleteMany({ candidateId: params.id })
+		]);
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'candidate_deleted',
+			newValue: candidate.fullName ?? candidate.email,
+			ip: getClientAddress()
+		});
+
+		await Candidate.findByIdAndDelete(params.id);
+
+		redirect(303, '/admin/candidates');
 	},
 
 	setUan: async ({ params, request, locals, getClientAddress }) => {
