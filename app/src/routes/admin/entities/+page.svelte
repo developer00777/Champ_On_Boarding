@@ -54,6 +54,8 @@
 	<p class="flash err">{form.companyError}</p>
 {:else if form?.companyCreated}
 	<p class="flash ok">Added {form.companyCreated}.</p>
+{:else if form?.companyDeleted}
+	<p class="flash ok">Removed {form.companyDeleted}.</p>
 {/if}
 
 {#if data.isSuperAdmin}
@@ -173,6 +175,26 @@
 							onchange={(e) => (e.currentTarget.form as HTMLFormElement).requestSubmit()}
 						/>
 					</label>
+				</form>
+
+				<form
+					method="POST"
+					action="?/deleteCompany"
+					use:enhance
+					class="ent-form"
+					onsubmit={(e) => {
+						if (!confirm(`Remove ${c.name}? This cannot be undone.`)) e.preventDefault();
+					}}
+				>
+					<input type="hidden" name="companyId" value={c.id} />
+					<button
+						class="btn ghost small danger-hover"
+						type="submit"
+						disabled={c.candidateCount > 0}
+						title={c.candidateCount > 0 ? `Has ${c.candidateCount} candidate${c.candidateCount === 1 ? '' : 's'} — move or delete those first` : ''}
+					>
+						Delete
+					</button>
 				</form>
 			{:else}
 				<span class="ent-brand">
@@ -323,6 +345,10 @@
 	.ent-form :global(.gs-trigger) {
 		padding: 7px 10px;
 		font-size: 12.5px;
+	}
+	.danger-hover:hover:not(:disabled) {
+		border-color: var(--ae-crimson) !important;
+		color: var(--ae-crimson) !important;
 	}
 	.filebtn {
 		position: relative;

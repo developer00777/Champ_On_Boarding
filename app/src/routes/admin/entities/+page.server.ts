@@ -98,6 +98,33 @@ export const actions: Actions = {
 		if (typeof logo === 'object') return fail(400, { companyError: logo.error });
 		await Company.findByIdAndUpdate(companyId, { logoBase64: logo });
 		return { logoSaved: companyId };
+	},
+
+	deleteCompany: async ({ request, locals }) => {
+		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const form = await request.formData();
+		const companyId = String(form.get('companyId') ?? '');
+		const company = await Company.findById(companyId).lean();
+		if (!company) return fail(404, { companyError: 'Company not found.' });
+
+		// Soft delete, matching the `active` flag `seedCompanies`/this page already
+		// filter on: a company with candidate history must keep resolving on their
+		// records (detail pages, exports, audit log), so it is hidden, not erased.
+		const candidateCount = await Candidate.countDocuments({ companyId });
+		if (candidateCount > 0) {
+			return fail(400, {
+				companyError: `Can't remove ${company.name} — it has ${candidateCount} candidate${candidateCount === 1 ? '' : 's'}. Move or delete those first.`
+			});
+		}
+
+		await Company.findByIdAndUpdate(companyId, { active: false });
+		await audit({
+			actor: locals.admin!.email,
+			action: 'company_deleted',
+			field: 'name',
+			oldValue: company.name
+		});
+		return { companyDeleted: company.name };
 	}
 };
 
