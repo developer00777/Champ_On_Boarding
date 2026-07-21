@@ -208,29 +208,31 @@
 </section>
 
 {#if data.isSuperAdmin && data.deactivated.length}
-	<section class="table-card deactivated-card">
-		<div class="ent-head">
-			<span>{data.deactivated.length} removed {data.deactivated.length === 1 ? 'entity' : 'entities'}</span>
-		</div>
-		{#each data.deactivated as c (c.id)}
-			<div class="ent">
-				<div class="ent-logo ent-logo-off">
+	<details class="bin">
+		<summary>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+			Recently deleted
+			<span class="bin-count">{data.deactivated.length}</span>
+		</summary>
+		<div class="bin-body">
+			{#each data.deactivated as c (c.id)}
+				<div class="bin-row">
 					<span class="mono">{initials(c.name)}</span>
-				</div>
-				<div class="ent-main">
-					<div class="ent-name">{c.name}</div>
-					<div class="ent-sub">
-						{c.candidateCount}
-						{c.candidateCount === 1 ? 'candidate' : 'candidates'} · removed
+					<div class="bin-main">
+						<div class="ent-name">{c.name}</div>
+						<div class="ent-sub">
+							{c.candidateCount}
+							{c.candidateCount === 1 ? 'candidate' : 'candidates'}
+						</div>
 					</div>
+					<form method="POST" action="?/restoreCompany" use:enhance class="ent-form">
+						<input type="hidden" name="companyId" value={c.id} />
+						<button class="btn ghost small">Restore</button>
+					</form>
 				</div>
-				<form method="POST" action="?/restoreCompany" use:enhance class="ent-form">
-					<input type="hidden" name="companyId" value={c.id} />
-					<button class="btn ghost small">Restore</button>
-				</form>
-			</div>
-		{/each}
-	</section>
+			{/each}
+		</div>
+	</details>
 {/if}
 
 <style>
@@ -308,16 +310,75 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 	}
-	.deactivated-card {
-		margin-top: 22px;
-		opacity: 0.82;
+	/* Recently-deleted bin — collapsed by default so it never competes with the
+	   live entities list above; a quiet affordance, not a second table. */
+	.bin {
+		margin-top: 26px;
 	}
-	.deactivated-card .ent-name {
+	.bin summary {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		cursor: pointer;
+		list-style: none;
+		font-size: 12.5px;
+		font-weight: 500;
+		color: var(--ae-muted);
+		padding: 6px 2px;
+		user-select: none;
+	}
+	.bin summary::-webkit-details-marker {
+		display: none;
+	}
+	.bin summary:hover {
 		color: var(--ae-text-2);
 	}
-	.ent-logo-off {
-		background: transparent;
-		border-style: dashed;
+	.bin summary svg {
+		flex: none;
+		opacity: 0.8;
+	}
+	.bin-count {
+		font-family: var(--ae-font-mono);
+		font-size: 10.5px;
+		font-weight: 600;
+		color: var(--ae-muted);
+		background: var(--ae-input-bg);
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 999px;
+		padding: 1px 7px;
+	}
+	.bin[open] summary {
+		color: var(--ae-text-2);
+		margin-bottom: 8px;
+	}
+	.bin-body {
+		border: 1px dashed var(--ae-line-strong);
+		border-radius: 10px;
+		overflow: hidden;
+	}
+	.bin-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 9px 14px;
+		border-bottom: 1px solid var(--ae-line-soft);
+		opacity: 0.85;
+	}
+	.bin-row:last-child {
+		border-bottom: none;
+	}
+	.bin-row .mono {
+		width: 32px;
+		height: 32px;
+		flex: none;
+		display: grid;
+		place-items: center;
+		border: 1px dashed var(--ae-line-strong);
+		border-radius: 6px;
+	}
+	.bin-main {
+		flex: 1;
+		min-width: 140px;
 	}
 	.ent {
 		display: flex;
