@@ -1,5 +1,13 @@
-// Seed: group companies + the bootstrap super admin.
-// Run: npm run db:seed  (idempotent — skips anything that already exists)
+// Seed: the bootstrap super admin.
+// Run: npm run db:seed  (idempotent — skips the admin if it already exists)
+//
+// Companies are deliberately NOT seeded here. connectDb() already seeds them
+// on every app boot (src/lib/server/db/index.ts), and doing it here too was
+// doubly harmful: the Railway start script runs the .mjs twin of this file on
+// every deploy, and its upsert force-set `active: true` — silently
+// resurrecting every company an admin had soft-deleted from /admin/entities —
+// and it matched on outdated short names ("Champion Infratech"), inserting
+// duplicate rows next to the canonical "… Pvt Ltd" ones on each fresh deploy.
 import mongoose from 'mongoose';
 import { randomBytes } from 'node:crypto';
 import { hash } from '@node-rs/argon2';
@@ -12,27 +20,7 @@ await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB, authSource: 'admin' })
 console.log(`[seed] connected`);
 const db = mongoose.connection.db!;
 
-const companies = db.collection('companies');
 const admins = db.collection('admins');
-
-const COMPANIES = [
-	{ name: 'Champion Infratech', brandSlug: 'champion-infratech' },
-	{ name: 'Champions Club', brandSlug: 'champions-club' },
-	{ name: 'IP Momentum', brandSlug: 'ip-momentum' },
-	{ name: 'Champion Products', brandSlug: 'champion-products' },
-	{ name: 'Champion Infometrics', brandSlug: 'champion-infometrics' },
-	{ name: 'Champions Yacht Club', brandSlug: 'champions-yacht-club' },
-	{ name: 'Cirrologix', brandSlug: 'cirrologix' },
-	{ name: 'Iconic Studio Pvt Ltd', brandSlug: 'iconic-studio' },
-	{ name: '100X Longevity Pvt Ltd', brandSlug: '100x-longevity' },
-	{ name: 'Champion LandZone', brandSlug: 'champion-landzone' },
-	{ name: 'Champions Luxury Resorts', brandSlug: 'champions-luxury-resorts' }
-];
-
-for (const { name, brandSlug } of COMPANIES) {
-	await companies.updateOne({ name }, { $set: { name, brandSlug, active: true } }, { upsert: true });
-}
-console.log('[seed] companies seeded');
 
 const SUPER_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'deep@championsmail.com';
 const SUPER_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
