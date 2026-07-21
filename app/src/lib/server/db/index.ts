@@ -13,6 +13,7 @@ const COMPANIES = [
 	{ name: 'Champions Yacht Club Pvt Ltd',     brandSlug: 'champions-yacht-club', aliases: ['Champions Yacht Club', 'Champions Yacht Club Pvt'] },
 	{ name: 'Champion LandZone Pvt Ltd',        brandSlug: 'champion-landzone',    aliases: ['Landzone', 'LandZone', 'Champion LandZone'] },
 	{ name: 'Champions Luxury Resorts Pvt Ltd', brandSlug: 'champions-luxury-resorts', aliases: ['Champion Luxury Resorts', 'Champions Luxury Resorts'] },
+	{ name: 'Iconic Build Studio Pvt Ltd',       brandSlug: 'iconic-build-studio', aliases: ['Iconic Build Studio'] },
 ];
 
 async function seedCompanies() {

@@ -367,6 +367,36 @@ export const BRANDS: BrandTheme[] = [
 		logo: { src: '/brands/champions-luxury-resorts.png', monogram: 'CLR', hasWordmark: true }
 	},
 	{
+		// Colours sampled directly from the supplied logo art: near-black wordmark
+		// ("ICONIC") with a gold accent ("BUILD STUDIO") on a transparent ground.
+		slug: 'iconic-build-studio',
+		name: 'Iconic Build Studio',
+		legalName: 'Iconic Build Studio Pvt Ltd',
+		tagline: 'Interior design and build studio crafting iconic living spaces.',
+		colors: {
+			primary: '#B7882E',
+			primaryDark: '#8f6a20',
+			accent: '#000000',
+			ink: '#0A0A0A',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#141414',
+			muted: '#6B6B6B',
+			border: '#E8E8E8',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #0A0A0A 0%, #2b2114 60%, #B7882E 130%)'
+		},
+		fonts: {
+			heading: "'Montserrat', Arial, sans-serif",
+			body: "'Montserrat', Arial, sans-serif",
+			googleFamilies: ['Montserrat:wght@400;500;600;700;800']
+		},
+		buttonRadius: 4,
+		cardRadius: 12,
+		uppercaseCta: false,
+		logo: { src: '/brands/iconic-build-studio.png', monogram: 'IBS', hasWordmark: true }
+	},
+	{
 		slug: '100x-longevity',
 		name: '100X Longevity',
 		legalName: '100X Longevity Pvt Ltd',
