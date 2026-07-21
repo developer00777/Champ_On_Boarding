@@ -22,7 +22,13 @@ async function readLogo(form: FormData): Promise<string | null | { error: string
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const companies = await Company.find({ active: true }).sort({ name: 1 }).lean();
+	const isSuperAdmin = locals.admin?.role === 'super_admin';
+	const [companies, deactivated] = await Promise.all([
+		Company.find({ active: true }).sort({ name: 1 }).lean(),
+		// Only super admins can restore, and this list exists for exactly that —
+		// no reason to query or ship it to an hr_admin session.
+		isSuperAdmin ? Company.find({ active: false }).sort({ name: 1 }).lean() : Promise.resolve([])
+	]);
 
 	// Candidate counts per company: an entity with candidates attached cannot be
 	// safely renamed away or ignored, and it is what makes duplicate rows obvious.
@@ -39,13 +45,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 			logoBase64: c.logoBase64 ?? null,
 			candidateCount: countBy.get(String(c._id)) ?? 0
 		})),
+		deactivated: deactivated.map((c) => ({
+			id: String(c._id),
+			name: c.name,
+			candidateCount: countBy.get(String(c._id)) ?? 0
+		})),
 		brandOptions: BRANDS.map((b) => ({
 			slug: b.slug,
 			name: b.name,
 			primary: b.colors.primary,
 			logo: b.logo.src
 		})),
-		isSuperAdmin: locals.admin?.role === 'super_admin'
+		isSuperAdmin
 	};
 };
 
@@ -125,6 +136,23 @@ export const actions: Actions = {
 			oldValue: company.name
 		});
 		return { companyDeleted: company.name };
+	},
+
+	restoreCompany: async ({ request, locals }) => {
+		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const form = await request.formData();
+		const companyId = String(form.get('companyId') ?? '');
+		const company = await Company.findById(companyId).lean();
+		if (!company) return fail(404, { companyError: 'Company not found.' });
+
+		await Company.findByIdAndUpdate(companyId, { active: true });
+		await audit({
+			actor: locals.admin!.email,
+			action: 'company_restored',
+			field: 'name',
+			newValue: company.name
+		});
+		return { companyRestored: company.name };
 	}
 };
 

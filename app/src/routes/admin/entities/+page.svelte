@@ -56,6 +56,8 @@
 	<p class="flash ok">Added {form.companyCreated}.</p>
 {:else if form?.companyDeleted}
 	<p class="flash ok">Removed {form.companyDeleted}.</p>
+{:else if form?.companyRestored}
+	<p class="flash ok">Restored {form.companyRestored}.</p>
 {/if}
 
 {#if data.isSuperAdmin}
@@ -205,6 +207,32 @@
 	{/each}
 </section>
 
+{#if data.isSuperAdmin && data.deactivated.length}
+	<section class="table-card deactivated-card">
+		<div class="ent-head">
+			<span>{data.deactivated.length} removed {data.deactivated.length === 1 ? 'entity' : 'entities'}</span>
+		</div>
+		{#each data.deactivated as c (c.id)}
+			<div class="ent">
+				<div class="ent-logo ent-logo-off">
+					<span class="mono">{initials(c.name)}</span>
+				</div>
+				<div class="ent-main">
+					<div class="ent-name">{c.name}</div>
+					<div class="ent-sub">
+						{c.candidateCount}
+						{c.candidateCount === 1 ? 'candidate' : 'candidates'} · removed
+					</div>
+				</div>
+				<form method="POST" action="?/restoreCompany" use:enhance class="ent-form">
+					<input type="hidden" name="companyId" value={c.id} />
+					<button class="btn ghost small">Restore</button>
+				</form>
+			</div>
+		{/each}
+	</section>
+{/if}
+
 <style>
 	.card-title {
 		font-family: var(--ae-font-display);
@@ -279,6 +307,17 @@
 		color: var(--ae-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
+	}
+	.deactivated-card {
+		margin-top: 22px;
+		opacity: 0.82;
+	}
+	.deactivated-card .ent-name {
+		color: var(--ae-text-2);
+	}
+	.ent-logo-off {
+		background: transparent;
+		border-style: dashed;
 	}
 	.ent {
 		display: flex;
