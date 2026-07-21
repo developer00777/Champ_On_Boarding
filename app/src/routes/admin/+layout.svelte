@@ -52,6 +52,15 @@
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18" /><path d="M5 21V6l7-3v18" /><path d="M12 9h7v12" /></svg>
 				Entities
 			</a>
+			<a
+				href="/admin/analytics"
+				class="navitem"
+				class:on={active('/admin/analytics')}
+				aria-current={active('/admin/analytics') ? 'page' : undefined}
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18" /><path d="M7 15l4-6 4 3 5-8" /></svg>
+				Analytics
+			</a>
 
 			<div class="rail-sec">Admin</div>
 			{#if data.admin.role === 'super_admin'}

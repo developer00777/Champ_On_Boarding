@@ -1,0 +1,258 @@
+/* =========================================================
+   ANALYTICS KIT — chart chrome for /admin/analytics.
+   ---------------------------------------------------------
+   Scoped to `.aegis`, same convention as aegis-kit.css. Palette
+   here (SERIES/ST hexes) is duplicated in charts.ts because SVG/
+   Canvas need literal color values, not CSS custom properties —
+   validated against the Aegis dark surface (#171430) with the
+   dataviz skill's palette validator: lightness band, chroma floor,
+   CVD separation (adjacent 8.4 protan / 8.7 tritan), normal-vision
+   floor (19.3), contrast all pass. Keep the two files' hex values
+   in sync if either changes.
+   ========================================================= */
+
+.aegis .chart-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 14px;
+}
+.aegis .chart-grid.wide {
+	grid-template-columns: 1fr;
+}
+@media (max-width: 900px) {
+	.aegis .chart-grid {
+		grid-template-columns: 1fr;
+	}
+}
+.aegis .chart-card {
+	background: var(--ae-sub-bg);
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 14px;
+	padding: 16px 18px 14px;
+}
+.aegis .chart-card-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	margin-bottom: 4px;
+	flex-wrap: wrap;
+}
+.aegis .chart-title {
+	font-family: var(--ae-font-display);
+	font-size: 14.5px;
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .chart-note {
+	font-size: 11.5px;
+	color: var(--ae-muted);
+	margin-bottom: 12px;
+}
+.aegis .legend {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+	font-size: 11px;
+	color: var(--ae-text-2);
+}
+.aegis .legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+.aegis .legend-swatch {
+	width: 9px;
+	height: 9px;
+	border-radius: 2px;
+	flex: none;
+}
+
+/* Clickable legend variant — the knowledge graph filter chips */
+.aegis .legend-filterable .legend-item {
+	margin: 0;
+	background: var(--ae-input-bg);
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 999px;
+	padding: 4px 10px 4px 8px;
+	font-family: var(--ae-font-body);
+	font-size: 11px;
+	color: var(--ae-text-2);
+	cursor: pointer;
+	transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.aegis .legend-filterable .legend-item:hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: var(--ae-text);
+}
+.aegis .legend-filterable .legend-item.active {
+	background: rgba(255, 125, 85, 0.16);
+	border-color: var(--ae-ember);
+	color: var(--ae-text);
+}
+.aegis .legend-filterable .legend-item:focus-visible {
+	outline: 2px solid var(--ae-ember);
+	outline-offset: 1px;
+}
+
+/* Tooltip — appended to <body>, so styled globally within the admin scope */
+.viz-tooltip {
+	position: fixed;
+	pointer-events: none;
+	background: #0d0f18;
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 9px;
+	padding: 8px 11px;
+	font-size: 11.5px;
+	box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.6);
+	z-index: 1000;
+	opacity: 0;
+	transition: opacity 0.1s;
+	max-width: 220px;
+	font-family: var(--ae-font-body, 'Inter', sans-serif);
+	color: var(--ae-text-2, #cbd1de);
+}
+.viz-tooltip.show {
+	opacity: 1;
+}
+.viz-tooltip .tt-title {
+	font-weight: 650;
+	color: var(--ae-text, #fafaf7);
+	margin-bottom: 4px;
+	font-family: var(--ae-font-mono, monospace);
+	font-size: 10.5px;
+}
+.viz-tooltip .tt-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.viz-tooltip .tt-swatch {
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
+	flex: none;
+}
+.viz-tooltip .tt-val {
+	margin-left: auto;
+	font-family: var(--ae-font-mono, monospace);
+	font-variant-numeric: tabular-nums;
+	color: var(--ae-text, #fafaf7);
+	font-weight: 600;
+}
+
+.aegis svg text {
+	font-family: var(--ae-font-body);
+	fill: var(--ae-muted);
+}
+.aegis svg .axis-line {
+	stroke: var(--ae-line-strong);
+	stroke-width: 1;
+}
+.aegis svg .tick-label {
+	font-size: 10px;
+	fill: var(--ae-muted);
+	font-family: var(--ae-font-mono);
+}
+
+/* ---------- Knowledge graph: how-to strip, explain panel, insights ---------- */
+.aegis .howto-strip {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 12px;
+	background: rgba(123, 167, 240, 0.07);
+	border: 1px solid rgba(123, 167, 240, 0.22);
+	border-radius: 12px;
+	padding: 14px 16px;
+	margin-bottom: 14px;
+}
+.aegis .howto-step {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	font-size: 12px;
+	color: var(--ae-text-2);
+	line-height: 1.45;
+}
+.aegis .howto-step strong {
+	color: var(--ae-text);
+}
+.aegis .howto-num {
+	flex: none;
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	background: var(--ae-azure);
+	color: #0b1220;
+	font-family: var(--ae-font-mono);
+	font-weight: 700;
+	font-size: 11px;
+	display: grid;
+	place-items: center;
+}
+@media (max-width: 900px) {
+	.aegis .howto-strip {
+		grid-template-columns: 1fr;
+	}
+}
+
+.aegis #graphExplain {
+	min-height: 64px;
+}
+.aegis .explain-empty {
+	font-size: 12px;
+	color: var(--ae-muted);
+	line-height: 1.5;
+}
+.aegis .explain-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--ae-font-display);
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--ae-text);
+	margin-bottom: 8px;
+}
+.aegis .explain-dot {
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	flex: none;
+}
+.aegis .explain-kind {
+	font-family: var(--ae-font-mono);
+	font-size: 10px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--ae-muted);
+}
+.aegis #graphExplain p {
+	font-size: 12.5px;
+	color: var(--ae-text-2);
+	line-height: 1.6;
+	margin: 0;
+}
+.aegis #graphExplain strong {
+	color: var(--ae-text);
+}
+
+.aegis .insight-list {
+	list-style: none;
+	margin: 6px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.aegis .insight-list li {
+	font-size: 12.5px;
+	line-height: 1.55;
+	color: var(--ae-text-2);
+	border-left: 3px solid var(--ae-line-strong);
+	padding: 2px 0 2px 11px;
+}
+.aegis .insight-list strong {
+	color: var(--ae-text);
+}
