@@ -260,4 +260,18 @@
 			background: #1a1e2b;
 		}
 	}
+
+	/* Light mode: the dark translucent base above reads as a black smear on a
+	   light page — same opacity-floor idea, inverted. Reached via :global()
+	   since the theme attribute lives on the .aegis ancestor, outside this
+	   component's own scoped styles. */
+	:global(.aegis[data-theme='light']) .gs-list {
+		background: linear-gradient(150deg, rgba(32, 36, 58, 0.04), rgba(32, 36, 58, 0.02)),
+			linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.85));
+	}
+	@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		:global(.aegis[data-theme='light']) .gs-list {
+			background: #ffffff;
+		}
+	}
 </style>

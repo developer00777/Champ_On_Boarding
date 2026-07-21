@@ -12,6 +12,18 @@
    `.aegis` -> `.aegis.surface-aegis` / `.aegis.surface-clay`.
    Values mirror the `surface()` method in the prototype
    (scripts/Onboarding Application (2)/ChampOnboard.dc.html).
+
+   Color mode: dark (default) | light, toggled via [data-theme]
+   on the `.aegis` root (see admin/+layout.svelte). Light values
+   are the prototype's own documented light+glass branch — not
+   invented here — from the same surface() method and the
+   [data-mode="light"] token block in ChampOnboard.dc.html. Only
+   the `glass` surface variant ships a light mode: `aegis`/`clay`
+   have no light branch defined anywhere in the app today, so
+   adding one would be speculative rather than sourced.
+   Semantic accents (ember/verdant/amber/crimson/azure) are
+   mode-invariant in the prototype — same hex in both modes —
+   and stay that way here.
    ========================================================= */
 
 .aegis {
@@ -84,6 +96,41 @@
 	--ae-input-bg: #161a25;
 	--ae-sub-bg: #242a3a;
 	--ae-rail-bg: #131722;
+}
+
+/* Light mode — glass surface. Text/line tokens from the prototype's
+   [data-co-root][data-mode="light"] block; page/card tokens from the
+   light-branch of surface() (styleKey === 'glass'). */
+.aegis[data-theme='light'] {
+	--ae-text: #20243a;
+	--ae-text-2: #3e445c;
+	--ae-muted: #6a7186;
+	--ae-muted-2: #565d72;
+	--ae-faint: #b7bccb;
+	--ae-numeral: #b7bccb;
+
+	--ae-line: rgba(32, 36, 58, 0.09);
+	--ae-line-soft: rgba(32, 36, 58, 0.06);
+	--ae-line-strong: rgba(32, 36, 58, 0.14);
+
+	--ae-page-bg: radial-gradient(1000px 640px at 82% -8%, rgba(255, 125, 85, 0.3), transparent 60%),
+		radial-gradient(880px 660px at -12% 32%, rgba(146, 120, 255, 0.32), transparent 58%),
+		radial-gradient(760px 560px at 52% 116%, rgba(62, 207, 180, 0.22), transparent 62%),
+		linear-gradient(160deg, #edeffa 0%, #f6f3ee 55%, #eaf0f4 100%);
+	--ae-card-bg: linear-gradient(150deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.45));
+	--ae-card-border: rgba(255, 255, 255, 0.85);
+	--ae-card-shadow: 0 24px 50px -20px rgba(70, 75, 120, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+	--ae-input-bg: rgba(255, 255, 255, 0.65);
+	--ae-sub-bg: rgba(255, 255, 255, 0.5);
+	--ae-rail-bg: rgba(255, 255, 255, 0.55);
+	--ae-hover: rgba(32, 36, 58, 0.05);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.aegis[data-theme='light'] {
+		--ae-card-bg: #ffffff;
+		--ae-card-border: rgba(32, 36, 58, 0.12);
+		--ae-rail-bg: #f2f3f8;
+	}
 }
 
 /* backdrop-filter is GPU-costly and unsupported on older engines. Without it the

@@ -12,6 +12,16 @@
 		const path = $page.url.pathname;
 		return href === '/admin' ? path === '/admin' : path.startsWith(href);
 	}
+
+	// Theme starts from the server-read cookie (so the first paint is already
+	// correct, no flash) and flips purely client-side after that — a UI
+	// preference doesn't need a round trip through SvelteKit's data layer.
+	let theme = $state(data.theme);
+
+	function toggleTheme() {
+		theme = theme === 'light' ? 'dark' : 'light';
+		document.cookie = `ae-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
+	}
 </script>
 
 <svelte:head>
@@ -22,7 +32,21 @@
 	/>
 </svelte:head>
 
-<div class="shell aegis" class:signed-in={!!data.admin}>
+<div class="shell aegis" class:signed-in={!!data.admin} data-theme={theme}>
+	<button
+		class="theme-toggle"
+		type="button"
+		onclick={toggleTheme}
+		aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+		title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+	>
+		{#if theme === 'light'}
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" /></svg>
+		{:else}
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.2a8.5 8.5 0 1 1-9.7-11.7 7 7 0 0 0 9.7 11.7Z" /></svg>
+		{/if}
+	</button>
+
 	{#if data.admin}
 		<nav class="rail" aria-label="Admin sections">
 			<a href="/admin" class="rail-brand">
@@ -90,6 +114,38 @@
 </div>
 
 <style>
+	.theme-toggle {
+		position: fixed;
+		top: 16px;
+		right: 20px;
+		z-index: 100;
+		width: 34px;
+		height: 34px;
+		display: grid;
+		place-items: center;
+		border-radius: 999px;
+		background: var(--ae-input-bg);
+		border: 1px solid var(--ae-line-strong);
+		color: var(--ae-text-2);
+		cursor: pointer;
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+	.theme-toggle:hover {
+		background: var(--ae-hover);
+		color: var(--ae-text);
+		border-color: var(--ae-ember);
+	}
+	.theme-toggle:focus-visible {
+		outline: 2px solid var(--ae-ember);
+		outline-offset: 2px;
+	}
+	.theme-toggle svg {
+		width: 16px;
+		height: 16px;
+	}
+
 	.shell.signed-in {
 		display: grid;
 		grid-template-columns: 216px minmax(0, 1fr);
