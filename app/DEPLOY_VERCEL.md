@@ -40,7 +40,7 @@ Railway build produces a Vercel-shaped build. Don't set `RAILWAY` on Vercel.
 
 Settings → Environment Variables, for the **Production** environment. Take the
 full list from `.env.example` — it is the source of truth and includes the
-DoubleTick WhatsApp keys not repeated here. The ones that matter most:
+Twilio WhatsApp keys not repeated here. The ones that matter most:
 
 ```
 MONGODB_URI            # the LITERAL connection string — see below

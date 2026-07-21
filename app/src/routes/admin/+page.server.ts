@@ -128,7 +128,7 @@ export const actions: Actions = {
 			attachments
 		);
 
-		// Send WhatsApp welcome message via DoubleTick (best-effort, non-fatal)
+		// Send WhatsApp welcome message via Twilio (best-effort, non-fatal)
 		if (candidateMobile) {
 			await sendOnboardingWelcomeWA({
 				mobile: candidateMobile,
