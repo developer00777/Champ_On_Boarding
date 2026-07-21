@@ -497,9 +497,9 @@
 								<input type="hidden" name="spouseContact" value="" />
 								<input type="hidden" name="spouseDob" value="" />
 							{/if}
-							{@render field('emergencyContactName', 'Emergency contact name (optional)')}
-							{@render field('emergencyContactMobile', 'Emergency contact mobile (optional)')}
-							{@render field('emergencyContactRelation', 'Emergency contact relation (optional)')}
+							{@render field('emergencyContactName', 'Emergency contact name', { required: true })}
+							{@render field('emergencyContactMobile', 'Emergency contact mobile', { placeholder: '10 digits', required: true })}
+							{@render field('emergencyContactRelation', 'Emergency contact relation', { required: true })}
 						</div>
 					</section>
 

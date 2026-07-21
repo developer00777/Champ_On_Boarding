@@ -82,6 +82,9 @@ export function validateMasterSheet(f: Record<string, string>): FieldError[] {
 	req('accountNoConfirm', 'Reconfirm account number');
 	req('ifsc', 'IFSC code');
 	req('branch', 'Branch name');
+	req('emergencyContactName', 'Emergency contact name');
+	req('emergencyContactMobile', 'Emergency contact mobile');
+	req('emergencyContactRelation', 'Emergency contact relation');
 
 	if (f.aadhaarNo?.trim() && !isValidAadhaar(f.aadhaarNo))
 		errors.push({ field: 'aadhaarNo', message: 'Aadhaar must be 12 digits with a valid checksum' });
