@@ -4,6 +4,8 @@
 // (#171430) with scripts/validate_palette.js from the dataviz skill: all
 // eight categorical hues pass lightness band, chroma floor, CVD separation
 // (adjacent 8.4 protan / 8.7 tritan), normal-vision floor (19.3), contrast.
+import { computeFindings, type InsightsInput, type Finding, type Severity } from './insights';
+
 const SERIES = ['#3987e5', '#199e70', '#9085e9', '#d95926', '#c98500', '#d55181', '#e66767', '#6b7690'];
 const ST = { good: '#3ecf9a', warn: '#f2b15c', crit: '#f07575', info: '#7ba7f0' };
 const TXT = { primary: '#fafaf7', secondary: '#cbd1de', muted: '#8a91a5', faint: '#4b5160', mono: "'JetBrains Mono', ui-monospace, monospace" };
@@ -664,29 +666,27 @@ function isNeighbor(a: SimNode, b: SimNode, edges: SimEdge[]): boolean {
 	return edges.some((e) => (e.a === a && e.b === b) || (e.a === b && e.b === a));
 }
 
-/** Auto-generated, plain-English reading of the document satisfaction data —
- *  the same numbers driving the graph's node colors, restated as sentences. */
-function graphInsights(slotNodes: SimNode[]): { tone: 'crit' | 'warn' | 'good'; html: string }[] {
-	const mandatory = slotNodes.filter((n) => n.rate != null).sort((a, b) => (a.rate as number) - (b.rate as number));
-	if (mandatory.length === 0) return [{ tone: 'good', html: 'Not enough document data yet in this range to surface a bottleneck.' }];
-	const items: { tone: 'crit' | 'warn' | 'good'; html: string }[] = [];
-	const worst = mandatory[0];
-	items.push({
-		tone: 'crit',
-		html: `<strong>${worst.label}</strong> is the biggest blocker right now — only <strong>${worst.rate}%</strong> of candidates who need it get it right on the first try. Everyone else needs a re-upload request, which is what actually slows a file down.`
-	});
-	if (mandatory[1] && (mandatory[1].rate as number) < 75 && mandatory[2]) {
-		items.push({
-			tone: 'warn',
-			html: `<strong>${mandatory[1].label}</strong> and <strong>${mandatory[2].label}</strong> are also below the healthy range (${mandatory[1].rate}% and ${mandatory[2].rate}%) — worth a look if you're updating the instructions candidates see before uploading.`
-		});
+const SEVERITY_COLOR: Record<Severity, string> = { critical: ST.crit, warning: ST.warn, info: ST.info, good: ST.good };
+const SEVERITY_TAG_LABEL: Record<Severity, string> = { critical: 'Critical', warning: 'Watch', info: 'Info', good: 'Healthy' };
+
+function findingsListHTML(findings: Finding[]): string {
+	if (findings.length === 0) {
+		return '<li style="border-left-color:' + TXT.faint + '">Not enough data yet in this range to surface a finding.</li>';
 	}
-	const healthyCount = mandatory.filter((n) => (n.rate as number) >= 80).length;
-	items.push({ tone: 'good', html: `${healthyCount} of ${mandatory.length} document types are already healthy (80%+ first-try success) — no action needed there.` });
-	return items;
+	return findings
+		.map((f) => {
+			const color = SEVERITY_COLOR[f.severity];
+			return (
+				`<li style="border-left-color:${color}">` +
+				`<div class="finding-meta"><span class="finding-tag" style="color:${color};border-color:${color}">${SEVERITY_TAG_LABEL[f.severity]}</span><span class="finding-category">${f.category}</span></div>` +
+				`<div class="finding-text">${f.text}</div>` +
+				'</li>'
+			);
+		})
+		.join('');
 }
 
-export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNodeData[]; edges: GraphEdgeData[] }) {
+export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNodeData[]; edges: GraphEdgeData[] }, insightsInput: InsightsInput) {
 	if (graph.nodes.length === 0) {
 		container.innerHTML = '<div class="chart-card"><p class="muted">No candidates in this range — nothing to graph yet.</p></div>';
 		return;
@@ -733,13 +733,8 @@ export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNode
 		n.y = cy + Math.sin(a) * 200;
 	});
 
-	const insights = graphInsights(slotNodes);
-	const insightsHTML = insights
-		.map((it) => {
-			const color = it.tone === 'crit' ? ST.crit : it.tone === 'warn' ? ST.warn : ST.good;
-			return `<li style="border-left-color:${color}">${it.html}</li>`;
-		})
-		.join('');
+	const findings = computeFindings(insightsInput);
+	const insightsHTML = findingsListHTML(findings);
 
 	container.innerHTML =
 		'<div class="howto-strip">' +
@@ -767,7 +762,7 @@ export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNode
 		'</div>' +
 		'<div class="chart-card">' +
 		'<div class="chart-card-head"><span class="chart-title">What this is telling you</span></div>' +
-		'<div class="chart-note">Read automatically off the graph — no interaction needed.</div>' +
+		'<div class="chart-note">Computed from documents, timing, verification, workload, conversion, and the funnel — every line is a fixed rule against real numbers, ranked worst first. No AI, nothing to re-run.</div>' +
 		`<ul class="insight-list">${insightsHTML}</ul>` +
 		'</div>' +
 		'</div>' +

@@ -103,7 +103,14 @@
 	$effect(() => {
 		if (!chartsMod) return;
 		if (activeTab === 'graph' && graphEl) {
-			chartsMod.renderGraphTab(graphEl, data.graph);
+			chartsMod.renderGraphTab(graphEl, data.graph, {
+				docSlots: data.docSlots,
+				stageDurations: data.stageDurations,
+				verification: data.verification,
+				adminWorkload: data.adminWorkload,
+				conversion: data.conversion,
+				funnel: data.funnel
+			});
 		} else if (activeTab === 'trends' && trendsEl && !rendered.trends) {
 			chartsMod.renderTrendsTab(trendsEl, data.trend, data.bucket);
 			rendered.trends = true;
