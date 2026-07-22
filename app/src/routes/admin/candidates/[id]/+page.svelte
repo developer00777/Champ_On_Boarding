@@ -239,7 +239,9 @@
 {#if !data.isSuperAdmin}
 	<div class="readonly-banner">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
-		View-only — editing candidate records requires a super admin login.
+		{data.isApprover
+			? 'HR access — you can approve candidates and manage the offer letter. Other edits require a super admin login.'
+			: 'View-only — editing candidate records requires a super admin login.'}
 	</div>
 {/if}
 
@@ -272,7 +274,7 @@
 	<div style="display:flex;gap:10px;flex-wrap:wrap">
 		{#if c.status === 'submitted'}
 			<form method="POST" action="?/approve" use:enhance>
-				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<fieldset class="rbac" disabled={!data.isApprover}>
 					<button class="btn teal">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
 						Approve candidate
@@ -364,7 +366,7 @@
 			</div>
 		</div>
 		<form method="POST" action="?/approve" use:enhance>
-			<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+			<fieldset class="rbac" disabled={!data.isApprover}>
 				<button class="btn teal" style="font-size:14px;padding:11px 22px">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
 					Approve &amp; notify
@@ -688,7 +690,7 @@
 				<p class="error">{form.message}</p>
 			{/if}
 			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form" enctype="multipart/form-data">
-				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<fieldset class="rbac" disabled={!data.isApprover}>
 				<label class="offer-field">
 					<span>Job title</span>
 					<input name="jobTitle" value={ol.jobTitle} />
@@ -948,7 +950,7 @@
 					if (!confirm(`Send the offer letter to ${c.email}?`)) e.preventDefault();
 				}}
 			>
-				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<fieldset class="rbac" disabled={!data.isApprover}>
 					<button class="btn teal">Send offer letter</button>
 				</fieldset>
 			</form>

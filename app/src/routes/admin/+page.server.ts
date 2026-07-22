@@ -17,13 +17,38 @@ const DONE = ['approved', 'complete'];
 export const load: PageServerLoad = async ({ locals }) => {
 	// Count in the database rather than fetching every candidate to length-check
 	// four arrays in the browser. The full list lives at /admin/candidates now.
-	const [total, awaitingReview, inProgress, approved, recentDocs, companies] = await Promise.all([
+	const [total, awaitingReview, inProgress, approved, recentDocs, companies, pendingOfferDocs] = await Promise.all([
 		Candidate.countDocuments(),
 		Candidate.countDocuments({ status: 'submitted' }),
 		Candidate.countDocuments({ status: { $in: IN_PROGRESS } }),
 		Candidate.countDocuments({ status: { $in: DONE } }),
 		Candidate.find().populate('companyId').sort({ createdAt: -1 }).limit(5).lean(),
-		Company.find({ active: true }).sort({ name: 1 }).lean()
+		Company.find({ active: true }).sort({ name: 1 }).lean(),
+		// Candidates HR has already approved but who don't yet have a sent offer
+		// letter — the moment offer letters are actually due to go out, and easy
+		// to lose track of once a candidate scrolls off "Recent candidates".
+		Candidate.aggregate([
+			{ $match: { status: { $in: DONE } } },
+			{
+				$lookup: {
+					from: 'offerletters',
+					localField: '_id',
+					foreignField: 'candidateId',
+					as: 'offerLetter'
+				}
+			},
+			{ $match: { $or: [{ offerLetter: { $size: 0 } }, { 'offerLetter.status': 'draft' }] } },
+			{ $sort: { reviewedAt: -1, createdAt: -1 } },
+			{ $limit: 25 },
+			{
+				$lookup: {
+					from: 'companies',
+					localField: 'companyId',
+					foreignField: '_id',
+					as: 'company'
+				}
+			}
+		])
 	]);
 
 	return {
@@ -40,9 +65,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 				company: company?.name ?? ''
 			};
 		}),
+		pendingOffers: pendingOfferDocs.map((c) => ({
+			id: String(c._id),
+			email: c.email,
+			fullName: c.fullName ?? null,
+			track: c.track,
+			status: c.status,
+			company: c.company?.[0]?.name ?? ''
+		})),
 		companies: companies.map((c) => ({ id: String(c._id), name: c.name, brandSlug: c.brandSlug ?? null })),
 		tracks: TRACKS,
-		isSuperAdmin: locals.admin?.role === 'super_admin'
+		isSuperAdmin: locals.admin?.role === 'super_admin',
+		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
 	};
 };
 

@@ -103,6 +103,30 @@
 	{/if}
 </section>
 
+{#if data.pendingOffers.length > 0}
+	<section class="table-card recent-card" style="margin-bottom:22px">
+		<div class="recent-head">
+			<span>Offer letter yet to be sent</span>
+			<span class="seeall" style="color:var(--ae-muted)">{data.pendingOffers.length} waiting</span>
+		</div>
+		{#each data.pendingOffers as c (c.id)}
+			<a class="trow" href="/admin/candidates/{c.id}">
+				<div>
+					<div style="font-weight:500;font-size:14px;color:var(--ae-text)">{c.fullName || c.email}</div>
+					<div style="font-family:var(--ae-font-mono);font-size:11px;color:var(--ae-muted)">{c.email}</div>
+				</div>
+				<div class="tcell">{c.company}</div>
+				<div class="tcell">{TRACK_LABELS[c.track as Track]}</div>
+				<div><span class="pill gold">OFFER PENDING</span></div>
+				<div class="review-cta">
+					{data.isApprover ? 'Send offer' : 'Review'}
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" /></svg>
+				</div>
+			</a>
+		{/each}
+	</section>
+{/if}
+
 <section class="table-card recent-card">
 	<div class="recent-head">
 		<span>Recent candidates</span>

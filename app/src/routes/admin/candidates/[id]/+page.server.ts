@@ -46,6 +46,15 @@ function requireSuperAdmin(locals: App.Locals) {
 	return null;
 }
 
+/** Approving a candidate and sending their offer letter are HR/recruiter's
+ *  core job, not an admin-only escalation — both hr_admin and super_admin
+ *  can perform these. Every other mutation on this page stays super_admin-only. */
+function requireApprover(locals: App.Locals) {
+	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
+		return fail(403, { message: 'Only HR or a super admin can do this.' });
+	return null;
+}
+
 function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | null) {
 	const fields: Record<string, string> = {};
 	for (const [k, v] of Object.entries(candidate)) {
@@ -182,6 +191,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			dlNo: candidate.dlNo ?? null,
 			passportNo: candidate.passportNo ?? null,
 			linkedinId: candidate.linkedinId ?? null,
+			bankAccountName: candidate.bankAccountName ?? null,
 			bankName: candidate.bankName ?? null,
 			accountNo: candidate.accountNo ?? null,
 			ifsc: candidate.ifsc ?? null,
@@ -238,13 +248,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			sentAt: offerLetter?.sentAt?.toISOString() ?? null
 		},
 		onboardingLink,
-		isSuperAdmin: locals.admin?.role === 'super_admin'
+		isSuperAdmin: locals.admin?.role === 'super_admin',
+		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
 	};
 };
 
 export const actions: Actions = {
 	approve: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -510,21 +521,38 @@ export const actions: Actions = {
 			ocrStatus: { $in: ['parsed', 'pending'] }
 		}).lean();
 
-		let crosschecked = 0;
+		// VERIFY_SPECS has one combined 'aadhaar' entry (front supplies
+		// name/dob/gender, back supplies the PIN) but front/back are separate
+		// Document rows — merge their ocrJson before verifying so neither side's
+		// fields get reported as spuriously "missing" against the other's OCR.
+		const docKindOf = (docType: string) => (docType.startsWith('aadhaar_') ? 'aadhaar' : docType);
+
+		const foundByKind = new Map<string, Record<string, string>>();
 		for (const doc of docs) {
 			if (!doc.ocrJson) continue;
+			const kind = docKindOf(doc.docType);
+			const existing = foundByKind.get(kind) ?? {};
+			foundByKind.set(kind, { ...existing, ...(doc.ocrJson as Record<string, string>) });
+		}
+		// aadhaar_front's OCR yields the full number as aadhaarNo, but the spec
+		// (like the candidate's own stored field) compares only the last 4.
+		for (const found of foundByKind.values()) {
+			if (found.aadhaarNo && !found.aadhaarLast4) found.aadhaarLast4 = found.aadhaarNo.slice(-4);
+		}
+
+		let crosschecked = 0;
+		for (const [kind, found] of foundByKind) {
 			try {
-				const found = doc.ocrJson as Record<string, string>;
 				await runVerification(
 					candidate as unknown as Record<string, unknown>,
 					'ocr_crosscheck',
-					doc.docType,
+					kind,
 					found,
 					locals.admin!.email
 				);
 				crosschecked++;
 			} catch (e) {
-				console.error('[crosscheck] doc', doc._id, e);
+				console.error('[crosscheck]', kind, e);
 			}
 		}
 
@@ -540,7 +568,7 @@ export const actions: Actions = {
 	},
 
 	saveOfferLetter: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -652,7 +680,7 @@ export const actions: Actions = {
 	},
 
 	sendOfferLetterEmail: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
