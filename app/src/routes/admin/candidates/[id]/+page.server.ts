@@ -6,7 +6,15 @@ import { decrypt } from '$lib/server/crypto';
 import { deleteFromGridFS } from '$lib/server/storage';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
-import { maskAadhaar, validateMasterSheet } from '$lib/shared/validation';
+import {
+	maskAadhaar,
+	validateMasterSheet,
+	titleCase,
+	isValidPan,
+	isValidIfsc,
+	isValidPin,
+	isValidMobile
+} from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { runVerification } from '$lib/server/verify/engine';
@@ -45,6 +53,69 @@ function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | 
 	}
 	fields.aadhaarNo = aadhaarPlain ?? '';
 	return validateMasterSheet(fields).map((e) => e.message);
+}
+
+// Every candidate-submitted profile field HR can correct after the fact.
+// Deliberately excludes Aadhaar (its own encrypted write-once flow — an admin
+// typo-fix there needs its own reveal-then-edit path, not bundled in here) and
+// email/track (identity keys other records — offer letters, verifications —
+// are already keyed against, so changing them here would silently orphan
+// those instead of updating them).
+const PROFILE_FIELDS = [
+	'fullName', 'dob', 'gender', 'mobile',
+	'fatherName', 'fatherMobile', 'motherName', 'motherMobile', 'motherDob',
+	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
+	'emergencyContactName', 'emergencyContactMobile', 'emergencyContactRelation',
+	'presentAddress', 'presentPin', 'presentHouseNo',
+	'permanentAddress', 'permanentPin', 'permanentHouseNo',
+	'panNo', 'dlNo', 'passportNo', 'linkedinId',
+	'bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'
+] as const;
+
+const PROFILE_TITLE_CASE_FIELDS = new Set([
+	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName',
+	'bankAccountName', 'bankName', 'branch'
+]);
+
+/** Same normalization the candidate-facing form applies (see
+ *  /c/[token]/+page.server.ts formToFields) — an HR-entered correction should
+ *  read the same as a candidate-entered one, not a differently-cased outlier. */
+function profileFormToUpdate(form: FormData): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const f of PROFILE_FIELDS) {
+		let v = String(form.get(f) ?? '').trim();
+		if (PROFILE_TITLE_CASE_FIELDS.has(f) && v) v = titleCase(v);
+		if (f === 'panNo' || f === 'ifsc') v = v.toUpperCase();
+		out[f] = v;
+	}
+	return out;
+}
+
+/** Correcting one field (e.g. just motherDob) must not be blocked by an
+ *  unrelated field the candidate never filled in — so this checks format only
+ *  where a value is present, not the full master-sheet completeness gate
+ *  candidates face at submission. */
+function validateProfileEdit(fields: Record<string, string>): string[] {
+	const errors: string[] = [];
+	if (fields.panNo && !isValidPan(fields.panNo)) errors.push('PAN must match AAAAA9999A');
+	if (fields.ifsc && !isValidIfsc(fields.ifsc)) errors.push('IFSC must match AAAA0XXXXXX');
+	for (const [field, label] of [
+		['presentPin', 'Present PIN'],
+		['permanentPin', 'Permanent PIN']
+	] as const) {
+		if (fields[field] && !isValidPin(fields[field])) errors.push(`${label} must be 6 digits`);
+	}
+	for (const [field, label] of [
+		['mobile', 'Mobile'],
+		['fatherMobile', "Father's mobile"],
+		['motherMobile', "Mother's mobile"],
+		['emergencyContactMobile', 'Emergency contact mobile']
+	] as const) {
+		if (fields[field] && !isValidMobile(fields[field])) errors.push(`${label} must be a 10-digit number starting 6–9`);
+	}
+	if (fields.maritalStatus && !['single', 'married'].includes(fields.maritalStatus))
+		errors.push('Marital status must be single or married');
+	return errors;
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -534,6 +605,32 @@ export const actions: Actions = {
 		});
 
 		return { offerLetterSaved: true };
+	},
+
+	// HR/admin correcting a candidate-submitted profile field after the fact
+	// (e.g. mother's DOB entered wrong) — the candidate themself can only edit
+	// while their status is opened/in_progress/changes_requested, so once
+	// they've submitted (or been approved), this is the only way to fix a typo
+	// without asking them to redo the whole form.
+	editProfile: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+
+		const form = await request.formData();
+		const fields = profileFormToUpdate(form);
+		const errors = validateProfileEdit(fields);
+		if (errors.length) return fail(400, { message: errors.join('; '), profileEditError: true });
+
+		await Candidate.findByIdAndUpdate(params.id, fields);
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'profile_edited_by_admin',
+			ip: getClientAddress()
+		});
+		return { profileSaved: true };
 	},
 
 	setEmployeeId: async ({ params, request, locals, getClientAddress }) => {

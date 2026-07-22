@@ -12,6 +12,10 @@
 	let { data, form } = $props();
 
 	let reuploadFor: string | null = $state(null);
+	let editingProfile = $state(false);
+	$effect(() => {
+		if (form?.profileSaved) editingProfile = false;
+	});
 
 	const c = $derived(data.candidate);
 	const ol = $derived(data.offerLetter);
@@ -136,61 +140,64 @@
 		ocr_crosscheck: 'OCR cross-check'
 	};
 
+	// Third element is the field key editProfile saves under — omitted (undefined)
+	// for the two fields that are never HR-editable here: email is an identity
+	// key other records are keyed against, and marital status is edited via the
+	// select below (its own row) rather than as one of the plain-text inputs.
 	const detailGroups = $derived([
 		{
 			title: 'Personal',
 			rows: [
-				['Full name', c.fullName],
-				['Date of birth', c.dob],
-				['Gender', c.gender],
-				['Email', c.email],
-				['Mobile', c.mobile],
-				["Father's name", c.fatherName],
-				["Father's mobile", c.fatherMobile],
-				["Mother's name", c.motherName],
-				["Mother's mobile", c.motherMobile],
-				["Mother's DOB", c.motherDob],
-				['Marital status', c.maritalStatus],
-				...(c.maritalStatus === 'married'
+				['Full name', c.fullName, 'fullName'],
+				['Date of birth', c.dob, 'dob'],
+				['Gender', c.gender, 'gender'],
+				['Email', c.email, undefined],
+				['Mobile', c.mobile, 'mobile'],
+				["Father's name", c.fatherName, 'fatherName'],
+				["Father's mobile", c.fatherMobile, 'fatherMobile'],
+				["Mother's name", c.motherName, 'motherName'],
+				["Mother's mobile", c.motherMobile, 'motherMobile'],
+				["Mother's DOB", c.motherDob, 'motherDob'],
+				...(c.maritalStatus === 'married' || editingProfile
 					? [
-							['Spouse name', c.spouseName],
-							['Spouse contact', c.spouseContact],
-							['Spouse DOB', c.spouseDob]
+							['Spouse name', c.spouseName, 'spouseName'],
+							['Spouse contact', c.spouseContact, 'spouseContact'],
+							['Spouse DOB', c.spouseDob, 'spouseDob']
 						]
 					: []),
-				['Emergency contact name', c.emergencyContactName],
-				['Emergency contact mobile', c.emergencyContactMobile],
-				['Emergency contact relation', c.emergencyContactRelation]
+				['Emergency contact name', c.emergencyContactName, 'emergencyContactName'],
+				['Emergency contact mobile', c.emergencyContactMobile, 'emergencyContactMobile'],
+				['Emergency contact relation', c.emergencyContactRelation, 'emergencyContactRelation']
 			]
 		},
 		{
 			title: 'Address',
 			rows: [
-				['Present address', c.presentAddress],
-				['Present house no.', c.presentHouseNo],
-				['Present PIN', c.presentPin],
-				['Permanent address', c.permanentAddress],
-				['Permanent house no.', c.permanentHouseNo],
-				['Permanent PIN', c.permanentPin]
+				['Present address', c.presentAddress, 'presentAddress'],
+				['Present house no.', c.presentHouseNo, 'presentHouseNo'],
+				['Present PIN', c.presentPin, 'presentPin'],
+				['Permanent address', c.permanentAddress, 'permanentAddress'],
+				['Permanent house no.', c.permanentHouseNo, 'permanentHouseNo'],
+				['Permanent PIN', c.permanentPin, 'permanentPin']
 			]
 		},
 		{
 			title: 'Identification',
 			rows: [
-				['PAN', c.panNo],
-				['Driving licence', c.dlNo],
-				['Passport', c.passportNo],
-				['LinkedIn', c.linkedinId]
+				['PAN', c.panNo, 'panNo'],
+				['Driving licence', c.dlNo, 'dlNo'],
+				['Passport', c.passportNo, 'passportNo'],
+				['LinkedIn', c.linkedinId, 'linkedinId']
 			]
 		},
 		{
 			title: 'Bank',
 			rows: [
-				['Name as per passbook', c.bankAccountName],
-				['Bank name', c.bankName],
-				['Account number', c.accountNo],
-				['IFSC', c.ifsc],
-				['Branch', c.branch]
+				['Name as per passbook', c.bankAccountName, 'bankAccountName'],
+				['Bank name', c.bankName, 'bankName'],
+				['Account number', c.accountNo, 'accountNo'],
+				['IFSC', c.ifsc, 'ifsc'],
+				['Branch', c.branch, 'branch']
 			]
 		}
 	]);
@@ -585,16 +592,53 @@
 		</section>
 
 		<section class="card">
-			<div class="eyebrow" style="margin-bottom:10px">Extracted details</div>
-			{#each detailGroups as group}
-				<div class="group-title">{group.title}</div>
-				{#each group.rows as [label, value]}
-					<div class="frow">
-						<span class="flabel">{label}</span>
-						<span class="fvalue">{value || '—'}</span>
-					</div>
+			<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+				<div class="eyebrow">Extracted details</div>
+				<div style="flex:1"></div>
+				{#if data.isSuperAdmin}
+					{#if editingProfile}
+						<button type="button" class="btn ghost small" onclick={() => (editingProfile = false)}>Cancel</button>
+						<button type="submit" form="edit-profile-form" class="btn small">Save changes</button>
+					{:else}
+						<button type="button" class="btn ghost small" onclick={() => (editingProfile = true)}>Edit details</button>
+					{/if}
+				{/if}
+			</div>
+			{#if form?.profileEditError}<p class="error">{form.message}</p>{/if}
+			{#if form?.profileSaved}<p class="saved-chip" style="margin-bottom:8px">Saved ✓</p>{/if}
+			<form
+				id="edit-profile-form"
+				method="POST"
+				action="?/editProfile"
+				use:enhance={() => async ({ update }) => update({ reset: false })}
+			>
+				{#each detailGroups as group}
+					<div class="group-title">{group.title}</div>
+					{#each group.rows as [label, value, field]}
+						<div class="frow">
+							<span class="flabel">{label}</span>
+							{#if editingProfile && field}
+								<input class="fedit" name={field} value={value ?? ''} />
+							{:else}
+								<span class="fvalue">{value || '—'}</span>
+							{/if}
+						</div>
+					{/each}
 				{/each}
-			{/each}
+				<div class="group-title">Marital status</div>
+				<div class="frow">
+					<span class="flabel">Marital status</span>
+					{#if editingProfile}
+						<select class="fedit" name="maritalStatus" value={c.maritalStatus ?? ''}>
+							<option value="">—</option>
+							<option value="single">Single</option>
+							<option value="married">Married</option>
+						</select>
+					{:else}
+						<span class="fvalue">{c.maritalStatus || '—'}</span>
+					{/if}
+				</div>
+			</form>
 			<div class="group-title">UAN</div>
 			<div class="frow">
 				<span class="flabel">UAN number</span>
@@ -1199,6 +1243,16 @@
 		font-weight: 600;
 		text-align: right;
 		max-width: 60%;
+	}
+	.fedit {
+		font-size: 13px;
+		padding: 6px 9px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 7px;
+		font-family: inherit;
+		color: var(--ae-text-2);
+		width: 55%;
+		text-align: right;
 	}
 	.mono {
 		font-family: ui-monospace, monospace;
