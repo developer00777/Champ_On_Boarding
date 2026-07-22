@@ -181,13 +181,11 @@ interface Ctx {
 	 *  The intern letter opens this up so its clauses reach the bottom margin
 	 *  the way the signed original's do, instead of stopping ~30% short. */
 	blockGap: number;
-	/** Every "Authorized Signatory" rule drawn so far, with the page and exact
-	 *  coordinates it was drawn at. The uploaded signature image is stamped
-	 *  onto each of these afterwards — capturing the real draw spot instead of
-	 *  guessing from the cursor's position once the whole document is laid out,
-	 *  which broke the moment a page (the annexure) could render after the
-	 *  signature block. */
-	employerSigSpots: Array<{ page: PDFPage; x: number; y: number; width: number }>;
+	/** The uploaded employer signature, pre-embedded (once) and the date it was
+	 *  generated — passed to every "Employer Representative Signature" column
+	 *  so it can stamp the image instead of a blank rule. Null when HR hasn't
+	 *  uploaded one, so those columns fall back to a blank line as before. */
+	employerSignature: { image: PDFImage; date: string } | null;
 }
 
 const BLACK = rgb(0.13, 0.13, 0.13);
@@ -456,20 +454,16 @@ function subHeading(ctx: Ctx, text: string, opts: { size?: number; gapAfter?: nu
 	ctx.y -= size + (opts.gapAfter ?? 6) * ctx.blockGap;
 }
 
-/** A signature line + caption. Returns after advancing the cursor. */
+/** A signature line + caption. Returns after advancing the cursor. Always a
+ *  blank rule — page 2's "Authorized Signatory" line is for a physical
+ *  wet-ink signature; the uploaded signature image is stamped only onto the
+ *  later "Employer Representative Signature" column (see signatureColumns). */
 function signatureLine(ctx: Ctx, caption: string, opts: { width?: number; bold?: boolean } = {}) {
 	const width = opts.width ?? 200;
 	const above = 14 * ctx.blockGap; // room to actually sign
 	ensure(ctx, above + 18);
 	ctx.y -= above;
 	ctx.page.drawRectangle({ x: ctx.M, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
-	// The employer's uploaded signature image belongs on this exact rule, on
-	// whichever page it lands — capture it here rather than inferring it from
-	// the cursor once the whole document (including any pages rendered after
-	// this one, e.g. the annexure) has finished laying out.
-	if (caption === 'Authorized Signatory') {
-		ctx.employerSigSpots.push({ page: ctx.page, x: ctx.M, y: ctx.y, width });
-	}
 	ctx.y -= 12;
 	ctx.page.drawText(sanitize(caption), {
 		x: ctx.M, y: ctx.y, font: opts.bold ? ctx.fontB : ctx.fontR, size: ctx.bodySize, color: BLACK
@@ -503,24 +497,32 @@ function signatureLineRight(ctx: Ctx, caption: string, opts: { width?: number } 
 	ctx.y -= 16;
 }
 
-/** Two side-by-side signature columns (Intern | Mentor) with an optional
- *  "Date: ____" row beneath, mirroring the internship acceptance block. */
+/** Two side-by-side signature columns (Intern | Mentor, or Employee | Employer)
+ *  with an optional "Date: ____" row beneath, mirroring the internship
+ *  acceptance block. When `employerSignature` is supplied, the right (employer)
+ *  column gets the uploaded image instead of a blank rule to sign on, and its
+ *  date is auto-filled rather than left blank — that column represents HR's
+ *  own signature, already captured, not a wet-ink line for someone else to
+ *  fill in later. The left column is untouched either way. */
 function signatureColumns(
 	ctx: Ctx,
 	left: string,
 	right: string,
-	opts: { dateRow?: boolean } = {}
+	opts: { dateRow?: boolean; employerSignature?: { image: PDFImage; date: string } } = {}
 ) {
 	const colW = 170;
 	const leftX = ctx.M;
 	const rightX = ctx.M + ctx.CW - colW;
+	const sig = opts.employerSignature;
 	// Room to actually sign above each rule, scaled per track. The rule→caption
 	// distance stays fixed so the caption never drifts off its own line.
 	const above = 14 * ctx.blockGap;
 	ensure(ctx, above + (opts.dateRow ? 46 : 20));
 	ctx.y -= above;
-	for (const x of [leftX, rightX]) {
-		ctx.page.drawRectangle({ x, y: ctx.y, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	const ruleY = ctx.y;
+	ctx.page.drawRectangle({ x: leftX, y: ruleY, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	if (!sig) {
+		ctx.page.drawRectangle({ x: rightX, y: ruleY, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
 	}
 	ctx.y -= 12;
 	for (const [x, label] of [[leftX, left], [rightX, right]] as const) {
@@ -528,13 +530,24 @@ function signatureColumns(
 		const tw = ctx.fontB.widthOfTextAtSize(t, ctx.bodySize);
 		ctx.page.drawText(t, { x: x + (colW - tw) / 2, y: ctx.y, font: ctx.fontB, size: ctx.bodySize, color: BLACK });
 	}
+	if (sig) {
+		const dims = sig.image.scaleToFit(colW - 10, 38);
+		ctx.page.drawImage(sig.image, {
+			x: rightX + (colW - dims.width) / 2,
+			y: ruleY + 4,
+			width: dims.width,
+			height: dims.height
+		});
+	}
 	ctx.y -= 18 * ctx.blockGap;
 	if (opts.dateRow) {
-		for (const x of [leftX, rightX]) {
-			ctx.page.drawText(sanitize('Date: _____________________'), {
-				x, y: ctx.y, font: ctx.fontR, size: ctx.bodySize, color: BLACK
-			});
-		}
+		ctx.page.drawText(sanitize('Date: _____________________'), {
+			x: leftX, y: ctx.y, font: ctx.fontR, size: ctx.bodySize, color: BLACK
+		});
+		ctx.page.drawText(
+			sanitize(sig ? `Date: ${sig.date}` : 'Date: _____________________'),
+			{ x: rightX, y: ctx.y, font: ctx.fontR, size: ctx.bodySize, color: BLACK }
+		);
 		ctx.y -= 18 * ctx.blockGap;
 	}
 }
@@ -771,7 +784,8 @@ function renderOfferOfAppointment(
 
 	// Both parties counter-sign this page in the reference.
 	signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
-		dateRow: true
+		dateRow: true,
+		employerSignature: ctx.employerSignature ?? undefined
 	});
 }
 
@@ -835,7 +849,8 @@ function renderCompensationAnnexure(
 
 	keepTogether(ctx, 90, () => {
 		signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
-			dateRow: true
+			dateRow: true,
+			employerSignature: ctx.employerSignature ?? undefined
 		});
 	});
 }
@@ -1126,6 +1141,19 @@ export async function generateOfferLetterPdf(
 		} catch { logo = null; }
 	}
 
+	// Employer signature (best-effort) — embedded once up front so every
+	// "Employer Representative Signature" column can stamp the same image.
+	let employerSignature: { image: PDFImage; date: string } | null = null;
+	if (offer.signatoryImageBase64) {
+		const sigBytes = dataUriToBytes(offer.signatoryImageBase64);
+		if (sigBytes) {
+			try {
+				const sigImg = await doc.embedPng(sigBytes).catch(() => doc.embedJpg(sigBytes));
+				employerSignature = { image: sigImg, date: today() };
+			} catch { /* ignore bad signature image */ }
+		}
+	}
+
 	const [W, H] = PageSizes.A4;
 	const M = 56;
 	const [pr, pg, pb] = hexToRgb(brand.colors.primary);
@@ -1162,7 +1190,7 @@ export async function generateOfferLetterPdf(
 				: APPOINTMENT_PINNED_TRACKS.has(track)
 					? APPOINTMENT_BLOCK_GAP
 					: 1,
-		employerSigSpots: []
+		employerSignature
 	};
 
 	// First page
@@ -1192,28 +1220,6 @@ export async function generateOfferLetterPdf(
 		// flat fee via clause 5, not a Basic/HRA/PF breakdown.
 		if (pinned && offer.compensationAnnexure.enabled) {
 			renderCompensationAnnexure(ctx, c, offer, ctx.companyName);
-		}
-	}
-
-	// Stamp the uploaded signature image onto every "Authorized Signatory" rule
-	// captured while rendering (renderOfferOfAppointment's employer block,
-	// renderConsultant's) — each on its own page, sitting just above its own
-	// rule, however many pages the letter ends up with.
-	if (offer.signatoryImageBase64 && ctx.employerSigSpots.length) {
-		const sigBytes = dataUriToBytes(offer.signatoryImageBase64);
-		if (sigBytes) {
-			try {
-				const sigImg = await doc.embedPng(sigBytes).catch(() => doc.embedJpg(sigBytes));
-				const dims = sigImg.scaleToFit(140, 40);
-				for (const spot of ctx.employerSigSpots) {
-					spot.page.drawImage(sigImg, {
-						x: spot.x + (spot.width - dims.width) / 2,
-						y: spot.y + 4,
-						width: dims.width,
-						height: dims.height
-					});
-				}
-			} catch { /* ignore bad signature image */ }
 		}
 	}
 
