@@ -29,6 +29,14 @@ async function getCandidate(id: string) {
 	return { candidate, company };
 }
 
+/** Every mutation on a candidate record — including after HR has already
+ *  approved it — is super_admin-only. hr_admin keeps full read access to this
+ *  page but cannot change anything here, regardless of the candidate's status. */
+function requireSuperAdmin(locals: App.Locals) {
+	if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Only a super admin can edit candidate records.' });
+	return null;
+}
+
 function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | null) {
 	const fields: Record<string, string> = {};
 	for (const [k, v] of Object.entries(candidate)) {
@@ -147,6 +155,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 export const actions: Actions = {
 	approve: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const { candidate } = row;
@@ -218,6 +228,8 @@ export const actions: Actions = {
 	},
 
 	requestReupload: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const form = await request.formData();
@@ -253,6 +265,8 @@ export const actions: Actions = {
 	},
 
 	physical: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const form = await request.formData();
@@ -300,6 +314,8 @@ export const actions: Actions = {
 	},
 
 	revoke: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		await LinkToken.updateMany({ candidateId: params.id }, { revoked: true });
@@ -348,6 +364,8 @@ export const actions: Actions = {
 	},
 
 	setUan: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		if (['intern', 'fresher'].includes(row.candidate.track) === false)
@@ -366,6 +384,8 @@ export const actions: Actions = {
 	},
 
 	crosscheck: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const { candidate } = row;
@@ -405,6 +425,8 @@ export const actions: Actions = {
 	},
 
 	saveOfferLetter: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const form = await request.formData();
@@ -441,7 +463,22 @@ export const actions: Actions = {
 			weeklyExpectation: String(form.get('weeklyExpectation') ?? '').trim(),
 			keyResponsibilities: String(form.get('keyResponsibilities') ?? '').trim(),
 			internCriteria: String(form.get('internCriteria') ?? '').trim(),
-			paymentClause: String(form.get('paymentClause') ?? '').trim()
+			paymentClause: String(form.get('paymentClause') ?? '').trim(),
+			compensationAnnexure: {
+				enabled: form.get('annexureEnabled') === 'on',
+				basicPm: String(form.get('annexureBasicPm') ?? '').trim(),
+				hraPm: String(form.get('annexureHraPm') ?? '').trim(),
+				bonusLabel: String(form.get('annexureBonusLabel') ?? '').trim(),
+				bonusPm: String(form.get('annexureBonusPm') ?? '').trim(),
+				ltaPm: String(form.get('annexureLtaPm') ?? '').trim(),
+				shiftLabel: String(form.get('annexureShiftLabel') ?? '').trim(),
+				shiftPm: String(form.get('annexureShiftPm') ?? '').trim(),
+				specialPm: String(form.get('annexureSpecialPm') ?? '').trim(),
+				pfPm: String(form.get('annexurePfPm') ?? '').trim(),
+				gratuityPm: String(form.get('annexureGratuityPm') ?? '').trim(),
+				insurancePm: String(form.get('annexureInsurancePm') ?? '').trim(),
+				foodPm: String(form.get('annexureFoodPm') ?? '').trim()
+			}
 		};
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });
@@ -456,6 +493,8 @@ export const actions: Actions = {
 	},
 
 	setEmployeeId: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const form = await request.formData();
@@ -472,6 +511,8 @@ export const actions: Actions = {
 	},
 
 	sendOfferLetterEmail: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const { candidate, company } = row;

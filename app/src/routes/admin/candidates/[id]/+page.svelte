@@ -25,6 +25,50 @@
 	 *  monthly fee) — drives the label, placeholder and hint. */
 	const compField = $derived(COMPENSATION_FIELD_BY_TRACK[c.track as Track]);
 
+	/** Only the Offer of Appointment (fresher/experienced) carries a page-4
+	 *  compensation annexure — consultants/contract are paid a flat fee via
+	 *  clause 5, interns a flat stipend via clause 1. Matches
+	 *  APPOINTMENT_PINNED_TRACKS in pdf.ts. */
+	const showAnnexure = $derived(c.track === 'fresher' || c.track === 'experienced');
+
+	// The annexure's PM inputs are bound to local state (not just `value=`) so the
+	// P.A./total columns can recompute live as HR types, mirroring exactly what
+	// computeAnnexureTotals() will derive server-side at PDF-render time.
+	let annexure = $state({
+		enabled: false,
+		basicPm: '',
+		hraPm: '',
+		bonusLabel: 'Performance Bonus in Advance',
+		bonusPm: '',
+		ltaPm: '',
+		shiftLabel: 'Shift Allowances',
+		shiftPm: '',
+		specialPm: '',
+		pfPm: '',
+		gratuityPm: '',
+		insurancePm: '',
+		foodPm: ''
+	});
+	$effect(() => {
+		annexure = { ...ol.compensationAnnexure };
+	});
+
+	function n(raw: string): number {
+		const v = parseFloat((raw ?? '').replace(/[^0-9.]/g, ''));
+		return isNaN(v) ? 0 : v;
+	}
+	function money(v: number): string {
+		return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	}
+	const annexureCashPm = $derived(
+		n(annexure.basicPm) + n(annexure.hraPm) + n(annexure.bonusPm) + n(annexure.ltaPm) + n(annexure.shiftPm) + n(annexure.specialPm)
+	);
+	const annexureNonCashPm = $derived(
+		n(annexure.pfPm) + n(annexure.gratuityPm) + n(annexure.insurancePm) + n(annexure.foodPm)
+	);
+	const annexureTotalPm = $derived(annexureCashPm + annexureNonCashPm);
+	const annexureTotalPa = $derived(annexureTotalPm * 12);
+
 	const employmentTypeOptions = [
 		{ value: '', label: 'Select…' },
 		{ value: 'full_time', label: 'Full-time' },
@@ -181,6 +225,13 @@
 	All candidates
 </a>
 
+{#if !data.isSuperAdmin}
+	<div class="readonly-banner">
+		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+		View-only — editing candidate records requires a super admin login.
+	</div>
+{/if}
+
 <div class="head">
 	<div class="avatar">{initial}</div>
 	<div style="flex:1 1 320px;min-width:260px">
@@ -210,10 +261,12 @@
 	<div style="display:flex;gap:10px;flex-wrap:wrap">
 		{#if c.status === 'submitted'}
 			<form method="POST" action="?/approve" use:enhance>
-				<button class="btn teal">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
-					Approve candidate
-				</button>
+				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<button class="btn teal">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
+						Approve candidate
+					</button>
+				</fieldset>
 			</form>
 		{/if}
 		{#if docCount > 0}
@@ -230,7 +283,9 @@
 			<form method="POST" action="?/revoke" use:enhance onsubmit={(e) => {
 				if (!confirm('Revoke this onboarding link?')) e.preventDefault();
 			}}>
-				<button class="btn ghost danger-hover">Revoke link</button>
+				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<button class="btn ghost danger-hover">Revoke link</button>
+				</fieldset>
 			</form>
 		{/if}
 		{#if data.isSuperAdmin}
@@ -257,10 +312,12 @@
 			</div>
 		</div>
 		<form method="POST" action="?/approve" use:enhance>
-			<button class="btn teal" style="font-size:14px;padding:11px 22px">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-				Approve &amp; notify
-			</button>
+			<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<button class="btn teal" style="font-size:14px;padding:11px 22px">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+					Approve &amp; notify
+				</button>
+			</fieldset>
 		</form>
 	</div>
 {/if}
@@ -333,19 +390,21 @@
 				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available after approval.</p>
 			{/if}
 			<form method="POST" action="?/setEmployeeId" use:enhance class="emp-form">
-				<input
-					name="employeeId"
-					value={empId}
-					placeholder={['approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
-					class="emp-input"
-					disabled={!['approved','complete'].includes(c.status) && !empId}
-				/>
-				<button
-					class="btn small teal"
-					disabled={!['approved','complete'].includes(c.status) && !empId}
-				>
-					{empId ? 'Update' : 'Assign'}
-				</button>
+				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<input
+						name="employeeId"
+						value={empId}
+						placeholder={['approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
+						class="emp-input"
+						disabled={!['approved','complete'].includes(c.status) && !empId}
+					/>
+					<button
+						class="btn small teal"
+						disabled={!['approved','complete'].includes(c.status) && !empId}
+					>
+						{empId ? 'Update' : 'Assign'}
+					</button>
+				</fieldset>
 			</form>
 			{#if form?.employeeIdSaved}
 				<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
@@ -408,13 +467,13 @@
 								<span class="pill {docPill[doc.ocrStatus]?.cls}">{docPill[doc.ocrStatus]?.label ?? doc.ocrStatus}</span>
 							{/if}
 							<a class="btn ghost small" href="/admin/candidates/{c.id}/doc/{doc.id}" target="_blank" rel="noopener">View</a>
-							{#if c.status === 'submitted' && doc.reviewStatus !== 'reupload_requested'}
+							{#if data.isSuperAdmin && c.status === 'submitted' && doc.reviewStatus !== 'reupload_requested'}
 								<button type="button" class="btn ghost small" onclick={() => (reuploadFor = reuploadFor === doc.id ? null : doc.id)}>
 									Re-upload
 								</button>
 							{/if}
 						</div>
-						{#if reuploadFor === doc.id}
+						{#if data.isSuperAdmin && reuploadFor === doc.id}
 							<form method="POST" action="?/requestReupload" use:enhance class="reupload">
 								<input type="hidden" name="docId" value={doc.id} />
 								<input name="note" placeholder="Reason shown to the candidate (e.g. glare on the number)" />
@@ -435,7 +494,9 @@
 				<div class="eyebrow">Document verification</div>
 				<div style="flex:1"></div>
 				<form method="POST" action="?/crosscheck" use:enhance>
-					<button class="btn ghost small">Run OCR cross-check</button>
+					<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+						<button class="btn ghost small">Run OCR cross-check</button>
+					</fieldset>
 				</form>
 			</div>
 			<p class="muted" style="font-size:11.5px;margin:0 0 12px">
@@ -496,8 +557,10 @@
 					<span class="fvalue">{c.uanNo || '—'}</span>
 				{:else}
 					<form method="POST" action="?/setUan" use:enhance class="uan-form">
-						<input name="uanNo" value={form?.uanSaved ? form.uanNo : (c.uanNo ?? '')} placeholder="12 digits" class="uan-input" />
-						<button class="btn ghost small">Save</button>
+						<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+							<input name="uanNo" value={form?.uanSaved ? form.uanNo : (c.uanNo ?? '')} placeholder="12 digits" class="uan-input" />
+							<button class="btn ghost small">Save</button>
+						</fieldset>
 					</form>
 					{#if form?.uanSaved}<span class="saved-chip">Saved ✓</span>{/if}
 				{/if}
@@ -536,6 +599,7 @@
 				<p class="error">{form.message}</p>
 			{/if}
 			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form" enctype="multipart/form-data">
+				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
 				<label class="offer-field">
 					<span>Job title</span>
 					<input name="jobTitle" value={ol.jobTitle} />
@@ -683,10 +747,105 @@
 					{/if}
 				</div>
 
+					{#if showAnnexure}
+						<div class="offer-field sig-field annexure-block">
+							<label class="annexure-toggle">
+								<input type="checkbox" name="annexureEnabled" bind:checked={annexure.enabled} />
+								<span>Include compensation annexure (page 4)</span>
+							</label>
+							<small>
+								P.A. columns and every total below are calculated automatically as P.M. x 12 —
+								only enter the monthly (P.M.) figures.
+							</small>
+
+							{#if annexure.enabled}
+								<div class="annexure-table">
+									<div class="annexure-row annexure-head">
+										<span>Component</span>
+										<span>P.M.</span>
+										<span>P.A. (auto)</span>
+									</div>
+
+									<div class="annexure-row">
+										<span>Basic Salary</span>
+										<input name="annexureBasicPm" type="text" inputmode="decimal" bind:value={annexure.basicPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.basicPm) * 12)}</span>
+									</div>
+									<div class="annexure-row">
+										<span>House Rent Allowance</span>
+										<input name="annexureHraPm" type="text" inputmode="decimal" bind:value={annexure.hraPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.hraPm) * 12)}</span>
+									</div>
+									<div class="annexure-row annexure-editable-label">
+										<input name="annexureBonusLabel" type="text" bind:value={annexure.bonusLabel} placeholder="Performance Bonus in Advance" />
+										<input name="annexureBonusPm" type="text" inputmode="decimal" bind:value={annexure.bonusPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.bonusPm) * 12)}</span>
+									</div>
+									<div class="annexure-row">
+										<span>LTA</span>
+										<input name="annexureLtaPm" type="text" inputmode="decimal" bind:value={annexure.ltaPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.ltaPm) * 12)}</span>
+									</div>
+									<div class="annexure-row annexure-editable-label">
+										<input name="annexureShiftLabel" type="text" bind:value={annexure.shiftLabel} placeholder="Shift Allowances" />
+										<input name="annexureShiftPm" type="text" inputmode="decimal" bind:value={annexure.shiftPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.shiftPm) * 12)}</span>
+									</div>
+									<div class="annexure-row">
+										<span>Special Allowances</span>
+										<input name="annexureSpecialPm" type="text" inputmode="decimal" bind:value={annexure.specialPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.specialPm) * 12)}</span>
+									</div>
+									<div class="annexure-row annexure-subtotal">
+										<span>Total Cash Compensation (Before PF)</span>
+										<span class="annexure-pa">{money(annexureCashPm)}</span>
+										<span class="annexure-pa">{money(annexureCashPm * 12)}</span>
+									</div>
+
+									<div class="annexure-row annexure-section">
+										<span>Other Non-Cash Components</span><span></span><span></span>
+									</div>
+									<div class="annexure-row">
+										<span>PF - Employer Contribution</span>
+										<input name="annexurePfPm" type="text" inputmode="decimal" bind:value={annexure.pfPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.pfPm) * 12)}</span>
+									</div>
+									<div class="annexure-row">
+										<span>Gratuity</span>
+										<input name="annexureGratuityPm" type="text" inputmode="decimal" bind:value={annexure.gratuityPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.gratuityPm) * 12)}</span>
+									</div>
+									<div class="annexure-row">
+										<span>Insurance</span>
+										<input name="annexureInsurancePm" type="text" inputmode="decimal" bind:value={annexure.insurancePm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.insurancePm) * 12)}</span>
+									</div>
+									<div class="annexure-row">
+										<span>Food, Recreation & 100X longevity</span>
+										<input name="annexureFoodPm" type="text" inputmode="decimal" bind:value={annexure.foodPm} placeholder="0.00" />
+										<span class="annexure-pa">{money(n(annexure.foodPm) * 12)}</span>
+									</div>
+									<div class="annexure-row annexure-subtotal">
+										<span>Total Non-Cash Components</span>
+										<span class="annexure-pa">{money(annexureNonCashPm)}</span>
+										<span class="annexure-pa">{money(annexureNonCashPm * 12)}</span>
+									</div>
+									<div class="annexure-row annexure-total">
+										<span>Total Yearly Cost to Company</span>
+										<span class="annexure-pa">{money(annexureTotalPm)}</span>
+										<span class="annexure-pa">{money(annexureTotalPa)}</span>
+									</div>
+								</div>
+								<small>CTC: {(annexureTotalPa / 100000).toFixed(2)} Lakhs+</small>
+							{/if}
+						</div>
+					{/if}
+
 				<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
 					<button class="btn small">Save</button>
 					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download PDF</a>
 				</div>
+				</fieldset>
 			</form>
 			{#if form?.offerLetterSaved}
 				<p class="saved-chip" style="margin-top:8px">Saved ✓</p>
@@ -700,7 +859,9 @@
 					if (!confirm(`Send the offer letter to ${c.email}?`)) e.preventDefault();
 				}}
 			>
-				<button class="btn teal">Send offer letter</button>
+				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<button class="btn teal">Send offer letter</button>
+				</fieldset>
 			</form>
 			{#if form?.offerLetterSent}
 				<p class="saved-chip" style="margin-top:8px">Offer letter sent ✓</p>
@@ -711,19 +872,21 @@
 			<div class="eyebrow red-eyebrow" style="margin-bottom:14px">Physical items · joining day</div>
 			{#each data.physical as item}
 				<form method="POST" action="?/physical" use:enhance class="physrow">
-					<input type="hidden" name="itemId" value={item.id} />
-					<input type="hidden" name="received" value={item.received ? 'false' : 'true'} />
-					<button class="phys-check" class:on={item.received} aria-label="Toggle received">
-						{#if item.received}
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5" /></svg>
-						{/if}
-					</button>
-					<span style="flex:1;font-size:13.5px;font-weight:600;color:var(--ae-text-2)">{item.label}</span>
-					<span class="phys-status" class:got={item.received}>
-						{item.received
-							? `Received${item.receivedAt ? ' · ' + new Date(item.receivedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}`
-							: 'Pending'}
-					</span>
+					<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+						<input type="hidden" name="itemId" value={item.id} />
+						<input type="hidden" name="received" value={item.received ? 'false' : 'true'} />
+						<button class="phys-check" class:on={item.received} aria-label="Toggle received">
+							{#if item.received}
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5" /></svg>
+							{/if}
+						</button>
+						<span style="flex:1;font-size:13.5px;font-weight:600;color:var(--ae-text-2)">{item.label}</span>
+						<span class="phys-status" class:got={item.received}>
+							{item.received
+								? `Received${item.receivedAt ? ' · ' + new Date(item.receivedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}`
+								: 'Pending'}
+						</span>
+					</fieldset>
 				</form>
 			{/each}
 			<p class="muted" style="font-size:11.5px;margin:10px 0 0">
@@ -734,6 +897,29 @@
 </div>
 
 <style>
+	/* Reset so a disabling <fieldset> (hr_admin read-only gate) doesn't add its
+	   own border/padding/display around the form controls it wraps. */
+	fieldset.rbac {
+		all: unset;
+		display: contents;
+	}
+	fieldset.rbac:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+	.readonly-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ae-muted);
+		background: var(--ae-surface-2, rgba(127, 127, 127, 0.08));
+		border: 1px solid var(--ae-line-soft, rgba(127, 127, 127, 0.2));
+		border-radius: 10px;
+		padding: 9px 14px;
+		margin-bottom: 16px;
+	}
 	.backlink {
 		display: inline-flex;
 		align-items: center;
@@ -1082,6 +1268,86 @@
 		.offer-form {
 			grid-template-columns: 1fr;
 		}
+	}
+	.annexure-block {
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 10px;
+		padding: 12px 14px;
+		background: var(--ae-sub-bg);
+	}
+	.annexure-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12.5px;
+		font-weight: 700;
+		color: var(--ae-text-2);
+		cursor: pointer;
+	}
+	.annexure-toggle input {
+		width: 15px;
+		height: 15px;
+	}
+	.annexure-table {
+		display: flex;
+		flex-direction: column;
+		margin-top: 10px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 8px;
+		overflow: hidden;
+	}
+	.annexure-row {
+		display: grid;
+		grid-template-columns: 1fr 110px 110px;
+		gap: 8px;
+		align-items: center;
+		padding: 5px 10px;
+		border-bottom: 1px solid var(--ae-line-soft);
+		font-size: 12px;
+		color: var(--ae-text-2);
+	}
+	.annexure-row:last-child {
+		border-bottom: none;
+	}
+	.annexure-row input {
+		font-size: 12px;
+		padding: 5px 7px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 6px;
+		font-family: inherit;
+		color: var(--ae-text-2);
+		width: 100%;
+		box-sizing: border-box;
+		text-align: right;
+	}
+	.annexure-editable-label input:first-child {
+		text-align: left;
+	}
+	.annexure-pa {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+	.annexure-head {
+		font-weight: 700;
+		background: rgba(255, 255, 255, 0.04);
+		text-transform: uppercase;
+		font-size: 10.5px;
+		letter-spacing: 0.03em;
+	}
+	.annexure-head span:not(:first-child) {
+		text-align: right;
+	}
+	.annexure-section {
+		font-weight: 700;
+		background: rgba(255, 255, 255, 0.03);
+	}
+	.annexure-subtotal {
+		font-weight: 700;
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.annexure-total {
+		font-weight: 800;
+		background: rgba(255, 125, 85, 0.1);
 	}
 	.uan-form {
 		display: flex;

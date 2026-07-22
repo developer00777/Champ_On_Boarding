@@ -216,6 +216,26 @@ const offerLetterSchema = new Schema(
 		// Consultant/contract tracks: the clause-5 payment sentence. `{amount}` is
 		// substituted with ctcAmount. Null falls back to the standard wording.
 		paymentClause: { type: String, default: null },
+		// Offer-of-appointment tracks only: the page-4 salary breakdown (Basic/HRA/
+		// PF/Gratuity/etc.), entered as monthly (P.M.) figures — annual (P.A.) and
+		// the totals are always derived as P.M. x 12, never stored, so they cannot
+		// drift from the figures HR actually typed in. `enabled` lets HR omit the
+		// page entirely for a candidate rather than send one full of zeros.
+		compensationAnnexure: {
+			enabled: { type: Boolean, default: false },
+			basicPm: { type: String, default: null },
+			hraPm: { type: String, default: null },
+			bonusLabel: { type: String, default: null },
+			bonusPm: { type: String, default: null },
+			ltaPm: { type: String, default: null },
+			shiftLabel: { type: String, default: null },
+			shiftPm: { type: String, default: null },
+			specialPm: { type: String, default: null },
+			pfPm: { type: String, default: null },
+			gratuityPm: { type: String, default: null },
+			insurancePm: { type: String, default: null },
+			foodPm: { type: String, default: null }
+		},
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }

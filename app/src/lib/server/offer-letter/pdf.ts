@@ -20,7 +20,8 @@ import type { OfferLetterInput } from './fields';
 import {
 	EMPLOYMENT_TYPE_LABELS,
 	DEFAULT_INTERN_CRITERIA,
-	DEFAULT_CONSULTANT_PAYMENT_CLAUSE
+	DEFAULT_CONSULTANT_PAYMENT_CLAUSE,
+	computeAnnexureTotals
 } from './fields';
 import type { CandidateDoc } from '$lib/server/db/schema';
 import { CONSULTANT_LETTER_TRACKS, type Track } from '$lib/shared/matrix';
@@ -104,6 +105,18 @@ function formatMoney(raw: string): string {
 function formatPlainAmount(raw: string): string {
 	const num = parseInt(raw.replace(/[^0-9.]/g, ''), 10);
 	return isNaN(num) ? raw : num.toLocaleString('en-IN');
+}
+
+/** Table-cell money format matching the signed annexure — "31,000.00", no
+ *  currency prefix (the table header already establishes it's a salary grid). */
+function formatTableAmount(n: number): string {
+	return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** "1,040,880" → "10.41 Lakhs", matching the annexure's "CTC: 37.54+ Lakhs"
+ *  footer line. */
+function formatLakhs(n: number): string {
+	return (n / 100000).toFixed(2) + ' Lakhs';
 }
 
 const ONES = [
@@ -520,6 +533,100 @@ function keepTogether(ctx: Ctx, need: number, block: () => void) {
 	block();
 }
 
+// ── table primitive (compensation annexure grid) ─────────────────────────────
+
+interface TableCol {
+	/** Fraction of the table width (must sum to 1 across a row's columns). */
+	width: number;
+	align?: 'left' | 'right' | 'center';
+}
+
+interface TableRowOpts {
+	bold?: boolean;
+	shade?: boolean;
+	/** Draw a rule under this row (every row gets one by default; set false to
+	 *  merge visually with the row beneath, e.g. a shaded subtotal followed
+	 *  immediately by its section header). */
+	rule?: boolean;
+}
+
+/** Fixed-column bordered table used for the compensation annexure. Handles
+ *  page-break mid-table by redrawing outer borders per page — the annexure is
+ *  short enough in practice that this never triggers, but a recruiter with an
+ *  unusually long custom label list should not get a corrupted table. */
+function table(ctx: Ctx, cols: TableCol[], rowH: number) {
+	const x0 = ctx.M;
+	const tw = ctx.CW;
+	const colX: number[] = [];
+	let acc = 0;
+	for (const c of cols) {
+		colX.push(x0 + acc * tw);
+		acc += c.width;
+	}
+	colX.push(x0 + tw);
+
+	function row(cells: string[], opts: TableRowOpts = {}) {
+		ensure(ctx, rowH);
+		const y0 = ctx.y;
+		if (opts.shade) {
+			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: rowH, color: rgb(0.88, 0.88, 0.88) });
+		}
+		const font = opts.bold ? ctx.fontB : ctx.fontR;
+		const size = ctx.bodySize;
+		const textY = y0 - rowH / 2 - size * 0.32;
+		cells.forEach((raw, i) => {
+			const text = sanitize(raw);
+			const w = font.widthOfTextAtSize(text, size);
+			const colW = colX[i + 1] - colX[i];
+			const pad = 6;
+			let tx = colX[i] + pad;
+			const align = cols[i].align ?? 'left';
+			if (align === 'right') tx = colX[i + 1] - pad - w;
+			else if (align === 'center') tx = colX[i] + (colW - w) / 2;
+			ctx.page.drawText(text, { x: tx, y: textY, font, size, color: BLACK });
+		});
+		// vertical borders
+		for (const x of colX) {
+			ctx.page.drawRectangle({ x, y: y0 - rowH, width: 0.6, height: rowH, color: rgb(0.55, 0.55, 0.55) });
+		}
+		if (opts.rule !== false) {
+			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: 0.6, color: rgb(0.55, 0.55, 0.55) });
+		}
+		ctx.y -= rowH;
+	}
+
+	/** Full-width row spanning every column (section labels like "Other
+	 *  Non-Cash Components:"). */
+	function spanRow(text: string, opts: TableRowOpts = {}) {
+		ensure(ctx, rowH);
+		const y0 = ctx.y;
+		if (opts.shade) {
+			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: rowH, color: rgb(0.88, 0.88, 0.88) });
+		}
+		const font = opts.bold ? ctx.fontB : ctx.fontR;
+		const size = ctx.bodySize;
+		ctx.page.drawText(sanitize(text), {
+			x: x0 + 6,
+			y: y0 - rowH / 2 - size * 0.32,
+			font,
+			size,
+			color: BLACK
+		});
+		ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: 0.6, height: rowH, color: rgb(0.55, 0.55, 0.55) });
+		ctx.page.drawRectangle({ x: x0 + tw, y: y0 - rowH, width: 0.6, height: rowH, color: rgb(0.55, 0.55, 0.55) });
+		if (opts.rule !== false) {
+			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: 0.6, color: rgb(0.55, 0.55, 0.55) });
+		}
+		ctx.y -= rowH;
+	}
+
+	function topRule() {
+		ctx.page.drawRectangle({ x: x0, y: ctx.y, width: tw, height: 0.6, color: rgb(0.55, 0.55, 0.55) });
+	}
+
+	return { row, spanRow, topRule };
+}
+
 // ── header block (Name / Contact / Email + Place / Date) ─────────────────────
 
 function drawApplicantHeader(
@@ -651,6 +758,71 @@ function renderOfferOfAppointment(
 	// Both parties counter-sign this page in the reference.
 	signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
 		dateRow: true
+	});
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PAGE 4 — COMPENSATION ANNEXURE  (fresher / experienced, when HR fills it in)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Reproduces the reference annexure's look (Employee/Effective Date/Designation
+// header block, Components | P.M. | P.A. grid, shaded subtotal + total rows,
+// CTC-in-Lakhs footer, dual signature block) but every P.M. figure is HR-
+// editable and every P.A./total is derived, never re-typed — see
+// computeAnnexureTotals in fields.ts.
+function renderCompensationAnnexure(
+	ctx: Ctx,
+	c: { name: string },
+	o: OfferLetterInput,
+	company: string
+) {
+	pageBreak(ctx);
+
+	const totals = computeAnnexureTotals(o.compensationAnnexure);
+	const rowH = 15.5;
+	const cols: TableCol[] = [
+		{ width: 0.5, align: 'left' },
+		{ width: 0.25, align: 'right' },
+		{ width: 0.25, align: 'right' }
+	];
+	const t = table(ctx, cols, rowH);
+
+	// Header block: Employee Name / Effective Date / Designation Offered — three
+	// full-width rows above the Components|P.M.|P.A. grid, as in the reference.
+	t.spanRow(`Employee Name :   ${c.name}`, { bold: true });
+	t.spanRow(`Effective Date :   ${o.joiningDate || today()}`, { bold: true });
+	t.spanRow(`Designation Offered :   ${o.jobTitle || '____________'}`, { bold: true });
+
+	t.row(['Components', 'P.M.', 'P.A.'], { bold: true, shade: true });
+
+	for (const line of totals.cash) {
+		t.row([line.label, formatTableAmount(line.pm), formatTableAmount(line.pa)]);
+	}
+	t.row(
+		['Total Cash Compensation (Before PF).', formatTableAmount(totals.cashTotalPm), formatTableAmount(totals.cashTotalPa)],
+		{ bold: true, shade: true }
+	);
+
+	t.spanRow('Other Non-Cash Components:', { bold: true });
+	for (const line of totals.nonCash) {
+		t.row([line.label, formatTableAmount(line.pm), formatTableAmount(line.pa)]);
+	}
+	t.row(
+		['Total Non-Cash Components', formatTableAmount(totals.nonCashTotalPm), formatTableAmount(totals.nonCashTotalPa)],
+		{ bold: true, shade: true }
+	);
+	t.row(
+		['Total Yearly Cost to Company', formatTableAmount(totals.grandTotalPm), formatTableAmount(totals.grandTotalPa)],
+		{ bold: true, shade: true }
+	);
+	t.spanRow(`  CTC: ${formatLakhs(totals.grandTotalPa)}+`, { rule: false });
+
+	gap(ctx, 28);
+
+	keepTogether(ctx, 90, () => {
+		signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
+			dateRow: true
+		});
 	});
 }
 
@@ -998,7 +1170,14 @@ export async function generateOfferLetterPdf(
 			track === 'contract' ? 'Contract Agreement' : 'Consultant Agreement'
 		);
 	} else {
-		renderOfferOfAppointment(ctx, c, offer, ctx.companyName, APPOINTMENT_PINNED_TRACKS.has(track));
+		const pinned = APPOINTMENT_PINNED_TRACKS.has(track);
+		renderOfferOfAppointment(ctx, c, offer, ctx.companyName, pinned);
+		// Page 4: the compensation annexure clause 1 refers to. Appointment
+		// tracks only (fresher/experienced) — consultants/contract are paid a
+		// flat fee via clause 5, not a Basic/HRA/PF breakdown.
+		if (pinned && offer.compensationAnnexure.enabled) {
+			renderCompensationAnnexure(ctx, c, offer, ctx.companyName);
+		}
 	}
 
 	// Optional: stamp the uploaded signature image near the last employer sig line.
