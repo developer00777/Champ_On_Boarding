@@ -1,5 +1,5 @@
 import { Candidate, LinkToken } from './db/schema';
-import { randomToken, sha256 } from './crypto';
+import { randomToken, sha256, encrypt } from './crypto';
 
 const LINK_DAYS = 7;
 
@@ -8,6 +8,7 @@ export async function createLinkToken(candidateId: string) {
 	await LinkToken.create({
 		candidateId,
 		tokenHash: sha256(token),
+		tokenEncrypted: encrypt(token),
 		expiresAt: new Date(Date.now() + LINK_DAYS * 86_400_000)
 	});
 	return token;

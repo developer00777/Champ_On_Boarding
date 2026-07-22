@@ -16,6 +16,10 @@
 	const c = $derived(data.candidate);
 	const ol = $derived(data.offerLetter);
 
+	function copyLink(link: string) {
+		navigator.clipboard.writeText(link);
+	}
+
 	/** Consultant and contract share the Consultant Agreement, so they take its
 	 *  clause-3/4/5 inputs and its monthly compensation reading — and skip the
 	 *  appointment letter's probation/confirmation notice fields. */
@@ -299,6 +303,47 @@
 </div>
 
 {#if form?.message}<p class="error">{form.message}</p>{/if}
+
+{#if data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
+	<div class="linkbox">
+		{#if data.onboardingLink}
+			{@const link = data.onboardingLink}
+			<div style="font-size:13px;color:var(--ae-text-2);margin-bottom:9px">
+				Onboarding link
+				{#if link.openedAt}
+					· <span style="color:var(--ae-text)">opened {new Date(link.openedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+				{:else}
+					· <span style="color:var(--ae-text)">not opened yet</span>
+				{/if}
+				· expires {new Date(link.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+			</div>
+			<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+				<code class="linkcode">{link.url}</code>
+				<button type="button" class="teal-pill-btn" onclick={() => copyLink(link.url)}>Copy link</button>
+				<a class="teal-pill-btn" href={link.url} target="_blank" rel="noopener">Open link</a>
+				<form method="POST" action="?/regenerateLink" use:enhance onsubmit={(e) => {
+					if (!confirm('Regenerate this onboarding link? The current link will stop working immediately.')) e.preventDefault();
+				}}>
+					<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+						<button type="submit" class="teal-pill-btn">Regenerate link</button>
+					</fieldset>
+				</form>
+			</div>
+		{:else}
+			<div style="font-size:13px;color:var(--ae-text-2);margin-bottom:9px">
+				No active onboarding link for this candidate.
+			</div>
+			<form method="POST" action="?/regenerateLink" use:enhance>
+				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<button type="submit" class="teal-pill-btn">Generate link</button>
+				</fieldset>
+			</form>
+		{/if}
+		{#if form?.linkRegenerated}
+			<p class="saved-chip" style="margin-top:8px">Link regenerated ✓ — the previous link no longer works.</p>
+		{/if}
+	</div>
+{/if}
 
 {#if c.status === 'submitted'}
 	<div class="approval-widget">
@@ -1368,6 +1413,35 @@
 		font-size: 12px;
 		font-weight: 700;
 		color: var(--ae-verdant);
+	}
+	.linkbox {
+		margin: 0 0 16px;
+		background: rgba(62, 207, 154, 0.06);
+		border: 1px solid rgba(62, 207, 154, 0.2);
+		border-radius: 10px;
+		padding: 15px 16px;
+	}
+	.linkcode {
+		font-family: var(--ae-font-mono);
+		font-size: 12.5px;
+		background: #0b0d12;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 7px;
+		padding: 7px 11px;
+		color: var(--ae-ember-glow);
+		overflow-wrap: anywhere;
+	}
+	.teal-pill-btn {
+		border: 1px solid var(--ae-line-strong);
+		background: var(--ae-input-bg);
+		color: var(--ae-text-2);
+		font-family: var(--ae-font-body);
+		font-weight: 500;
+		font-size: 12px;
+		padding: 7px 13px;
+		border-radius: 8px;
+		cursor: pointer;
+		text-decoration: none;
 	}
 	.verif {
 		border: 1px solid var(--ae-line-soft);

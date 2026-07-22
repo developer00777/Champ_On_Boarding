@@ -19,6 +19,7 @@ import {
 } from '$lib/server/offer-letter/fields';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA } from '$lib/server/whatsapp';
+import { createLinkToken } from '$lib/server/tokens';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 
@@ -51,14 +52,30 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!row) error(404, 'Candidate not found');
 	const { candidate, company } = row;
 
-	const [checklist, physical, verificationDocs, offerLetter] = await Promise.all([
+	const [checklist, physical, verificationDocs, offerLetter, activeLinkToken] = await Promise.all([
 		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
 		Verification.find({ candidateId: candidate._id }).lean(),
-		OfferLetter.findOne({ candidateId: candidate._id }).lean()
+		OfferLetter.findOne({ candidateId: candidate._id }).lean(),
+		// Most recent non-revoked, unexpired token — the one candidateId can
+		// currently open. Older tokens are left alone (never deleted) as an
+		// audit trail; only this one is ever surfaced for display/testing.
+		LinkToken.findOne({ candidateId: candidate._id, revoked: false, expiresAt: { $gt: new Date() } })
+			.sort({ createdAt: -1 })
+			.lean()
 	]);
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
+
+	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	const onboardingLink =
+		activeLinkToken?.tokenEncrypted != null
+			? {
+					url: `${base}/c/${decrypt(activeLinkToken.tokenEncrypted)}`,
+					expiresAt: activeLinkToken.expiresAt.toISOString(),
+					openedAt: activeLinkToken.openedAt?.toISOString() ?? null
+				}
+			: null;
 
 	return {
 		candidate: {
@@ -149,6 +166,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			status: offerLetter?.status ?? 'draft',
 			sentAt: offerLetter?.sentAt?.toISOString() ?? null
 		},
+		onboardingLink,
 		isSuperAdmin: locals.admin?.role === 'super_admin'
 	};
 };
@@ -327,6 +345,32 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { ok: true };
+	},
+
+	// HR/admin-facing "does this candidate's link actually work" check: retires
+	// whatever link is currently active and issues a fresh one, so the old link
+	// (any copy of it sitting in an old email/chat) stops working the moment a
+	// new one is handed out. Unlike `revoke`, this does not touch candidate.status
+	// — the candidate is still expected to complete onboarding, just via a new URL.
+	regenerateLink: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (['revoked', 'complete'].includes(row.candidate.status))
+			return fail(409, { message: `Cannot regenerate a link for a ${row.candidate.status} candidate.` });
+
+		await LinkToken.updateMany({ candidateId: params.id, revoked: false }, { revoked: true });
+		const token = await createLinkToken(params.id);
+		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'link_regenerated',
+			ip: getClientAddress()
+		});
+		return { linkRegenerated: true, newLink: `${base}/c/${token}` };
 	},
 
 	deleteCandidate: async ({ params, locals, getClientAddress }) => {

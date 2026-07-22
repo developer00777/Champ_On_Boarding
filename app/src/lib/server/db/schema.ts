@@ -97,6 +97,11 @@ const linkTokenSchema = new Schema(
 	{
 		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
 		tokenHash: { type: String, required: true, unique: true },
+		// AES-256-GCM encrypted copy of the raw token (see crypto.ts), so the admin
+		// panel can always display/re-test a candidate's live link without having
+		// to regenerate it just to see it. tokenHash remains the source of truth
+		// for verifying incoming /c/[token] requests; this field is display-only.
+		tokenEncrypted: { type: String, default: null },
 		expiresAt: { type: Date, required: true },
 		openedAt: { type: Date, default: null },
 		revoked: { type: Boolean, default: false }
