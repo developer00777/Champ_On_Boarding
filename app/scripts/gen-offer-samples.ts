@@ -3,13 +3,19 @@
 // Candidate data is invented — no real employee's details appear here.
 //
 // Run:  npx vite-node scripts/gen-offer-samples.ts
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
 import { brandBySlug } from '$lib/shared/brands';
 import type { OfferLetterInput } from '$lib/server/offer-letter/fields';
 
 const OUT = '/home/hemang/Champ_On_Boarding/offer_samples';
 mkdirSync(OUT, { recursive: true });
+
+// Demo signature stamp — a placeholder squiggle, not anyone's real signature —
+// to demonstrate signatoryImageBase64 lands on the Authorized Signatory line.
+const DEMO_SIGNATURE = `data:image/png;base64,${readFileSync(
+	new URL('./_demo-signature.png', import.meta.url)
+).toString('base64')}`;
 
 const brand = brandBySlug('champion-infometrics');
 const COMPANY = 'Champion InfoMetrics Private Limited';
@@ -35,7 +41,22 @@ const base: OfferLetterInput = {
 	weeklyExpectation: '',
 	keyResponsibilities: '',
 	internCriteria: '',
-	paymentClause: ''
+	paymentClause: '',
+	compensationAnnexure: {
+		enabled: false,
+		basicPm: '',
+		hraPm: '',
+		bonusLabel: 'Performance Bonus in Advance',
+		bonusPm: '',
+		ltaPm: '',
+		shiftLabel: 'Shift Allowances',
+		shiftPm: '',
+		specialPm: '',
+		pfPm: '',
+		gratuityPm: '',
+		insurancePm: '',
+		foodPm: ''
+	}
 };
 
 const samples = [
@@ -57,9 +78,25 @@ const samples = [
 			employmentType: 'full_time' as const,
 			ctcAmount: '360000',
 			monthlyCompensation: '25000',
+			signatoryImageBase64: DEMO_SIGNATURE,
 			noticePeriod: '30 days',
 			confirmedNoticePeriod: '60 days',
-			acceptanceDueDate: '25-Jul-2026'
+			acceptanceDueDate: '25-Jul-2026',
+			compensationAnnexure: {
+				enabled: true,
+				basicPm: '12500',
+				hraPm: '6250',
+				bonusLabel: 'Performance Bonus in Advance',
+				bonusPm: '2500',
+				ltaPm: '625',
+				shiftLabel: 'Shift Allowances',
+				shiftPm: '0',
+				specialPm: '2125',
+				pfPm: '1500',
+				gratuityPm: '600',
+				insurancePm: '500',
+				foodPm: '900'
+			}
 		}
 	},
 	{
@@ -82,7 +119,22 @@ const samples = [
 			monthlyCompensation: '58000',
 			noticePeriod: '30 days',
 			confirmedNoticePeriod: '60 days',
-			acceptanceDueDate: '25-Jul-2026'
+			acceptanceDueDate: '25-Jul-2026',
+			compensationAnnexure: {
+				enabled: true,
+				basicPm: '29000',
+				hraPm: '14500',
+				bonusLabel: 'Performance Bonus in Advance',
+				bonusPm: '5800',
+				ltaPm: '1450',
+				shiftLabel: 'Shift Allowances',
+				shiftPm: '2000',
+				specialPm: '5250',
+				pfPm: '3480',
+				gratuityPm: '1394',
+				insurancePm: '1200',
+				foodPm: '2000'
+			}
 		}
 	},
 	{
