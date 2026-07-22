@@ -120,7 +120,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		if (result.unreadable) {
 			await Document.findByIdAndUpdate(doc._id, {
 				ocrStatus: 'unreadable',
-				ocrJson: result.raw,
+				ocrJson: result.fields,
 				ocrTranscript: result.transcript
 			});
 			return json({
@@ -145,7 +145,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		await Candidate.findByIdAndUpdate(candidate.id, { ocrSuggestions: merged });
 		await Document.findByIdAndUpdate(doc._id, {
 			ocrStatus: 'parsed',
-			ocrJson: result.raw,
+			ocrJson: result.fields,
 			ocrTranscript: result.transcript
 		});
 		await audit({ candidateId: candidate.id, actor: 'system', action: 'ocr_parsed', field: doc.docType });
