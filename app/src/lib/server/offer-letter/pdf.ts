@@ -181,6 +181,13 @@ interface Ctx {
 	 *  The intern letter opens this up so its clauses reach the bottom margin
 	 *  the way the signed original's do, instead of stopping ~30% short. */
 	blockGap: number;
+	/** Every "Authorized Signatory" rule drawn so far, with the page and exact
+	 *  coordinates it was drawn at. The uploaded signature image is stamped
+	 *  onto each of these afterwards — capturing the real draw spot instead of
+	 *  guessing from the cursor's position once the whole document is laid out,
+	 *  which broke the moment a page (the annexure) could render after the
+	 *  signature block. */
+	employerSigSpots: Array<{ page: PDFPage; x: number; y: number; width: number }>;
 }
 
 const BLACK = rgb(0.13, 0.13, 0.13);
@@ -456,6 +463,13 @@ function signatureLine(ctx: Ctx, caption: string, opts: { width?: number; bold?:
 	ensure(ctx, above + 18);
 	ctx.y -= above;
 	ctx.page.drawRectangle({ x: ctx.M, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	// The employer's uploaded signature image belongs on this exact rule, on
+	// whichever page it lands — capture it here rather than inferring it from
+	// the cursor once the whole document (including any pages rendered after
+	// this one, e.g. the annexure) has finished laying out.
+	if (caption === 'Authorized Signatory') {
+		ctx.employerSigSpots.push({ page: ctx.page, x: ctx.M, y: ctx.y, width });
+	}
 	ctx.y -= 12;
 	ctx.page.drawText(sanitize(caption), {
 		x: ctx.M, y: ctx.y, font: opts.bold ? ctx.fontB : ctx.fontR, size: ctx.bodySize, color: BLACK
@@ -1147,7 +1161,8 @@ export async function generateOfferLetterPdf(
 				? INTERN_BLOCK_GAP
 				: APPOINTMENT_PINNED_TRACKS.has(track)
 					? APPOINTMENT_BLOCK_GAP
-					: 1
+					: 1,
+		employerSigSpots: []
 	};
 
 	// First page
@@ -1180,15 +1195,24 @@ export async function generateOfferLetterPdf(
 		}
 	}
 
-	// Optional: stamp the uploaded signature image near the last employer sig line.
-	// (Kept simple — appended on the final page top-right of the sig area.)
-	if (offer.signatoryImageBase64) {
+	// Stamp the uploaded signature image onto every "Authorized Signatory" rule
+	// captured while rendering (renderOfferOfAppointment's employer block,
+	// renderConsultant's) — each on its own page, sitting just above its own
+	// rule, however many pages the letter ends up with.
+	if (offer.signatoryImageBase64 && ctx.employerSigSpots.length) {
 		const sigBytes = dataUriToBytes(offer.signatoryImageBase64);
 		if (sigBytes) {
 			try {
 				const sigImg = await doc.embedPng(sigBytes).catch(() => doc.embedJpg(sigBytes));
-				const dims = sigImg.scaleToFit(140, 44);
-				ctx.page.drawImage(sigImg, { x: ctx.M, y: Math.max(ctx.y + 6, ctx.bottomY + 6), width: dims.width, height: dims.height });
+				const dims = sigImg.scaleToFit(140, 40);
+				for (const spot of ctx.employerSigSpots) {
+					spot.page.drawImage(sigImg, {
+						x: spot.x + (spot.width - dims.width) / 2,
+						y: spot.y + 4,
+						width: dims.width,
+						height: dims.height
+					});
+				}
 			} catch { /* ignore bad signature image */ }
 		}
 	}
