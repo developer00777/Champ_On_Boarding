@@ -189,8 +189,6 @@ export const DOC_STANDARDS: Record<string, DocStandard> = {
 	offer_letter_prev: lenient('offer_letter_prev', 'Offer Letter', 'an employment offer / appointment letter', ['employer name', 'candidate name']),
 	bank_statement: lenient('bank_statement', 'Bank Statement', 'a bank account statement', ['bank name', 'account holder name', 'transaction rows']),
 	payslips: lenient('payslips', 'Payslip', 'a monthly salary slip / payslip', ['employer name', 'salary components']),
-	bgc_form: lenient('bgc_form', 'BGC Form', 'a filled background-check form'),
-	bgv_form: lenient('bgv_form', 'BGV Form', 'a filled background-verification form'),
 	photo_soft: lenient('photo_soft', 'Passport Photo', 'a passport-size portrait photograph of a single person on a plain background', ['single human face', 'plain background'])
 };
 
