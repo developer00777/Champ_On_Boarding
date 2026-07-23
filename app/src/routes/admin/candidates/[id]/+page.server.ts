@@ -26,8 +26,7 @@ import {
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
-import { sendApprovalNotificationWA, sendWelcomeCardWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
-import { buildWelcomeImageUrl } from '$lib/server/welcome-card';
+import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken } from '$lib/server/tokens';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
@@ -295,26 +294,14 @@ export const actions: Actions = {
 			brand
 		);
 
-		// WhatsApp approval notification + personalized welcome card (both
-		// best-effort — a WhatsApp failure must never block approval, which has
-		// already been committed to the DB above).
+		// WhatsApp approval notification (best-effort — a WhatsApp failure must
+		// never block approval, which has already been committed to the DB above).
 		if (candidate.mobile) {
 			await sendApprovalNotificationWA({
 				mobile: candidate.mobile,
 				candidateName: candidate.fullName || '',
 				companyName: row.company?.name ?? brand.name
 			}).catch((err) => console.error('[wa] approval notification failed:', err));
-
-			// Only send the card if a photo is actually on file — /welcome-image
-			// 404s without one, which Twilio would just report as a failed fetch.
-			const hasPhoto = await Document.exists({ candidateId: candidate._id, docType: 'photo_soft' });
-			if (hasPhoto) {
-				await sendWelcomeCardWA({
-					mobile: candidate.mobile,
-					candidateName: candidate.fullName || '',
-					imageUrl: buildWelcomeImageUrl(String(candidate._id))
-				}).catch((err) => console.error('[wa] welcome card failed:', err));
-			}
 		}
 
 		// Alert onboarding concern person to create employee code
