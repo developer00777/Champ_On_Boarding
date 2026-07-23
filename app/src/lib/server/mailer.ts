@@ -2,6 +2,7 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { BrandTheme } from '$lib/shared/brands';
+import { EmailMessage } from './db/schema';
 
 export interface MailAttachment {
 	filename: string;
@@ -19,6 +20,11 @@ interface SendMailOptions {
 	 *  these back off the event payload to know which candidate/purpose an
 	 *  event belongs to. Resend restricts names/values to [A-Za-z0-9_-]. */
 	tags?: Record<string, string>;
+	/** Sets Reply-To explicitly. offer.championsmail.com already receives at
+	 *  any address (see /webhooks/resend), so a reply routes correctly even
+	 *  without this — but setting it makes the intended reply target
+	 *  unambiguous in the recipient's mail client. */
+	replyTo?: string;
 }
 
 /** Standard HR sign-off line for a brand, e.g. "— HR, Champion Infratech". */
@@ -75,6 +81,7 @@ export async function sendMail(to: string, subject: string, text: string, option
 	if (options.tags) {
 		payload.tags = Object.entries(options.tags).map(([name, value]) => ({ name, value }));
 	}
+	if (options.replyTo) payload.reply_to = options.replyTo;
 	let res: Response;
 	try {
 		res = await fetch('https://api.resend.com/emails', {
@@ -94,6 +101,25 @@ export async function sendMail(to: string, subject: string, text: string, option
 	console.log(`[mail] Resend ${res.status}: ${body.slice(0, 300)}`);
 	if (!res.ok) {
 		throw new Error(`Resend rejected email to ${to}: ${res.status} ${body.slice(0, 300)}`);
+	}
+
+	// Log every outbound send for the admin Inbox — best-effort, a logging
+	// failure must never surface as a mail-send failure to the caller.
+	try {
+		const resendId = (JSON.parse(body) as { id?: string }).id ?? null;
+		await EmailMessage.create({
+			direction: 'outbound',
+			candidateId: options.tags?.candidate_id ?? null,
+			resendEmailId: resendId,
+			from,
+			to,
+			subject,
+			text,
+			purpose: options.tags?.purpose ?? null,
+			status: 'sent'
+		});
+	} catch (e) {
+		console.error('[mail] failed to log outbound EmailMessage:', e);
 	}
 }
 
@@ -224,7 +250,7 @@ export function offerLetterHtml(opts: {
         <td style="background:${ink};padding:16px 32px;text-align:center">
           <p style="margin:0;font-size:11px;color:#aaa">
             This is an automated email from ${escapeHtml(companyName)}'s onboarding platform.
-            Please do not reply to this email directly — contact HR for any queries.
+            Reply to this email if you have any questions — HR will see it.
           </p>
         </td>
       </tr>

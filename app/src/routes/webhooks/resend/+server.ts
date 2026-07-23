@@ -1,20 +1,26 @@
-// Resend delivery-event webhook. Resend signs requests the same way Svix
-// does (svix-id / svix-timestamp / svix-signature headers) — there is no
+// Resend webhook — both delivery events for outbound mail and email.received
+// for inbound replies. Resend signs requests the same way Svix does
+// (svix-id / svix-timestamp / svix-signature headers) — there is no
 // Resend-specific SDK for this, so verification is done by hand per
 // https://docs.svix.com/receiving/verifying-payloads/how-manual rather than
 // pulling in the full svix package for three lines of HMAC.
 //
-// Closes the loop on outbound mail: sendBrandedMail() tags every candidate-
-// facing send with { candidate_id, purpose } (see mailer.ts); this endpoint
-// reads those tags back off delivered/bounced/opened/clicked/complained
-// events and writes them onto that candidate's audit trail, so a bounced
-// onboarding-link email is visible on the candidate's page instead of
-// silently disappearing into an inbox nobody watches.
+// Closes the loop on mail in both directions, backing the admin /admin/inbox
+// panel:
+//  - Outbound: sendMail() (mailer.ts) writes a 'sent' EmailMessage the moment
+//    a candidate-facing send fires, tagged with { candidate_id, purpose }.
+//    This endpoint updates that row's status as delivered/opened/bounced/etc
+//    events arrive, and mirrors the same event onto AuditLog for the
+//    per-candidate audit trail on the candidate detail page.
+//  - Inbound: email.received webhooks only carry metadata (no body) — this
+//    endpoint calls the Received Emails API for the full text, matches the
+//    sender to a candidate by email address, and writes a new 'received'
+//    EmailMessage row.
 import { error, json } from '@sveltejs/kit';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { AuditLog } from '$lib/server/db/schema';
+import { AuditLog, Candidate, EmailMessage } from '$lib/server/db/schema';
 
 interface ResendWebhookEvent {
 	type: string;
@@ -49,15 +55,47 @@ function verifySignature(secret: string, id: string, timestamp: string, body: st
 		});
 }
 
-const AUDIT_ACTION_BY_EVENT: Record<string, string> = {
-	'email.delivered': 'mail_delivered',
-	'email.bounced': 'mail_bounced',
-	'email.delivery_delayed': 'mail_delayed',
-	'email.complained': 'mail_complained',
-	'email.opened': 'mail_opened',
-	'email.clicked': 'mail_clicked',
-	'email.failed': 'mail_failed'
+const STATUS_BY_EVENT: Record<string, string> = {
+	'email.delivered': 'delivered',
+	'email.bounced': 'bounced',
+	'email.delivery_delayed': 'delayed',
+	'email.complained': 'complained',
+	'email.opened': 'opened',
+	'email.clicked': 'clicked',
+	'email.failed': 'failed'
 };
+const AUDIT_ACTION_BY_STATUS: Record<string, string> = {
+	delivered: 'mail_delivered',
+	bounced: 'mail_bounced',
+	delayed: 'mail_delayed',
+	complained: 'mail_complained',
+	opened: 'mail_opened',
+	clicked: 'mail_clicked',
+	failed: 'mail_failed'
+};
+
+async function fetchReceivedBody(emailId: string): Promise<string | null> {
+	try {
+		const res = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+			headers: { Authorization: `Bearer ${env.RESEND_API_KEY}` },
+			signal: AbortSignal.timeout(10_000)
+		});
+		if (!res.ok) return null;
+		const body = (await res.json()) as { text?: string };
+		return body.text ?? null;
+	} catch (e) {
+		console.error('[webhooks/resend] failed to fetch received email body:', e);
+		return null;
+	}
+}
+
+/** Best-effort: strips any display name and angle brackets from a From/To
+ *  header value ("Name <addr@x.com>" or plain "addr@x.com") down to the bare
+ *  address, for matching against Candidate.email (case-insensitive). */
+function bareAddress(value: string): string {
+	const match = value.match(/<([^>]+)>/);
+	return (match ? match[1] : value).trim().toLowerCase();
+}
 
 export const POST: RequestHandler = async ({ request }) => {
 	const secret = env.RESEND_WEBHOOK_SECRET;
@@ -84,20 +122,61 @@ export const POST: RequestHandler = async ({ request }) => {
 		error(400, 'Invalid JSON');
 	}
 
-	const action = AUDIT_ACTION_BY_EVENT[event.type];
-	if (!action) {
-		// Domain/contact events, email.sent, email.scheduled, email.suppressed —
+	if (event.type === 'email.received') {
+		const from = event.data.from ?? '';
+		const senderAddress = bareAddress(from);
+		const candidate = senderAddress
+			? await Candidate.findOne({ email: senderAddress }).lean()
+			: null;
+
+		const text = event.data.email_id ? await fetchReceivedBody(event.data.email_id) : null;
+
+		await EmailMessage.create({
+			direction: 'inbound',
+			candidateId: candidate?._id ?? null,
+			resendEmailId: event.data.email_id ?? null,
+			from,
+			to: event.data.to?.[0] ?? '',
+			subject: event.data.subject ?? null,
+			text,
+			status: 'received'
+		});
+
+		if (candidate) {
+			await AuditLog.create({
+				candidateId: String(candidate._id),
+				actor: senderAddress,
+				action: 'mail_received',
+				field: event.data.subject ?? null
+			});
+		}
+
+		return json({ ok: true });
+	}
+
+	const status = STATUS_BY_EVENT[event.type];
+	if (!status) {
+		// domain/contact events, email.sent, email.scheduled, email.suppressed —
 		// not tracked per-candidate. Not an error, just nothing to log.
 		return json({ ok: true, ignored: event.type });
 	}
 
 	const candidateId = event.data.tags?.candidate_id ?? null;
+	const statusDetail = event.data.bounce?.message ?? event.data.click?.link ?? null;
+
+	if (event.data.email_id) {
+		await EmailMessage.findOneAndUpdate(
+			{ resendEmailId: event.data.email_id },
+			{ status, statusDetail }
+		);
+	}
+
 	await AuditLog.create({
 		candidateId,
 		actor: 'resend',
-		action,
+		action: AUDIT_ACTION_BY_STATUS[status],
 		field: event.data.tags?.purpose ?? null,
-		newValue: event.data.bounce?.message ?? event.data.click?.link ?? event.data.to?.[0] ?? null
+		newValue: statusDetail ?? event.data.to?.[0] ?? null
 	});
 
 	return json({ ok: true });

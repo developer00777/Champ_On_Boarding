@@ -257,6 +257,37 @@ const offerLetterSchema = new Schema(
 );
 export const OfferLetter = models.OfferLetter ?? model('OfferLetter', offerLetterSchema);
 
+// ── Email Messages (Inbox) ───────────────────────────────────────────────────
+// Both directions in one collection so the admin Inbox is a single
+// chronological thread: `direction: 'outbound'` rows are written the moment
+// sendBrandedMail() fires (see mailer.ts) and updated in place as Resend's
+// delivery webhook reports status; `direction: 'inbound'` rows are created by
+// the same webhook on email.received (see /webhooks/resend), one per reply
+// from a candidate (or anyone else) to offer@ / onboarding@.
+const emailMessageSchema = new Schema(
+	{
+		direction: { type: String, enum: ['outbound', 'inbound'], required: true },
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', default: null },
+		resendEmailId: { type: String, default: null, index: true },
+		from: { type: String, required: true },
+		to: { type: String, required: true },
+		subject: { type: String, default: null },
+		text: { type: String, default: null },
+		purpose: { type: String, default: null },
+		// Outbound lifecycle: sent → delivered → opened/clicked, or bounced/
+		// complained/delayed/failed at any point. Inbound rows are always 'received'.
+		status: {
+			type: String,
+			enum: ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'complained', 'delayed', 'failed', 'received'],
+			required: true
+		},
+		statusDetail: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+emailMessageSchema.index({ candidateId: 1, createdAt: -1 });
+export const EmailMessage = models.EmailMessage ?? model('EmailMessage', emailMessageSchema);
+
 // ── Shared types ──────────────────────────────────────────────────────────────
 export type CandidateDoc = InstanceType<typeof Candidate> & { _id: Types.ObjectId };
 export type DocumentDoc = InstanceType<typeof Document> & { _id: Types.ObjectId };

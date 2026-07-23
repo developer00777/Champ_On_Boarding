@@ -33,7 +33,7 @@ async function buildOfferLetterPdfAttachment(
 
 /** Sends the branded offer-letter email with the filled PDF attached. */
 export async function sendOfferLetterMail(
-	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress' | 'track'>,
+	candidate: Pick<CandidateDoc, '_id' | 'fullName' | 'email' | 'presentAddress' | 'track'>,
 	companyName: string,
 	draft: OfferLetterDoc,
 	brand: BrandTheme
@@ -54,7 +54,7 @@ export async function sendOfferLetterMail(
 
 /** Rich offer-letter delivery email using the dedicated HTML template. */
 export async function sendOfferLetterBrandedMail(
-	candidate: Pick<CandidateDoc, 'fullName' | 'email'>,
+	candidate: Pick<CandidateDoc, '_id' | 'fullName' | 'email'>,
 	companyName: string,
 	_draft: OfferLetterDoc,
 	brand: BrandTheme,
@@ -85,7 +85,8 @@ export async function sendOfferLetterBrandedMail(
 	await sendMail(candidate.email, `Your ${letterType} from ${brand.legalName}`, plainText, {
 		from: brandFromHeader(brand, 'offer'),
 		html,
-		attachments
+		attachments,
+		tags: { candidate_id: String(candidate._id), purpose: 'offer' }
 	});
 }
 
