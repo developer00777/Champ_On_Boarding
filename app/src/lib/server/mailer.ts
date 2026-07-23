@@ -14,6 +14,11 @@ interface SendMailOptions {
 	/** Optional HTML body. When present, sent alongside `text` as a fallback. */
 	html?: string;
 	attachments?: MailAttachment[];
+	/** Echoed back on every Resend webhook event for this send (delivered,
+	 *  bounced, opened, ...) — see /webhooks/resend/+server.ts, which reads
+	 *  these back off the event payload to know which candidate/purpose an
+	 *  event belongs to. Resend restricts names/values to [A-Za-z0-9_-]. */
+	tags?: Record<string, string>;
 }
 
 /** Standard HR sign-off line for a brand, e.g. "— HR, Champion Infratech". */
@@ -66,6 +71,9 @@ export async function sendMail(to: string, subject: string, text: string, option
 			filename: a.filename,
 			content: a.content.toString('base64')
 		}));
+	}
+	if (options.tags) {
+		payload.tags = Object.entries(options.tags).map(([name, value]) => ({ name, value }));
 	}
 	let res: Response;
 	try {
@@ -237,18 +245,23 @@ function escapeHtml(value: string): string {
 
 /** Sends a plain-text-compatible email with brand-aware from-name, an inline
  *  logo HTML body, and optional attachments (e.g. a filled offer letter).
- *  `purpose` picks which configured mailbox sends it — see fromAddressFor. */
+ *  `purpose` picks which configured mailbox sends it — see fromAddressFor.
+ *  `candidateId`, when given, is tagged on the Resend send so the delivery
+ *  webhook (/webhooks/resend) can log delivered/bounced/opened events back
+ *  onto that candidate's audit trail. */
 export async function sendBrandedMail(
 	to: string,
 	subject: string,
 	text: string,
 	brand: BrandTheme,
 	attachments?: MailAttachment[],
-	purpose: MailPurpose = 'onboarding'
+	purpose: MailPurpose = 'onboarding',
+	candidateId?: string
 ) {
 	await sendMail(to, subject, text, {
 		from: brandFromHeader(brand, purpose),
 		html: await brandedHtml(brand, text),
-		attachments
+		attachments,
+		tags: candidateId ? { candidate_id: candidateId, purpose } : undefined
 	});
 }

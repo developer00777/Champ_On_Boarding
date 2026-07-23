@@ -291,7 +291,10 @@ export const actions: Actions = {
 			'Your onboarding is approved',
 			`Hello,\n\nYour onboarding submission has been reviewed and approved by HR.\n` +
 				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n${brandSignoff(brand)}`,
-			brand
+			brand,
+			undefined,
+			'onboarding',
+			params.id
 		);
 
 		// WhatsApp approval notification (best-effort — a WhatsApp failure must
@@ -360,7 +363,10 @@ export const actions: Actions = {
 			`Hello,\n\nHR has requested a re-upload of one of your documents (${doc.docType.replace(/_/g, ' ')})` +
 				(note ? `:\n"${note}"` : '.') +
 				`\n\nPlease open your onboarding link again, replace the document, and resubmit.\n\n${brandSignoff(reuploadBrand)}`,
-			reuploadBrand
+			reuploadBrand,
+			undefined,
+			'onboarding',
+			params.id
 		);
 		return { ok: true };
 	},
@@ -404,7 +410,10 @@ export const actions: Actions = {
 			`Hello,\n\nHR has requested that you upload your ${slot.label.replace(/\s*\(optional\)/i, '')}` +
 				(note ? `:\n"${note}"` : '.') +
 				`\n\nPlease open your onboarding link again and upload it.\n\n${brandSignoff(requestBrand)}`,
-			requestBrand
+			requestBrand,
+			undefined,
+			'onboarding',
+			params.id
 		);
 		return { uploadRequested: true };
 	},

@@ -159,7 +159,9 @@ export const actions: Actions = {
 				(offerLetterBundled ? `\n\nYour offer letter is attached to this email.` : '') +
 				`\n\n${brandSignoff(brand)}`,
 			brand,
-			attachments
+			attachments,
+			'onboarding',
+			String(candidate._id)
 		);
 
 		// Send WhatsApp welcome message via Twilio (best-effort, non-fatal)
