@@ -1,4 +1,4 @@
-import { Document } from './db/schema';
+import { Candidate, Document } from './db/schema';
 import { slotsForTrack, type Track } from '$lib/shared/matrix';
 
 export interface SlotStatus {
@@ -15,6 +15,10 @@ export interface SlotStatus {
 	/** Labels of the sibling slots that would also satisfy this one, so the UI can
 	 *  say "or upload X instead" without knowing the matrix. */
 	alternatives?: string[];
+	/** HR has asked the candidate to upload this slot even though nothing has
+	 *  been uploaded yet (only meaningful when docs is empty — once a file
+	 *  lands the normal per-document reupload flow takes over). */
+	uploadRequested?: { note: string | null };
 }
 
 export async function checklistFor(
@@ -22,7 +26,16 @@ export async function checklistFor(
 	track: Track,
 	brandSlug?: string | null
 ): Promise<SlotStatus[]> {
-	const docs = await Document.find({ candidateId }, 'docType reviewStatus ocrStatus reviewNote mime').lean();
+	const [docs, candidate] = await Promise.all([
+		Document.find({ candidateId }, 'docType reviewStatus ocrStatus reviewNote mime').lean(),
+		Candidate.findById(candidateId, 'requestedDocTypes').lean()
+	]);
+	const requested = new Map<string, string | null>(
+		(candidate?.requestedDocTypes ?? []).map((r: { docType: string; note?: string | null }) => [
+			r.docType,
+			r.note ?? null
+		])
+	);
 	const slots = slotsForTrack(track, brandSlug);
 
 	/** Doc types that count towards each group, and whether any of them has a
@@ -64,6 +77,9 @@ export async function checklistFor(
 			group: slot.group,
 			alternatives: slot.group
 				? slots.filter((s) => s.group === slot.group && s.type !== slot.type).map((s) => s.label)
+				: undefined,
+			uploadRequested: slotDocs.length === 0 && requested.has(slot.type)
+				? { note: requested.get(slot.type) ?? null }
 				: undefined
 		};
 	});

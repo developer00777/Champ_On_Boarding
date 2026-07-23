@@ -76,6 +76,14 @@ const candidateSchema = new Schema(
 		branch: String,
 		employeeId: { type: String, default: null },
 		ocrSuggestions: { type: Map, of: String, default: {} },
+		// HR asking a candidate to upload an optional document they skipped (e.g.
+		// degree certificate) — there is no Document row to flip reviewStatus on
+		// for a file that was never uploaded, so the request lives here instead,
+		// keyed by docType. Cleared the moment a matching Document appears.
+		requestedDocTypes: {
+			type: [{ docType: { type: String, required: true }, note: { type: String, default: null } }],
+			default: []
+		},
 		consentAt: Date,
 		consentIp: String,
 		status: {

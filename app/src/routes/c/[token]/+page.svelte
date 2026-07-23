@@ -380,7 +380,7 @@
 						{#each data.checklist as slot}
 							{@const active = slot.docs.filter((d) => d.reviewStatus !== 'reupload_requested')}
 							{@const reup = slot.docs.filter((d) => d.reviewStatus === 'reupload_requested')}
-							<div class="doc-card" class:missing={errors.has(slot.type)} class:reup={reup.length > 0}>
+							<div class="doc-card" class:missing={errors.has(slot.type)} class:reup={reup.length > 0 || !!slot.uploadRequested}>
 								<div>
 									<div class="doc-title">
 										<span>{slot.label}</span>
@@ -399,6 +399,9 @@
 									{#each reup as doc}
 										<div class="chip red">Re-upload requested{doc.reviewNote ? `: ${doc.reviewNote}` : ''}</div>
 									{/each}
+									{#if slot.uploadRequested}
+										<div class="chip red">Upload requested{slot.uploadRequested.note ? `: ${slot.uploadRequested.note}` : ''}</div>
+									{/if}
 									{#each active as doc}
 										<div class="done-row">
 											<span class="chip {doneChip[doc.ocrStatus]?.cls ?? 'mist'}">

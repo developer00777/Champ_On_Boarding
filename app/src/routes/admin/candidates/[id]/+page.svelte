@@ -12,6 +12,7 @@
 	let { data, form } = $props();
 
 	let reuploadFor: string | null = $state(null);
+	let uploadRequestFor: string | null = $state(null);
 	let editingProfile = $state(false);
 	$effect(() => {
 		if (form?.profileSaved) editingProfile = false;
@@ -484,10 +485,29 @@
 						</span>
 						<div style="flex:1">
 							<div class="doc-name" style="color:var(--ae-muted)">{slot.label}</div>
-							<div class="doc-sub">Not uploaded</div>
+							<div class="doc-sub">
+								Not uploaded
+								{#if slot.uploadRequested}· requested{slot.uploadRequested.note ? `: ${slot.uploadRequested.note}` : ''}{/if}
+							</div>
 						</div>
-						{#if slot.mandatory}<span class="pill red">MISSING</span>{/if}
+						{#if slot.mandatory}
+							<span class="pill red">MISSING</span>
+						{:else if slot.uploadRequested}
+							<span class="pill gold">UPLOAD ASKED</span>
+						{/if}
+						{#if data.isSuperAdmin && !['approved', 'complete', 'revoked'].includes(c.status) && !slot.uploadRequested}
+							<button type="button" class="btn ghost small" onclick={() => (uploadRequestFor = uploadRequestFor === slot.type ? null : slot.type)}>
+								Request upload
+							</button>
+						{/if}
 					</div>
+					{#if data.isSuperAdmin && uploadRequestFor === slot.type}
+						<form method="POST" action="?/requestUpload" use:enhance class="reupload">
+							<input type="hidden" name="docType" value={slot.type} />
+							<input name="note" placeholder="Reason shown to the candidate (e.g. please attach your degree certificate)" />
+							<button class="btn small">Send</button>
+						</form>
+					{/if}
 				{:else}
 					{#each slot.docs as doc}
 						<div class="docrow">

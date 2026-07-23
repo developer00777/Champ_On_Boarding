@@ -103,6 +103,12 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 		ocrStatus: hasOcrSchema(slot.ocr) ? 'pending' : 'store_only'
 	});
 
+	// A file now exists for this slot — any standing "please upload this"
+	// request HR left on the candidate record is resolved.
+	await Candidate.findByIdAndUpdate(candidate.id, {
+		$pull: { requestedDocTypes: { docType: slot.type } }
+	});
+
 	await audit({
 		candidateId: candidate.id,
 		actor: 'candidate',

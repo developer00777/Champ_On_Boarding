@@ -15,7 +15,7 @@ import {
 	isValidPin,
 	isValidMobile
 } from '$lib/shared/validation';
-import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, type Track } from '$lib/shared/matrix';
+import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, slotByType, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
@@ -26,7 +26,8 @@ import {
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
-import { sendApprovalNotificationWA } from '$lib/server/whatsapp';
+import { sendApprovalNotificationWA, sendWelcomeCardWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
+import { buildWelcomeImageUrl } from '$lib/server/welcome-card';
 import { createLinkToken } from '$lib/server/tokens';
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
@@ -294,13 +295,26 @@ export const actions: Actions = {
 			brand
 		);
 
-		// WhatsApp approval notification to candidate (best-effort)
+		// WhatsApp approval notification + personalized welcome card (both
+		// best-effort — a WhatsApp failure must never block approval, which has
+		// already been committed to the DB above).
 		if (candidate.mobile) {
 			await sendApprovalNotificationWA({
 				mobile: candidate.mobile,
 				candidateName: candidate.fullName || '',
 				companyName: row.company?.name ?? brand.name
 			}).catch((err) => console.error('[wa] approval notification failed:', err));
+
+			// Only send the card if a photo is actually on file — /welcome-image
+			// 404s without one, which Twilio would just report as a failed fetch.
+			const hasPhoto = await Document.exists({ candidateId: candidate._id, docType: 'photo_soft' });
+			if (hasPhoto) {
+				await sendWelcomeCardWA({
+					mobile: candidate.mobile,
+					candidateName: candidate.fullName || '',
+					imageUrl: buildWelcomeImageUrl(String(candidate._id))
+				}).catch((err) => console.error('[wa] welcome card failed:', err));
+			}
 		}
 
 		// Alert onboarding concern person to create employee code
@@ -362,6 +376,50 @@ export const actions: Actions = {
 			reuploadBrand
 		);
 		return { ok: true };
+	},
+
+	// Mirrors requestReupload, but for a slot nothing has ever been uploaded to
+	// (typically an optional document, e.g. degree certificate) — there is no
+	// Document row to key off, so the request is recorded on the candidate and
+	// picked up by checklistFor() until a matching file actually lands.
+	requestUpload: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireSuperAdmin(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const docType = String(form.get('docType') ?? '');
+		const note = String(form.get('note') ?? '').trim();
+
+		const slot = slotByType(docType);
+		if (!slot) return fail(404);
+
+		// Pull any stale request for this docType before pushing the fresh one —
+		// two ops, not one, since Mongo can't $pull and $push the same array path
+		// in a single update.
+		await Candidate.findByIdAndUpdate(params.id, { $pull: { requestedDocTypes: { docType } } });
+		await Candidate.findByIdAndUpdate(params.id, {
+			$push: { requestedDocTypes: { docType, note: note || null } },
+			...(row.candidate.status === 'submitted' ? { status: 'changes_requested' } : {})
+		});
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'upload_requested',
+			field: docType,
+			newValue: note,
+			ip: getClientAddress()
+		});
+		const requestBrand = brandBySlug(row.company?.brandSlug ?? undefined);
+		await sendBrandedMail(
+			row.candidate.email,
+			'Action needed on your onboarding documents',
+			`Hello,\n\nHR has requested that you upload your ${slot.label.replace(/\s*\(optional\)/i, '')}` +
+				(note ? `:\n"${note}"` : '.') +
+				`\n\nPlease open your onboarding link again and upload it.\n\n${brandSignoff(requestBrand)}`,
+			requestBrand
+		);
+		return { uploadRequested: true };
 	},
 
 	physical: async ({ params, request, locals, getClientAddress }) => {
@@ -726,6 +784,17 @@ export const actions: Actions = {
 			newValue: candidate.email,
 			ip: getClientAddress()
 		});
+
+		// WhatsApp notification that the offer letter has been emailed —
+		// best-effort, must never block the send that already succeeded above.
+		if (candidate.mobile) {
+			await sendOfferLetterNotificationWA({
+				mobile: candidate.mobile,
+				candidateName: candidate.fullName || '',
+				companyName: company?.name ?? brand.name,
+				candidateEmail: candidate.email
+			}).catch((err) => console.error('[wa] offer letter notification failed:', err));
+		}
 
 		return { offerLetterSent: true };
 	}

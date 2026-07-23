@@ -123,7 +123,11 @@ export const DOC_SLOTS: DocSlot[] = [
 export const ENTITY_DOC_OVERRIDES: Record<string, Record<string, { mandatory: boolean }>> = {
 	'champion-landzone': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } },
 	'champions-luxury-resorts': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } },
-	'champion-products': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } }
+	'champion-products': { marksheet_12: { mandatory: false }, bank_proof: { mandatory: false } },
+	// HR decision: these two entities require the degree/MBA certificate up
+	// front rather than treating it as optional like every other brand.
+	cirrologix: { degree_cert: { mandatory: true } },
+	'champion-infometrics': { degree_cert: { mandatory: true } }
 };
 
 /** The slots for a track, with any entity-level exception applied.
@@ -137,9 +141,11 @@ export function slotsForTrack(track: Track, brandSlug?: string | null): DocSlot[
 		const o = overrides?.[slot.type];
 		if (!o) return slot;
 		// The label carries "(optional)" for every other optional slot; keep that
-		// consistent here or the portal reads as mandatory while accepting a skip.
-		const label =
-			o.mandatory === false && !/optional/i.test(slot.label) ? `${slot.label} (optional)` : slot.label;
+		// in sync with the effective mandatory flag in both directions, or the
+		// portal reads as mandatory while accepting a skip (or vice versa).
+		let label = slot.label;
+		if (o.mandatory === false && !/optional/i.test(label)) label = `${label} (optional)`;
+		if (o.mandatory === true) label = label.replace(/\s*\(optional\)/i, '');
 		return { ...slot, ...o, label };
 	});
 }
