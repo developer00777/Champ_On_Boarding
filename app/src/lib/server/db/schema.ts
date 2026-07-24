@@ -24,7 +24,7 @@ const adminSchema = new Schema(
 	{
 		email: { type: String, required: true, unique: true },
 		passwordHash: { type: String, required: true },
-		role: { type: String, enum: ['hr_admin', 'super_admin'], required: true },
+		role: { type: String, enum: ['hr_admin', 'super_admin', 'finance_team'], required: true },
 		status: { type: String, enum: ['active', 'disabled'], default: 'active' }
 	},
 	{ timestamps: true }

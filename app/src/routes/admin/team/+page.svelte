@@ -6,7 +6,8 @@
 
 	const roleLabel: Record<string, string> = {
 		hr_admin: 'HR / Recruiter',
-		super_admin: 'Super admin'
+		super_admin: 'Super admin',
+		finance_team: 'Finance team'
 	};
 
 	// GlassSelect is controlled; seed to the first option like the native select.
@@ -43,7 +44,8 @@
 					bind:value={newRole}
 					options={[
 						{ value: 'hr_admin', label: 'HR / Recruiter' },
-						{ value: 'super_admin', label: 'Super admin' }
+						{ value: 'super_admin', label: 'Super admin' },
+						{ value: 'finance_team', label: 'Finance team' }
 					]}
 				/>
 			</div>

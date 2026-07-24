@@ -495,13 +495,13 @@
 						{:else if slot.uploadRequested}
 							<span class="pill gold">UPLOAD ASKED</span>
 						{/if}
-						{#if data.isSuperAdmin && !['approved', 'complete', 'revoked'].includes(c.status) && !slot.uploadRequested}
+						{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status) && !slot.uploadRequested}
 							<button type="button" class="btn ghost small" onclick={() => (uploadRequestFor = uploadRequestFor === slot.type ? null : slot.type)}>
 								Request upload
 							</button>
 						{/if}
 					</div>
-					{#if data.isSuperAdmin && uploadRequestFor === slot.type}
+					{#if data.isApprover && uploadRequestFor === slot.type}
 						<form method="POST" action="?/requestUpload" use:enhance class="reupload">
 							<input type="hidden" name="docType" value={slot.type} />
 							<input name="note" placeholder="Reason shown to the candidate (e.g. please attach your degree certificate)" />
@@ -541,13 +541,13 @@
 								<span class="pill {docPill[doc.ocrStatus]?.cls}">{docPill[doc.ocrStatus]?.label ?? doc.ocrStatus}</span>
 							{/if}
 							<a class="btn ghost small" href="/admin/candidates/{c.id}/doc/{doc.id}" target="_blank" rel="noopener">View</a>
-							{#if data.isSuperAdmin && c.status === 'submitted' && doc.reviewStatus !== 'reupload_requested'}
+							{#if data.isApprover && c.status === 'submitted' && doc.reviewStatus !== 'reupload_requested'}
 								<button type="button" class="btn ghost small" onclick={() => (reuploadFor = reuploadFor === doc.id ? null : doc.id)}>
 									Re-upload
 								</button>
 							{/if}
 						</div>
-						{#if data.isSuperAdmin && reuploadFor === doc.id}
+						{#if data.isApprover && reuploadFor === doc.id}
 							<form method="POST" action="?/requestReupload" use:enhance class="reupload">
 								<input type="hidden" name="docId" value={doc.id} />
 								<input name="note" placeholder="Reason shown to the candidate (e.g. glare on the number)" />

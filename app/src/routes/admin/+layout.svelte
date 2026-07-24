@@ -13,6 +13,12 @@
 		return href === '/admin' ? path === '/admin' : path.startsWith(href);
 	}
 
+	const ROLE_LABEL: Record<string, string> = {
+		super_admin: 'Super admin',
+		hr_admin: 'HR admin',
+		finance_team: 'Finance team'
+	};
+
 	// Theme starts from the server-read cookie (so the first paint is already
 	// correct, no flash) and flips purely client-side after that — a UI
 	// preference doesn't need a round trip through SvelteKit's data layer.
@@ -109,7 +115,7 @@
 
 			<div class="rail-foot">
 				<div class="who">{data.admin.email}</div>
-				<div class="role">{data.admin.role === 'super_admin' ? 'Super admin' : 'HR admin'}</div>
+				<div class="role">{ROLE_LABEL[data.admin.role] ?? data.admin.role}</div>
 				<form method="POST" action="/admin/logout">
 					<button class="logout">Log out</button>
 				</form>

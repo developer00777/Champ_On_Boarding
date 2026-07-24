@@ -6,7 +6,7 @@ import { randomToken } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 import { getRedis } from '$lib/server/redis';
 
-const ROLES = ['hr_admin', 'super_admin'] as const;
+const ROLES = ['hr_admin', 'super_admin', 'finance_team'] as const;
 type Role = (typeof ROLES)[number];
 
 function requireSuperAdmin(locals: App.Locals) {

@@ -3,7 +3,7 @@
 declare global {
 	namespace App {
 		interface Locals {
-			admin: { id: string; email: string; role: 'hr_admin' | 'super_admin' } | null;
+			admin: { id: string; email: string; role: 'hr_admin' | 'super_admin' | 'finance_team' } | null;
 		}
 	}
 }

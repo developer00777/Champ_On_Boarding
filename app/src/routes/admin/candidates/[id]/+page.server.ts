@@ -332,7 +332,7 @@ export const actions: Actions = {
 	},
 
 	requestReupload: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -376,7 +376,7 @@ export const actions: Actions = {
 	// Document row to key off, so the request is recorded on the candidate and
 	// picked up by checklistFor() until a matching file actually lands.
 	requestUpload: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);

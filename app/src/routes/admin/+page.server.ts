@@ -82,6 +82,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
 	generateLink: async ({ request, locals, getClientAddress }) => {
+		if (locals.admin?.role === 'finance_team')
+			return fail(403, { message: 'View-only access — cannot create onboarding links.' });
 		const form = await request.formData();
 		const email = String(form.get('email') ?? '').trim().toLowerCase();
 		const track = String(form.get('track') ?? '') as Track;
