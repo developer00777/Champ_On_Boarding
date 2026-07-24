@@ -81,7 +81,12 @@ export const load: PageServerLoad = async ({ params }) => {
 				ocrStatus: d.ocrStatus,
 				reviewStatus: d.reviewStatus,
 				reviewNote: d.reviewNote,
-				mime: d.mime
+				mime: d.mime,
+				// Per-document standard-conformance check is not implemented yet —
+				// always null until that verification step exists; the UI already
+				// no-ops safely on null.
+				standardStatus: null as string | null,
+				standardReasons: null as string[] | null
 			}))
 		})),
 		physicalItems: PHYSICAL_ITEM_TYPES.map((p) => p.label),

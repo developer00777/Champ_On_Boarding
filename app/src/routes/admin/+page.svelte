@@ -7,7 +7,12 @@
 
 	// GlassSelect is controlled, so the invite form needs its values in state.
 	// Seed to the first option, matching how the native <select> defaulted.
+	// Deliberate seed-once: the user picks a different track/company after
+	// this, and re-deriving from `data` on every reload (e.g. after
+	// generateLink's own use:enhance refresh) would reset their selection.
+	// svelte-ignore state_referenced_locally
 	let inviteTrack = $state<string>(data.tracks[0] ?? '');
+	// svelte-ignore state_referenced_locally
 	let inviteCompany = $state<string>(data.companies[0]?.id ?? '');
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {

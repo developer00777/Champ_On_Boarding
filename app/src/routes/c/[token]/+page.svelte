@@ -414,7 +414,7 @@
 												</button>
 											{/if}
 										</div>
-										{#if stdChip[doc.standardStatus]}
+										{#if doc.standardStatus && stdChip[doc.standardStatus]}
 											<span class="chip {stdChip[doc.standardStatus].cls}">{stdChip[doc.standardStatus].text}</span>
 											{#if doc.standardStatus !== 'pass' && doc.standardReasons?.length}
 												<div class="error">{doc.standardReasons.join(' ')}</div>

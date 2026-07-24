@@ -16,7 +16,7 @@ export async function uploadToGridFS(
 ): Promise<ObjectId> {
 	return new Promise((resolve, reject) => {
 		const uploadStream = bucket().openUploadStream(filename, {
-			contentType: mime
+			metadata: { contentType: mime }
 		});
 		stream.pipe(uploadStream);
 		uploadStream.on('finish', () => resolve(uploadStream.id as ObjectId));

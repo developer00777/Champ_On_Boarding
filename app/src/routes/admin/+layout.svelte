@@ -22,6 +22,10 @@
 	// Theme starts from the server-read cookie (so the first paint is already
 	// correct, no flash) and flips purely client-side after that — a UI
 	// preference doesn't need a round trip through SvelteKit's data layer.
+	// svelte-ignore state_referenced_locally -- deliberate seed-once: this
+	// layout stays mounted across every admin navigation, and re-deriving from
+	// `data.theme` on each reload would fight the toggle below, which is the
+	// actual source of truth for theme after first paint.
 	let theme = $state(data.theme);
 
 	function toggleTheme() {

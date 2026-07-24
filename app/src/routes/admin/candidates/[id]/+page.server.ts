@@ -214,7 +214,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				reviewStatus: d.reviewStatus,
 				reviewNote: d.reviewNote,
 				ocrTranscript: null,
-				uploadedAt: new Date().toISOString()
+				uploadedAt: new Date().toISOString(),
+				// Per-document standard-conformance check (e.g. "is this actually a
+				// passport photo") is not implemented yet — always null until that
+				// verification step exists; the UI already no-ops safely on null.
+				standardStatus: null as string | null,
+				standardReasons: null as string[] | null
 			}))
 		})),
 		physical: PHYSICAL_ITEM_TYPES.map((p) => {

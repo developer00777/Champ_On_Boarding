@@ -520,7 +520,7 @@
 									{doc.mime === 'application/pdf' ? 'PDF' : 'Image'} · {(doc.sizeBytes / 1024).toFixed(0)} KB
 									{#if doc.reviewNote}· {doc.reviewNote}{/if}
 								</div>
-								{#if stdPill[doc.standardStatus]}
+								{#if doc.standardStatus && stdPill[doc.standardStatus]}
 									<div style="margin-top:5px">
 										<span class="pill {stdPill[doc.standardStatus].cls}">{stdPill[doc.standardStatus].label}</span>
 										{#if doc.standardStatus !== 'pass' && doc.standardReasons?.length}
@@ -626,7 +626,7 @@
 					{/if}
 				{/if}
 			</div>
-			{#if form?.profileEditError}<p class="error">{form.message}</p>{/if}
+			{#if (form as { profileEditError?: true; message?: string } | undefined)?.profileEditError}<p class="error">{(form as { message: string }).message}</p>{/if}
 			{#if form?.profileSaved}<p class="saved-chip" style="margin-bottom:8px">Saved ✓</p>{/if}
 			<form
 				id="edit-profile-form"
@@ -706,8 +706,8 @@
 				Name, address and company are pulled in automatically. Fill in the rest, then download or send it as
 				an attachment on {c.fullName || c.email}'s onboarding email.
 			</p>
-			{#if form?.offerLetterError}
-				<p class="error">{form.message}</p>
+			{#if (form as { offerLetterError?: true; message?: string } | undefined)?.offerLetterError}
+				<p class="error">{(form as { message: string }).message}</p>
 			{/if}
 			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form" enctype="multipart/form-data">
 				<fieldset class="rbac" disabled={!data.isApprover}>

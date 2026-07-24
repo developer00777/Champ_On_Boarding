@@ -7,6 +7,11 @@
 	// GlassSelect is controlled: seed the "add company" brand to no-brand,
 	// and keep a per-company map so each row's dropdown submits its own value.
 	let newBrandSlug = $state('');
+	// Deliberate seed-once: each row's dropdown is user-editable after this,
+	// and re-deriving from `data.companies` on every reload (e.g. after this
+	// same page's own createCompany/setCompanyBrand use:enhance refresh)
+	// would wipe out an in-progress row edit before it's submitted.
+	// svelte-ignore state_referenced_locally
 	let rowBrandSlug = $state<Record<string, string>>(
 		Object.fromEntries(data.companies.map((c: { id: string; brandSlug: string | null }) => [c.id, c.brandSlug ?? '']))
 	);
