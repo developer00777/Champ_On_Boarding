@@ -12,6 +12,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const direction = (url.searchParams.get('direction') as Direction) || 'all';
 	const mailbox = url.searchParams.get('mailbox') ?? '';
 	const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1);
+	const q = (url.searchParams.get('q') ?? '').trim();
 
 	const query: Record<string, unknown> = {};
 	if (direction !== 'all') query.direction = direction;
@@ -23,6 +24,25 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 	const start = rangeStart(range);
 	if (start) query.createdAt = { $gte: start };
+
+	if (q) {
+		// Literal substring match (regex metacharacters escaped), case-insensitive,
+		// against the addresses, the subject, or the linked candidate's name /
+		// employee code — the same fields HR searches on the candidates page.
+		const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+		const hitIds = (
+			await Candidate.find({ $or: [{ fullName: rx }, { employeeId: rx }] }, '_id').lean()
+		).map((c) => c._id);
+		const qClauses: Record<string, unknown>[] = [{ from: rx }, { to: rx }, { subject: rx }];
+		if (hitIds.length) qClauses.push({ candidateId: { $in: hitIds } });
+		if (query.$or) {
+			// A document can only carry one $or key — combine mailbox + search with $and.
+			query.$and = [{ $or: query.$or }, { $or: qClauses }];
+			delete query.$or;
+		} else {
+			query.$or = qClauses;
+		}
+	}
 
 	const [total, messages] = await Promise.all([
 		EmailMessage.countDocuments(query),
@@ -63,6 +83,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		range,
 		direction,
 		mailbox,
+		q,
 		ranges: RANGE_KEYS
 	};
 };

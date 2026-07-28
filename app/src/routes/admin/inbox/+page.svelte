@@ -33,14 +33,15 @@
 			range: data.range,
 			direction: data.direction,
 			mailbox: data.mailbox,
+			q: data.q,
 			...patch
 		};
 		for (const [k, v] of Object.entries(next)) if (v && v !== 'all') p.set(k, v);
-		const q = p.toString();
-		return q ? `?${q}` : '?';
+		const qs = p.toString();
+		return qs ? `?${qs}` : '?';
 	}
 
-	const isFiltered = $derived(data.range !== 'all' || !!data.direction || !!data.mailbox);
+	const isFiltered = $derived(data.range !== 'all' || !!data.direction || !!data.mailbox || !!data.q);
 	const totalPages = $derived(Math.max(1, Math.ceil(data.total / data.pageSize)));
 
 	function when(iso: string): string {
@@ -88,6 +89,31 @@
 		/>
 	</div>
 
+	<!-- GET form keeps the search in the URL like the other filters; hidden
+	     inputs carry the active filters so a search doesn't silently drop them.
+	     page is deliberately omitted — a new search starts on page 1. -->
+	<form class="searchbox" method="GET" action="/admin/inbox" role="search" data-sveltekit-noscroll data-sveltekit-keepfocus>
+		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.direction && data.direction !== 'all'}<input type="hidden" name="direction" value={data.direction} />{/if}
+		{#if data.mailbox}<input type="hidden" name="mailbox" value={data.mailbox} />{/if}
+		<input
+			type="search"
+			name="q"
+			value={data.q ?? ''}
+			placeholder="Search subject, address or candidate"
+			aria-label="Search mail by subject, address or candidate"
+			autocomplete="off"
+		/>
+		{#if data.q}
+			<a class="qbtn" href={href({ q: '' })} aria-label="Clear search" title="Clear search">
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+			</a>
+		{/if}
+		<button type="submit" class="qbtn" aria-label="Search" title="Search">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+		</button>
+	</form>
+
 	<span class="count">
 		{#if isFiltered}
 			Showing <b>{data.total}</b> matching
@@ -109,7 +135,9 @@
 	</div>
 	{#if data.messages.length === 0}
 		<p class="muted" style="padding:18px">
-			{#if isFiltered}
+			{#if data.q}
+				No mail matching “{data.q}”. <a href={href({ q: '' })}>Clear search</a> or <a href="?">show all</a>.
+			{:else if isFiltered}
 				No mail in this range. <a href="?">Show all</a>.
 			{:else}
 				No mail sent or received yet.
@@ -219,6 +247,63 @@
 		min-width: 150px;
 		font-size: 12.5px;
 		font-weight: 500;
+	}
+	/* Search box matches the GlassSelect trigger chrome. */
+	.searchbox {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		background: var(--ae-input-bg);
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 8px;
+		padding: 0 4px 0 12px;
+		min-width: 230px;
+		transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+	}
+	.searchbox:hover {
+		background: var(--ae-hover);
+	}
+	.searchbox:focus-within {
+		border-color: var(--ae-ember);
+		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
+	}
+	.searchbox input[type='search'] {
+		flex: 1;
+		min-width: 0;
+		background: none;
+		border: none;
+		outline: none;
+		color: var(--ae-text);
+		font: inherit;
+		font-size: 12.5px;
+		font-weight: 500;
+		padding: 8px 0;
+		appearance: none;
+		-webkit-appearance: none;
+	}
+	.searchbox input::placeholder {
+		color: var(--ae-muted);
+	}
+	/* Native clear button replaced by our own (the × next to the icon). */
+	.searchbox input::-webkit-search-cancel-button {
+		display: none;
+	}
+	.qbtn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: 6px;
+		background: none;
+		color: var(--ae-muted);
+		cursor: pointer;
+		transition: background 0.12s, color 0.12s;
+	}
+	.qbtn:hover {
+		background: var(--ae-hover);
+		color: var(--ae-text);
 	}
 	.count {
 		margin-left: auto;
