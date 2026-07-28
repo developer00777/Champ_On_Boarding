@@ -95,12 +95,18 @@
 	outline-offset: 1px;
 }
 
-/* Tooltip — appended to <body>, so styled globally within the admin scope */
+/* Tooltip — appended to <body>, so styled globally within the admin scope.
+   Being a sibling of .aegis (not a descendant), it can't inherit that
+   element's --ae-* custom properties — CSS variables cascade to
+   descendants only — so the var() fallbacks below (dark-mode hex) were
+   silently the *only* colors ever applied, tooltip text staying dark-mode
+   colored even in light mode. Select on :has() instead of relying on
+   inheritance, and set explicit light values rather than only a fallback. */
 .viz-tooltip {
 	position: fixed;
 	pointer-events: none;
 	background: #0d0f18;
-	border: 1px solid var(--ae-line-strong);
+	border: 1px solid rgba(255, 255, 255, 0.1);
 	border-radius: 9px;
 	padding: 8px 11px;
 	font-size: 11.5px;
@@ -109,18 +115,27 @@
 	opacity: 0;
 	transition: opacity 0.1s;
 	max-width: 220px;
-	font-family: var(--ae-font-body, 'Inter', sans-serif);
-	color: var(--ae-text-2, #cbd1de);
+	font-family: 'Inter', system-ui, sans-serif;
+	color: #cbd1de;
+}
+body:has(.aegis[data-theme='light']) .viz-tooltip {
+	background: #ffffff;
+	border-color: rgba(32, 36, 58, 0.14);
+	box-shadow: 0 12px 30px -8px rgba(70, 75, 120, 0.35);
+	color: #3e445c;
 }
 .viz-tooltip.show {
 	opacity: 1;
 }
 .viz-tooltip .tt-title {
 	font-weight: 650;
-	color: var(--ae-text, #fafaf7);
+	color: #fafaf7;
 	margin-bottom: 4px;
-	font-family: var(--ae-font-mono, monospace);
+	font-family: 'JetBrains Mono', ui-monospace, monospace;
 	font-size: 10.5px;
+}
+body:has(.aegis[data-theme='light']) .viz-tooltip .tt-title {
+	color: #20243a;
 }
 .viz-tooltip .tt-row {
 	display: flex;
@@ -135,10 +150,13 @@
 }
 .viz-tooltip .tt-val {
 	margin-left: auto;
-	font-family: var(--ae-font-mono, monospace);
+	font-family: 'JetBrains Mono', ui-monospace, monospace;
 	font-variant-numeric: tabular-nums;
-	color: var(--ae-text, #fafaf7);
+	color: #fafaf7;
 	font-weight: 600;
+}
+body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
+	color: #20243a;
 }
 
 .aegis svg text {

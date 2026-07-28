@@ -1,15 +1,81 @@
 // Client-only chart rendering for /admin/analytics. Plain DOM/SVG/Canvas, no
 // charting library — dynamically imported from +page.svelte so this never
-// ships in the SSR bundle. Palette validated against the Aegis dark surface
-// (#171430) with scripts/validate_palette.js from the dataviz skill: all
-// eight categorical hues pass lightness band, chroma floor, CVD separation
-// (adjacent 8.4 protan / 8.7 tritan), normal-vision floor (19.3), contrast.
+// ships in the SSR bundle. SVG/Canvas need literal color values, not CSS
+// custom properties, so the palette is duplicated here rather than read from
+// aegis.css — both dark and light are validated with
+// scripts/validate_palette.js from the dataviz skill against this tab's
+// actual chart surface in each theme (#171430 dark / #f6f7fc light — the
+// light one is .aegis[data-theme='light']'s --ae-sub-bg card tint blended
+// over its page gradient, computed once and treated as the flat reference
+// the same way #171430 already was for dark):
+//   dark:  all 8 categorical hues pass lightness band, chroma floor, CVD
+//          separation (adjacent 8.4 protan / 8.7 tritan), normal-vision
+//          floor (19.3), contrast — this is the palette already shipped.
+//   light: reference palette (dataviz skill's palette.md) light column —
+//          passes lightness band, chroma floor, CVD (9.1 protan), normal-
+//          vision floor (19.6); contrast WARNs on 4 of 8 hues (2.0–3.0:1),
+//          which is why every chart also value-labels its marks (the
+//          relief rule: WARN is legal only with visible direct labels).
+//   status (good/warn/crit/info): dark values are aegis.css's mode-
+//          invariant --ae-verdant/amber/crimson/azure; light values are
+//          deepened steps of the same hues (verdant/amber/crimson/azure
+//          all fail contrast on the light surface as shipped, 1.75–2.6:1),
+//          re-validated as their own 4-slot set (CVD 8.3 protan, contrast
+//          all >=3:1).
+//   text (primary/secondary/muted): light values are aegis.css's own
+//          --ae-text/--ae-text-2/--ae-muted light tokens (already used by
+//          every non-chart element on this page) — 14.3:1 / 9.0:1 / 4.5:1
+//          against the light chart surface, all comfortably above WCAG AA.
 import { computeFindings, type InsightsInput, type Finding, type Severity } from './insights';
 
-const SERIES = ['#3987e5', '#199e70', '#9085e9', '#d95926', '#c98500', '#d55181', '#e66767', '#6b7690'];
-const ST = { good: '#3ecf9a', warn: '#f2b15c', crit: '#f07575', info: '#7ba7f0' };
-const TXT = { primary: '#fafaf7', secondary: '#cbd1de', muted: '#8a91a5', faint: '#4b5160', mono: "'JetBrains Mono', ui-monospace, monospace" };
-const SURFACE = '#171430';
+const PALETTE = {
+	dark: {
+		series: ['#3987e5', '#199e70', '#9085e9', '#d95926', '#c98500', '#d55181', '#e66767', '#6b7690'],
+		status: { good: '#3ecf9a', warn: '#f2b15c', crit: '#f07575', info: '#7ba7f0' },
+		text: { primary: '#fafaf7', secondary: '#cbd1de', muted: '#8a91a5', faint: '#4b5160' },
+		surface: '#171430'
+	},
+	light: {
+		series: ['#2a78d6', '#1baf7a', '#4a3aa7', '#eb6834', '#eda100', '#e87ba4', '#e34948', '#5a6178'],
+		status: { good: '#0f9d6e', warn: '#c08300', crit: '#d1355c', info: '#3c6fd1' },
+		text: { primary: '#20243a', secondary: '#3e445c', muted: '#6a7186', faint: '#b7bccb' },
+		surface: '#f6f7fc'
+	}
+};
+
+function currentTheme(): 'dark' | 'light' {
+	return document.querySelector('.aegis')?.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+// SERIES/ST/TXT/SURFACE stay as the call sites' existing names (SERIES[i],
+// ST.good, TXT.muted, …) but resolve against the live theme on every read —
+// a Proxy rather than threading a theme param through every chart function.
+const SERIES = new Proxy([] as string[], {
+	get(_t, prop) {
+		const arr = PALETTE[currentTheme()].series;
+		return (arr as unknown as Record<PropertyKey, unknown>)[prop];
+	}
+}) as unknown as string[];
+const ST = new Proxy(
+	{},
+	{
+		get(_t, prop) {
+			return (PALETTE[currentTheme()].status as Record<PropertyKey, string>)[prop as string];
+		}
+	}
+) as { good: string; warn: string; crit: string; info: string };
+const TXT = new Proxy(
+	{},
+	{
+		get(_t, prop) {
+			if (prop === 'mono') return "'JetBrains Mono', ui-monospace, monospace";
+			return (PALETTE[currentTheme()].text as Record<PropertyKey, string>)[prop as string];
+		}
+	}
+) as { primary: string; secondary: string; muted: string; faint: string; mono: string };
+function SURFACE(): string {
+	return PALETTE[currentTheme()].surface;
+}
 
 const NS = 'http://www.w3.org/2000/svg';
 function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
@@ -141,7 +207,7 @@ function lineChart(
 			let rows = '';
 			keys.forEach((k, ki) => {
 				const cy = yAt(numAt(row, k));
-				svg.appendChild(el('circle', { cx: hx, cy, r: '4', fill: colors[ki], stroke: SURFACE, 'stroke-width': '2', class: 'hover-dot' }));
+				svg.appendChild(el('circle', { cx: hx, cy, r: '4', fill: colors[ki], stroke: SURFACE(), 'stroke-width': '2', class: 'hover-dot' }));
 				rows += `<div class="tt-row"><span class="tt-swatch" style="background:${colors[ki]}"></span>${opts.keyLabels[ki]}<span class="tt-val">${fmtNum(numAt(row, k))}</span></div>`;
 			});
 			showTooltip(evt.clientX, evt.clientY, `<div class="tt-title">${opts.xLabel(i)}</div>${rows}`);
@@ -202,7 +268,7 @@ function stackedAreaChart(data: TrendPoint[], keys: TrendNumericKey[], colors: s
 			return [xAt(i), pad.t + ih - (cum[i] / maxTotal) * ih];
 		});
 		const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-		svg.appendChild(el('path', { d, fill: 'none', stroke: SURFACE, 'stroke-width': '2' }));
+		svg.appendChild(el('path', { d, fill: 'none', stroke: SURFACE(), 'stroke-width': '2' }));
 	});
 
 	const everyN = Math.max(1, Math.round(data.length / 8));
@@ -1005,7 +1071,7 @@ function initGraphCanvas(container: HTMLElement, nodes: SimNode[], edges: SimEdg
 			ctx.fillStyle = nodeColor(n);
 			ctx.fill();
 			ctx.lineWidth = filterActive && !dim ? 3 : 2;
-			ctx.strokeStyle = filterActive && !dim ? TXT.primary : SURFACE;
+			ctx.strokeStyle = filterActive && !dim ? TXT.primary : SURFACE();
 			ctx.stroke();
 			if (n.kind === 'company' || n.kind === 'track' || n === sim.hoverNode || (filterActive && !dim)) {
 				ctx.globalAlpha = dim ? 0.25 : 1;

@@ -31,6 +31,22 @@
 	];
 
 	let chartsMod: typeof import('./charts') | null = $state(null);
+	let themeVersion = $state(0);
+	onMount(() => {
+		// Charts are SVG/Canvas with colors baked in at render time, not CSS —
+		// the theme toggle (see admin/+layout.svelte) flips instantly with no
+		// reload, so without this every chart stays stuck in whichever theme
+		// was active on first render. Bump a counter so the $effect below
+		// treats every non-active tab as stale too, and re-renders on revisit.
+		const root = document.querySelector('.aegis');
+		if (!root) return;
+		const observer = new MutationObserver(() => {
+			rendered = {};
+			themeVersion++;
+		});
+		observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+		return () => observer.disconnect();
+	});
 	onMount(async () => {
 		chartsMod = await import('./charts');
 	});
@@ -102,6 +118,9 @@
 
 	$effect(() => {
 		if (!chartsMod) return;
+		// Read so a theme flip (see the MutationObserver above) re-runs this
+		// effect and repaints whichever tab is currently open.
+		void themeVersion;
 		if (activeTab === 'graph' && graphEl) {
 			chartsMod.renderGraphTab(graphEl, data.graph, {
 				docSlots: data.docSlots,
