@@ -68,6 +68,11 @@
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
 				Home
 			</a>
+			<span class="navitem soon" aria-disabled="true">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.5l7.5 3.4v5.4c0 4.7-3.2 8.9-7.5 10.2-4.3-1.3-7.5-5.5-7.5-10.2V5.9L12 2.5Z" /><path d="M9 12l2 2 4-4.2" /></svg>
+				BGV verification
+				<span class="soon-tag">Soon</span>
+			</span>
 			<a
 				href="/admin/candidates"
 				class="navitem"
@@ -231,6 +236,31 @@
 	.navitem:focus-visible {
 		outline: 2px solid var(--ae-ember);
 		outline-offset: 1px;
+	}
+	.navitem.soon {
+		cursor: default;
+		color: var(--ae-faint);
+	}
+	.navitem.soon:hover {
+		background: none;
+		color: var(--ae-faint);
+	}
+	.navitem.soon svg {
+		opacity: 0.5;
+	}
+	.soon-tag {
+		margin-left: auto;
+		font-family: var(--ae-font-mono);
+		font-size: 8.5px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ae-faint);
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid var(--ae-line);
+		border-radius: 5px;
+		padding: 2px 5px;
+		flex: none;
 	}
 	.rail-foot {
 		margin-top: auto;
