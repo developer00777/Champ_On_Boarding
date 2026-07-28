@@ -123,6 +123,47 @@ export function nameSimilarity(a: string, b: string): number {
 	return Math.max(tokenScore, fullScore);
 }
 
+// --- typeahead fuzzy ranking --------------------------------------------------
+// Search-box ranking (candidates/inbox typeahead): unlike nameSimilarity above,
+// a search query is a fragment the admin is still typing, not a full field to
+// compare — so an exact substring/prefix hit should always outrank a Jaro-Winkler
+// near-miss, and short queries ("ka") shouldn't fuzzy-match everything.
+
+/** 0–1 relevance of `query` against `text` for typeahead ranking. Exact
+ *  substring hits score highest (prefix scores higher still); otherwise falls
+ *  back to Jaro-Winkler so a typo ("Kartik") still surfaces ("Karthik"). Also
+ *  tried against each whitespace token of `text` — a typo'd surname ("redy")
+ *  would otherwise be swamped by the length mismatch against the full
+ *  "karthik reddy" string and never clear the ranking floor. */
+export function fuzzyScore(query: string, text: string): number {
+	const q = query.trim().toLowerCase();
+	const t = text.trim().toLowerCase();
+	if (!q || !t) return 0;
+	if (t === q) return 1;
+	if (t.startsWith(q)) return 0.95;
+	if (t.includes(q)) return 0.85;
+	// Below ~3 chars, Jaro-Winkler on short strings is too easily fooled
+	// (e.g. "ka" vs "sara" scores high) — require a literal match instead.
+	if (q.length < 3) return 0;
+	const whole = jaroWinkler(q, t);
+	const tokens = t.split(/\s+/);
+	const bestToken = tokens.length > 1 ? Math.max(...tokens.map((tok) => jaroWinkler(q, tok))) : 0;
+	return Math.max(whole, bestToken) * 0.7;
+}
+
+/** Best fuzzyScore of `query` against any of an item's searchable fields,
+ *  ranked and filtered to a floor so unrelated results don't show up. */
+export function rankByFuzzyMatch<T>(items: T[], query: string, fields: (item: T) => Array<string | null | undefined>, limit: number): T[] {
+	const scored = items
+		.map((item) => {
+			const score = Math.max(0, ...fields(item).map((f) => (f ? fuzzyScore(query, f) : 0)));
+			return { item, score };
+		})
+		.filter((s) => s.score >= 0.4)
+		.sort((a, b) => b.score - a.score);
+	return scored.slice(0, limit).map((s) => s.item);
+}
+
 // --- date normalisation ------------------------------------------------------
 
 /** Coerce DD/MM/YYYY, YYYY-MM-DD, DD-MM-YY etc. to canonical YYYY-MM-DD, or null. */
