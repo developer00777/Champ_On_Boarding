@@ -8,6 +8,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const safeRange: RangeKey = RANGE_KEYS.includes(range) ? range : 'all';
 	const track = url.searchParams.get('track') ?? '';
 	const status = url.searchParams.get('status') ?? '';
+	const q = (url.searchParams.get('q') ?? '').trim();
 
 	// Filter in the query, not the client: this list only grows, and the page
 	// should not ship every candidate to the browser to hide most of them.
@@ -16,6 +17,12 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (from) where.createdAt = { $gte: from };
 	if (track) where.track = track;
 	if (status) where.status = status;
+	if (q) {
+		// Literal substring match (regex metacharacters escaped), case-insensitive,
+		// against the candidate's name or their employee code once generated.
+		const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+		where.$or = [{ fullName: rx }, { employeeId: rx }];
+	}
 
 	const [docs, total] = await Promise.all([
 		Candidate.find(where).populate('companyId').sort({ createdAt: -1 }).lean(),
@@ -40,6 +47,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		range: safeRange,
 		track,
 		status,
+		q,
 		tracks: TRACKS
 	};
 };
