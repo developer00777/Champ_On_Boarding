@@ -983,7 +983,7 @@
 			<div class="eyebrow red-eyebrow" style="margin-bottom:14px">Physical items · joining day</div>
 			{#each data.physical as item}
 				<form method="POST" action="?/physical" use:enhance class="physrow">
-					<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<fieldset class="rbac" disabled={!data.isApprover}>
 						<input type="hidden" name="itemId" value={item.id} />
 						<input type="hidden" name="received" value={item.received ? 'false' : 'true'} />
 						<button class="phys-check" class:on={item.received} aria-label="Toggle received">
