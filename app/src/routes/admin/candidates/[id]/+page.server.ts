@@ -40,18 +40,19 @@ async function getCandidate(id: string) {
 
 /** Most mutations on a candidate record are super_admin-only. hr_admin keeps
  *  full read access to this page but cannot change these fields, regardless
- *  of the candidate's status. Approving, sending the offer letter, and
- *  marking physical items received are carved out via requireApprover below. */
+ *  of the candidate's status. Approving, sending the offer letter, marking
+ *  physical items received, and assigning the employee code are carved out
+ *  via requireApprover below. */
 function requireSuperAdmin(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Only a super admin can edit candidate records.' });
 	return null;
 }
 
-/** Approving a candidate, sending their offer letter, and logging physical
- *  handover items (photos, signed offer letter, NDA) on joining day are
- *  HR/recruiter's core job, not an admin-only escalation — both hr_admin and
- *  super_admin can perform these. Every other mutation on this page stays
- *  super_admin-only. */
+/** Approving a candidate, sending their offer letter, logging physical
+ *  handover items (photos, signed offer letter, NDA) on joining day, and
+ *  assigning the employee code are HR/recruiter's core job, not an
+ *  admin-only escalation — both hr_admin and super_admin can perform these.
+ *  Every other mutation on this page stays super_admin-only. */
 function requireApprover(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
 		return fail(403, { message: 'Only HR or a super admin can do this.' });
@@ -724,7 +725,7 @@ export const actions: Actions = {
 	},
 
 	setEmployeeId: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);

@@ -445,7 +445,7 @@
 				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available after approval.</p>
 			{/if}
 			<form method="POST" action="?/setEmployeeId" use:enhance class="emp-form">
-				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<fieldset class="rbac" disabled={!data.isApprover}>
 					<input
 						name="employeeId"
 						value={empId}
