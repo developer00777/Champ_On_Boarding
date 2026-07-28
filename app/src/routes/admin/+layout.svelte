@@ -189,7 +189,7 @@
 		padding: 4px 8px 18px;
 	}
 	.rail-brand img {
-		height: 32px;
+		height: 42px;
 		width: auto;
 		object-fit: contain;
 	}
@@ -363,7 +363,7 @@
 			padding: 0 10px 0 4px;
 		}
 		.rail-brand img {
-			height: 24px;
+			height: 30px;
 		}
 		.rail-sec,
 		.rail-foot {
