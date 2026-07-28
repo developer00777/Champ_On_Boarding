@@ -36,7 +36,7 @@ const candidateSchema = new Schema(
 	{
 		companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
 		track: { type: String, enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract'], required: true },
-		fullName: String,
+		fullName: { type: String, index: true },
 		dob: String,
 		gender: String,
 		email: { type: String, required: true, index: true },
@@ -74,7 +74,7 @@ const candidateSchema = new Schema(
 		accountNo: String,
 		ifsc: String,
 		branch: String,
-		employeeId: { type: String, default: null },
+		employeeId: { type: String, default: null, index: true },
 		ocrSuggestions: { type: Map, of: String, default: {} },
 		// HR asking a candidate to upload an optional document they skipped (e.g.
 		// degree certificate) — there is no Document row to flip reviewStatus on
@@ -269,9 +269,9 @@ const emailMessageSchema = new Schema(
 		direction: { type: String, enum: ['outbound', 'inbound'], required: true },
 		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', default: null },
 		resendEmailId: { type: String, default: null, index: true },
-		from: { type: String, required: true },
-		to: { type: String, required: true },
-		subject: { type: String, default: null },
+		from: { type: String, required: true, index: true },
+		to: { type: String, required: true, index: true },
+		subject: { type: String, default: null, index: true },
 		text: { type: String, default: null },
 		purpose: { type: String, default: null },
 		// Outbound lifecycle: sent → delivered → opened/clicked, or bounced/

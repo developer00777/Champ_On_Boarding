@@ -2,6 +2,7 @@
 	import { TRACK_LABELS, type Track } from '$lib/shared/matrix';
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
+	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 
 	let { data } = $props();
 
@@ -30,6 +31,18 @@
 
 	const filtered = $derived(data.candidates.length);
 	const isFiltered = $derived(data.range !== 'all' || !!data.track || !!data.status || !!data.q);
+
+	async function fetchCandidateSuggestions(q: string) {
+		const res = await fetch(`/admin/candidates/search?q=${encodeURIComponent(q)}`);
+		if (!res.ok) return [];
+		const { results } = await res.json();
+		return results.map((c: { id: string; fullName: string | null; email: string; employeeId: string | null }) => ({
+			id: c.id,
+			primary: c.fullName || c.email,
+			secondary: c.employeeId ? `Employee code ${c.employeeId}` : c.email,
+			href: `/admin/candidates/${c.id}`
+		}));
+	}
 
 	function when(iso: string): string {
 		const d = new Date(iso);
@@ -86,22 +99,15 @@
 		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
 		{#if data.track}<input type="hidden" name="track" value={data.track} />{/if}
 		{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}
-		<input
-			type="search"
+		<SearchTypeahead
 			name="q"
 			value={data.q ?? ''}
 			placeholder="Search name or employee code"
-			aria-label="Search candidates by name or employee code"
-			autocomplete="off"
+			ariaLabel="Search candidates by name or employee code"
+			clearHref={href({ q: '' })}
+			fetchSuggestions={fetchCandidateSuggestions}
+			onSelect={(s) => s.href ?? `/admin/candidates/${s.id}`}
 		/>
-		{#if data.q}
-			<a class="qbtn" href={href({ q: '' })} aria-label="Clear search" title="Clear search">
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-			</a>
-		{/if}
-		<button type="submit" class="qbtn" aria-label="Search" title="Search">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-		</button>
 	</form>
 
 	<span class="count">
@@ -214,44 +220,6 @@
 	.searchbox:focus-within {
 		border-color: var(--ae-ember);
 		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
-	}
-	.searchbox input[type='search'] {
-		flex: 1;
-		min-width: 0;
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--ae-text);
-		font: inherit;
-		font-size: 12.5px;
-		font-weight: 500;
-		padding: 8px 0;
-		appearance: none;
-		-webkit-appearance: none;
-	}
-	.searchbox input::placeholder {
-		color: var(--ae-muted);
-	}
-	/* Native clear button replaced by our own (the × next to the icon). */
-	.searchbox input::-webkit-search-cancel-button {
-		display: none;
-	}
-	.qbtn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: none;
-		border-radius: 6px;
-		background: none;
-		color: var(--ae-muted);
-		cursor: pointer;
-		transition: background 0.12s, color 0.12s;
-	}
-	.qbtn:hover {
-		background: var(--ae-hover);
-		color: var(--ae-text);
 	}
 	.count {
 		margin-left: auto;

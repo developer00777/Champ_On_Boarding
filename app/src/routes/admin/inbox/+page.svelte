@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
+	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 
 	let { data } = $props();
 
@@ -43,6 +44,20 @@
 
 	const isFiltered = $derived(data.range !== 'all' || !!data.direction || !!data.mailbox || !!data.q);
 	const totalPages = $derived(Math.max(1, Math.ceil(data.total / data.pageSize)));
+
+	async function fetchInboxSuggestions(q: string) {
+		const res = await fetch(`/admin/inbox/search?q=${encodeURIComponent(q)}`);
+		if (!res.ok) return [];
+		const { results } = await res.json();
+		return results.map(
+			(m: { id: string; direction: string; candidateName: string | null; from: string; to: string; subject: string | null; href: string }) => ({
+				id: m.id,
+				primary: m.subject || '(no subject)',
+				secondary: m.candidateName ?? (m.direction === 'inbound' ? m.from : m.to),
+				href: m.href
+			})
+		);
+	}
 
 	function when(iso: string): string {
 		const d = new Date(iso);
@@ -96,22 +111,15 @@
 		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
 		{#if data.direction && data.direction !== 'all'}<input type="hidden" name="direction" value={data.direction} />{/if}
 		{#if data.mailbox}<input type="hidden" name="mailbox" value={data.mailbox} />{/if}
-		<input
-			type="search"
+		<SearchTypeahead
 			name="q"
 			value={data.q ?? ''}
 			placeholder="Search subject, address or candidate"
-			aria-label="Search mail by subject, address or candidate"
-			autocomplete="off"
+			ariaLabel="Search mail by subject, address or candidate"
+			clearHref={href({ q: '' })}
+			fetchSuggestions={fetchInboxSuggestions}
+			onSelect={(s) => s.href ?? href({ q: s.primary })}
 		/>
-		{#if data.q}
-			<a class="qbtn" href={href({ q: '' })} aria-label="Clear search" title="Clear search">
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-			</a>
-		{/if}
-		<button type="submit" class="qbtn" aria-label="Search" title="Search">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-		</button>
 	</form>
 
 	<span class="count">
@@ -266,44 +274,6 @@
 	.searchbox:focus-within {
 		border-color: var(--ae-ember);
 		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
-	}
-	.searchbox input[type='search'] {
-		flex: 1;
-		min-width: 0;
-		background: none;
-		border: none;
-		outline: none;
-		color: var(--ae-text);
-		font: inherit;
-		font-size: 12.5px;
-		font-weight: 500;
-		padding: 8px 0;
-		appearance: none;
-		-webkit-appearance: none;
-	}
-	.searchbox input::placeholder {
-		color: var(--ae-muted);
-	}
-	/* Native clear button replaced by our own (the × next to the icon). */
-	.searchbox input::-webkit-search-cancel-button {
-		display: none;
-	}
-	.qbtn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: none;
-		border-radius: 6px;
-		background: none;
-		color: var(--ae-muted);
-		cursor: pointer;
-		transition: background 0.12s, color 0.12s;
-	}
-	.qbtn:hover {
-		background: var(--ae-hover);
-		color: var(--ae-text);
 	}
 	.count {
 		margin-left: auto;

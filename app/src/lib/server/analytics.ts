@@ -46,7 +46,7 @@ export async function getFunnelSnapshot(filters: AnalyticsFilters) {
 	};
 	return {
 		sent: reached('created'),
-		opened: reached('opened') + reached('in_progress') + reached('submitted') + reached('changes_requested') + reached('approved') + reached('complete'),
+		opened: reached('opened'),
 		submitted: (byStatus.submitted ?? 0) + (byStatus.changes_requested ?? 0) + (byStatus.approved ?? 0) + (byStatus.complete ?? 0),
 		approved: (byStatus.approved ?? 0) + (byStatus.complete ?? 0),
 		complete: byStatus.complete ?? 0,

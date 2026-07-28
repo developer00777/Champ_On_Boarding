@@ -21,6 +21,16 @@ function fmtNum(n: number): string {
 	return n.toLocaleString('en-IN');
 }
 
+// Rough glyph width for the body font at a given SVG font-size — wide enough
+// per character that this only ever over-truncates, never under- (avoiding a
+// canvas measureText() round trip just to size a chart label column).
+function truncateLabel(label: string, maxWidth: number, fontSize: number): string {
+	const avgCharWidth = fontSize * 0.62;
+	const maxChars = Math.max(1, Math.floor(maxWidth / avgCharWidth));
+	if (label.length <= maxChars) return label;
+	return label.slice(0, Math.max(1, maxChars - 1)).trimEnd() + '…';
+}
+
 let tooltipEl: HTMLDivElement | null = null;
 function tooltip(): HTMLDivElement {
 	if (tooltipEl) return tooltipEl;
@@ -32,8 +42,16 @@ function tooltip(): HTMLDivElement {
 function showTooltip(x: number, y: number, html: string) {
 	const t = tooltip();
 	t.innerHTML = html;
-	t.style.left = x + 14 + 'px';
-	t.style.top = y + 14 + 'px';
+	// Default to the cursor's bottom-right, then flip to whichever side keeps
+	// the tooltip on screen — offsetWidth/Height are only correct once the
+	// content above is set and the element isn't display:none, which is why
+	// this reads them after innerHTML and relies on opacity (not display) to hide it.
+	let left = x + 14;
+	let top = y + 14;
+	if (left + t.offsetWidth > window.innerWidth) left = x - t.offsetWidth - 14;
+	if (top + t.offsetHeight > window.innerHeight) top = y - t.offsetHeight - 14;
+	t.style.left = Math.max(4, left) + 'px';
+	t.style.top = Math.max(4, top) + 'px';
 	t.classList.add('show');
 }
 function hideTooltip() {
@@ -274,7 +292,10 @@ function funnelChart(stages: { label: string; value: number; color: string }[]):
 		h = stages.length * (rowH + gap);
 	const pad = { l: 130, r: 60 };
 	const iw = w - pad.l - pad.r;
-	const maxV = stages[0]?.value || 1;
+	// The funnel is meant to be monotonically non-increasing, but guard against
+	// a later stage's count exceeding the first anyway — otherwise a bar (and
+	// its value label) renders past the viewBox and bleeds out of the card.
+	const maxV = Math.max(stages[0]?.value || 1, ...stages.map((s) => s.value));
 	const svg = el('svg', { width: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'overflow:visible' });
 
 	stages.forEach((s, i) => {
@@ -390,14 +411,33 @@ function hbarChart(rows: { label: string; value: number; note?: string }[], opts
 		h = rows.length * (rowH + gap) + 10;
 	const pad = { l: opts.labelW || 150, r: 46 };
 	const iw = w - pad.l - pad.r;
-	const svg = el('svg', { width: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'overflow:visible' });
+	// Row count is unbounded (one row per document slot / company), so the
+	// intrinsic aspect ratio (h/w) grows with it — left unconstrained, the
+	// browser scales height to match width at that ratio, ballooning row
+	// height and font-size far past their designed px sizes. Pin height to
+	// the actual row layout instead, so only width (via viewBox) is responsive.
+	const svg = el('svg', { width: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: `overflow:visible;height:${h}px;display:block` });
 
 	rows.forEach((r, i) => {
 		const y = i * (rowH + gap);
 		const barW = (r.value / (opts.max || 100)) * iw;
 		const label = el('text', { x: pad.l - 10, y: y + rowH / 2 + 4, 'text-anchor': 'end', style: `font-size:11px;fill:${TXT.secondary}` });
-		label.textContent = r.label;
+		// Some document slot labels ("Relieving Letter / Resignation Acceptance
+		// Email (optional)") are far longer than the reserved label column and
+		// would otherwise spill past x=0 — SVG text has no text-overflow, so
+		// truncate with a monospace-width estimate (safe overestimate for the
+		// proportional font actually used) and rely on the <title> + the hover
+		// tooltip below for the full text.
+		label.textContent = truncateLabel(r.label, pad.l - 14, 11);
+		const titleEl = document.createElementNS(NS, 'title');
+		titleEl.textContent = r.label;
+		label.appendChild(titleEl);
 		svg.appendChild(label);
+
+		// A full-width track behind the bar so a genuine 0% reads as "empty
+		// slot in a real scale," not a rendering glitch — mirrors meterRow()'s
+		// track-plus-fill pattern used elsewhere on this same tab.
+		svg.appendChild(el('rect', { x: pad.l, y: y + 3, width: iw, height: rowH - 6, rx: '4', fill: 'rgba(255,255,255,0.06)' }));
 
 		const color = r.value < 65 ? ST.crit : r.value < 80 ? ST.warn : ST.good;
 		const bar = el('rect', { x: pad.l, y: y + 3, width: Math.max(3, barW), height: rowH - 6, rx: '4', fill: color, opacity: '0.85', style: 'cursor:pointer' });
@@ -520,21 +560,40 @@ function heatmap(rows: BreakdownRow[]): SVGSVGElement {
 	const trackLabels = rows[0]?.tracks.map((t) => t.label) ?? [];
 	const w = labelW + cellW * trackLabels.length + 10;
 	const h = labelH + cellH * rows.length + 10;
-	const svg = el('svg', { width: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'overflow:visible' });
+	// Unlike the bar/line charts, both dimensions here are fixed-size cells in
+	// a grid (columns = tracks, rows = companies) — there's no benefit to
+	// stretching to fill the container, and doing so via width:100% (with only
+	// an implied aspect ratio, no explicit height) balloons every cell and
+	// label to match whatever width the container happens to have. Size the
+	// SVG to its natural pixel dimensions instead; the wrapper's
+	// overflow-x:auto (see renderBreakdownTab) handles a grid wider than the card.
+	const svg = el('svg', { width: `${w}px`, height: `${h}px`, viewBox: `0 0 ${w} ${h}`, style: 'overflow:visible;display:block' });
 
 	const maxV = Math.max(...rows.flatMap((r) => r.tracks.map((t) => t.n)), 1);
 
 	trackLabels.forEach((label, ti) => {
 		const tx = labelW + ti * cellW + cellW / 2;
 		const lbl = el('text', { x: tx, y: 16, 'text-anchor': 'middle', class: 'tick-label' });
-		lbl.textContent = label;
+		// Long track names ("Experienced", "Consultant") are wider than a fixed
+		// cellW column and collide with the next header — truncate to fit, same
+		// approach as the row labels in hbarChart().
+		lbl.textContent = truncateLabel(label, cellW - 6, 10);
+		const titleEl = document.createElementNS(NS, 'title');
+		titleEl.textContent = label;
+		lbl.appendChild(titleEl);
 		svg.appendChild(lbl);
 	});
 
 	rows.forEach((row, ci) => {
 		const ly = labelH + ci * cellH + cellH / 2 + 4;
 		const lbl = el('text', { x: labelW - 10, y: ly, 'text-anchor': 'end', style: `font-size:11px;fill:${TXT.secondary}` });
-		lbl.textContent = row.company;
+		// Company names ("Champion Infratech Pvt Ltd") can run longer than the
+		// reserved label column — truncate so a long name can't collide with
+		// the first data column, same as the track header labels above.
+		lbl.textContent = truncateLabel(row.company, labelW - 14, 11);
+		const titleEl = document.createElementNS(NS, 'title');
+		titleEl.textContent = row.company;
+		lbl.appendChild(titleEl);
 		svg.appendChild(lbl);
 
 		row.tracks.forEach((t, ti) => {
@@ -646,6 +705,7 @@ interface GraphSimState {
 	hoverNode: SimNode | null;
 	dpr: number;
 	kindFilter: { type: string; tier?: string } | null;
+	resizeObserver?: ResizeObserver;
 }
 
 function nodeMatchesFilter(n: SimNode, filter: GraphSimState['kindFilter']): boolean {
@@ -831,6 +891,15 @@ function wireLegendFilter(container: HTMLElement) {
 const graphSimByContainer = new WeakMap<HTMLElement, GraphSimState>();
 
 function initGraphCanvas(container: HTMLElement, nodes: SimNode[], edges: SimEdge[]) {
+	// Rebuilt fresh every time this tab is opened — stop the previous sim's
+	// animation loop and resize observer, or they leak (running loop against a
+	// detached canvas, an observer on a wrap element nothing tears down).
+	const prevSim = graphSimByContainer.get(container);
+	if (prevSim) {
+		prevSim.running = false;
+		prevSim.resizeObserver?.disconnect();
+	}
+
 	const wrap = container.querySelector('#graphCanvasWrap') as HTMLElement;
 	wrap.innerHTML = '';
 	const canvas = document.createElement('canvas');
@@ -841,14 +910,26 @@ function initGraphCanvas(container: HTMLElement, nodes: SimNode[], edges: SimEdg
 	wrap.appendChild(canvas);
 
 	const dpr = window.devicePixelRatio || 1;
-	const rect = { width: wrap.clientWidth || 600, height: 420 };
-	canvas.width = rect.width * dpr;
-	canvas.height = rect.height * dpr;
 	const ctx = canvas.getContext('2d')!;
-	ctx.scale(dpr, dpr);
+
+	function resizeCanvas() {
+		const width = wrap.clientWidth || 600;
+		// Changing width/height resets the bitmap and the transform matrix, so
+		// the dpr scale has to be re-applied every time, not just on first paint.
+		canvas.width = width * dpr;
+		canvas.height = 420 * dpr;
+		ctx.scale(dpr, dpr);
+	}
+	resizeCanvas();
 
 	const sim: GraphSimState = { running: true, canvas, ctx, dragging: null, hoverNode: null, dpr, kindFilter: null };
 	graphSimByContainer.set(container, sim);
+
+	// The canvas's backing bitmap is fixed-resolution; without this, a browser
+	// resize (or a sidebar collapse) leaves it stale while CSS width stays
+	// 100%, so the drawing visually stretches/squashes against the new box.
+	sim.resizeObserver = new ResizeObserver(() => resizeCanvas());
+	sim.resizeObserver.observe(wrap);
 
 	function simTick() {
 		for (let i = 0; i < nodes.length; i++) {
