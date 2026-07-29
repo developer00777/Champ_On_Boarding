@@ -13,15 +13,37 @@ import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
 /** Statuses that mean "candidate still has work to do". */
 const IN_PROGRESS = ['created', 'opened', 'in_progress', 'changes_requested'];
 const DONE = ['approved', 'complete'];
+/** 'approved' = HR signed off but onboarding isn't fully wrapped (e.g. no
+ *  employee ID yet); 'complete' is the fully-onboarded end state. Kept as its
+ *  own stat since "Approved" already reports the broader DONE count. */
+const COMPLETE = ['complete'];
+
+/** Offer letters store joiningDate as a free-typed "DD/MM/YYYY" string (see
+ *  schema.ts), so "today" has to be built the same way rather than compared
+ *  as a Date — this keeps the match a plain string equality. */
+function todayDDMMYYYY(): string {
+	return new Date().toLocaleDateString('en-GB'); // en-GB -> DD/MM/YYYY
+}
 
 export const load: PageServerLoad = async ({ locals }) => {
 	// Count in the database rather than fetching every candidate to length-check
 	// four arrays in the browser. The full list lives at /admin/candidates now.
-	const [total, awaitingReview, inProgress, approved, recentDocs, companies, pendingOfferDocs] = await Promise.all([
+	const [
+		total,
+		awaitingReview,
+		inProgress,
+		approved,
+		completed,
+		recentDocs,
+		companies,
+		pendingOfferDocs,
+		joiningTodayDocs
+	] = await Promise.all([
 		Candidate.countDocuments(),
 		Candidate.countDocuments({ status: 'submitted' }),
 		Candidate.countDocuments({ status: { $in: IN_PROGRESS } }),
 		Candidate.countDocuments({ status: { $in: DONE } }),
+		Candidate.countDocuments({ status: { $in: COMPLETE } }),
 		Candidate.find().populate('companyId').sort({ createdAt: -1 }).limit(5).lean(),
 		Company.find({ active: true }).sort({ name: 1 }).lean(),
 		// Candidates HR has already approved but who don't yet have a sent offer
@@ -48,11 +70,34 @@ export const load: PageServerLoad = async ({ locals }) => {
 					as: 'company'
 				}
 			}
+		]),
+		// Candidates whose offer letter has actually been emailed (status:
+		// 'sent') and whose joiningDate is today — surfaced as a popup + Home
+		// section so HR doesn't have to remember to check who starts today.
+		Candidate.aggregate([
+			{
+				$lookup: {
+					from: 'offerletters',
+					localField: '_id',
+					foreignField: 'candidateId',
+					as: 'offerLetter'
+				}
+			},
+			{ $unwind: '$offerLetter' },
+			{ $match: { 'offerLetter.status': 'sent', 'offerLetter.joiningDate': todayDDMMYYYY() } },
+			{
+				$lookup: {
+					from: 'companies',
+					localField: 'companyId',
+					foreignField: '_id',
+					as: 'company'
+				}
+			}
 		])
 	]);
 
 	return {
-		stats: { total, awaitingReview, inProgress, approved },
+		stats: { total, awaitingReview, inProgress, approved, completed },
 		total,
 		recent: recentDocs.map((c) => {
 			const company = c.companyId as unknown as { name: string };
@@ -71,6 +116,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 			fullName: c.fullName ?? null,
 			track: c.track,
 			status: c.status,
+			company: c.company?.[0]?.name ?? ''
+		})),
+		joiningToday: joiningTodayDocs.map((c) => ({
+			id: String(c._id),
+			email: c.email,
+			fullName: c.fullName ?? null,
+			track: c.track,
 			company: c.company?.[0]?.name ?? ''
 		})),
 		companies: companies.map((c) => ({ id: String(c._id), name: c.name, brandSlug: c.brandSlug ?? null })),

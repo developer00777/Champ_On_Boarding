@@ -30,13 +30,69 @@
 		{ label: 'Total candidates', value: data.stats.total, color: 'var(--ae-text)' },
 		{ label: 'Awaiting review', value: data.stats.awaitingReview, color: 'var(--ae-ember-glow)' },
 		{ label: 'In progress', value: data.stats.inProgress, color: 'var(--ae-azure)' },
-		{ label: 'Approved', value: data.stats.approved, color: 'var(--ae-verdant)' }
+		{ label: 'Approved', value: data.stats.approved, color: 'var(--ae-verdant)' },
+		{ label: 'Completed', value: data.stats.completed, color: 'var(--ae-verdant)' },
+		{ label: 'Joining today', value: data.joiningToday.length, color: 'var(--ae-verdant)' }
 	]);
 
 	function copyLink(link: string) {
 		navigator.clipboard.writeText(link);
 	}
+
+	// Show the "Joining today" popup once per calendar day per browser tab
+	// session — re-showing it on every nav within the same day would just be
+	// noise once HR has already seen and dismissed it.
+	let showJoiningPopup = $state(false);
+	$effect(() => {
+		if (data.joiningToday.length === 0) return;
+		const today = new Date().toLocaleDateString('en-GB');
+		const dismissedKey = 'joiningTodayDismissed';
+		if (sessionStorage.getItem(dismissedKey) === today) return;
+		showJoiningPopup = true;
+	});
+
+	function dismissJoiningPopup() {
+		showJoiningPopup = false;
+		sessionStorage.setItem('joiningTodayDismissed', new Date().toLocaleDateString('en-GB'));
+	}
 </script>
+
+{#if showJoiningPopup}
+	<div
+		class="popup-overlay"
+		role="button"
+		tabindex="-1"
+		onclick={dismissJoiningPopup}
+		onkeydown={(e) => e.key === 'Escape' && dismissJoiningPopup()}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -- click-catcher only, stops the overlay's dismiss-on-click from firing; not itself interactive -->
+		<div
+			class="popup-card"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="joining-today-title"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="popup-badge">🎉 Joining today</div>
+			<h2 id="joining-today-title">
+				{data.joiningToday.length === 1 ? '1 candidate joins' : `${data.joiningToday.length} candidates join`} today
+			</h2>
+			<div class="popup-list">
+				{#each data.joiningToday as c (c.id)}
+					<a class="popup-row" href="/admin/candidates/{c.id}">
+						<div>
+							<div style="font-weight:600;font-size:14px;color:var(--ae-text)">{c.fullName || c.email}</div>
+							<div style="font-size:12px;color:var(--ae-muted)">{c.company} · {TRACK_LABELS[c.track as Track]}</div>
+						</div>
+						<span class="pill teal">JOINING TODAY</span>
+					</a>
+				{/each}
+			</div>
+			<button class="btn" style="width:100%;margin-top:6px" onclick={dismissJoiningPopup}>Got it</button>
+		</div>
+	</div>
+{/if}
 
 <h1 class="page-title">Home</h1>
 <p class="muted" style="margin:0 0 22px;font-size:14px">
@@ -107,6 +163,30 @@
 		</div>
 	{/if}
 </section>
+
+{#if data.joiningToday.length > 0}
+	<section class="table-card recent-card" style="margin-bottom:22px">
+		<div class="recent-head">
+			<span>Joining today</span>
+			<span class="seeall" style="color:var(--ae-verdant)">{data.joiningToday.length} starting</span>
+		</div>
+		{#each data.joiningToday as c (c.id)}
+			<a class="trow" href="/admin/candidates/{c.id}">
+				<div>
+					<div style="font-weight:500;font-size:14px;color:var(--ae-text)">{c.fullName || c.email}</div>
+					<div style="font-family:var(--ae-font-mono);font-size:11px;color:var(--ae-muted)">{c.email}</div>
+				</div>
+				<div class="tcell">{c.company}</div>
+				<div class="tcell">{TRACK_LABELS[c.track as Track]}</div>
+				<div><span class="pill teal">JOINING TODAY</span></div>
+				<div class="review-cta">
+					View
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" /></svg>
+				</div>
+			</a>
+		{/each}
+	</section>
+{/if}
 
 {#if data.pendingOffers.length > 0}
 	<section class="table-card recent-card" style="margin-bottom:22px">
@@ -181,7 +261,7 @@
 	}
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(6, 1fr);
 		gap: 13px;
 		margin-bottom: 20px;
 	}
@@ -244,6 +324,11 @@
 		cursor: pointer;
 		text-decoration: none;
 	}
+	@media (max-width: 1200px) {
+		.stats {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
 	@media (max-width: 900px) {
 		.stats {
 			grid-template-columns: repeat(2, 1fr);
@@ -251,5 +336,72 @@
 		.gen-grid {
 			grid-template-columns: 1fr 1fr;
 		}
+	}
+
+	.popup-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 200;
+		background: rgba(8, 9, 14, 0.55);
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		display: grid;
+		place-items: center;
+		padding: 20px;
+	}
+	.popup-card {
+		width: 100%;
+		max-width: 420px;
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		border-radius: var(--ae-card-radius);
+		box-shadow: var(--ae-card-shadow);
+		backdrop-filter: var(--ae-card-blur);
+		-webkit-backdrop-filter: var(--ae-card-blur);
+		padding: 24px;
+	}
+	.popup-badge {
+		display: inline-block;
+		font-family: var(--ae-font-mono);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ae-verdant);
+		background: rgba(62, 207, 154, 0.12);
+		border: 1px solid rgba(62, 207, 154, 0.3);
+		border-radius: 999px;
+		padding: 4px 11px;
+		margin-bottom: 12px;
+	}
+	.popup-card h2 {
+		font-family: var(--ae-font-display);
+		font-size: 21px;
+		font-weight: 600;
+		margin: 0 0 16px;
+		color: var(--ae-text);
+	}
+	.popup-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		max-height: 260px;
+		overflow-y: auto;
+		margin-bottom: 16px;
+	}
+	.popup-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: var(--ae-input-bg);
+		border: 1px solid var(--ae-line-soft);
+		text-decoration: none;
+		transition: background 0.15s;
+	}
+	.popup-row:hover {
+		background: var(--ae-hover);
 	}
 </style>
