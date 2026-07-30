@@ -9,6 +9,7 @@ import { TRACKS, TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shar
 import { brandBySlug } from '$lib/shared/brands';
 import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
 import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
+import { todayDDMMYYYYInIST } from '$lib/shared/dates';
 
 /** Statuses that mean "candidate still has work to do". */
 const IN_PROGRESS = ['created', 'opened', 'in_progress', 'changes_requested'];
@@ -17,13 +18,6 @@ const DONE = ['approved', 'complete'];
  *  employee ID yet); 'complete' is the fully-onboarded end state. Kept as its
  *  own stat since "Approved" already reports the broader DONE count. */
 const COMPLETE = ['complete'];
-
-/** Offer letters store joiningDate as a free-typed "DD/MM/YYYY" string (see
- *  schema.ts), so "today" has to be built the same way rather than compared
- *  as a Date — this keeps the match a plain string equality. */
-function todayDDMMYYYY(): string {
-	return new Date().toLocaleDateString('en-GB'); // en-GB -> DD/MM/YYYY
-}
 
 export const load: PageServerLoad = async ({ locals }) => {
 	// Count in the database rather than fetching every candidate to length-check
@@ -84,7 +78,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				}
 			},
 			{ $unwind: '$offerLetter' },
-			{ $match: { 'offerLetter.status': 'sent', 'offerLetter.joiningDate': todayDDMMYYYY() } },
+			{ $match: { 'offerLetter.status': 'sent', 'offerLetter.joiningDate': todayDDMMYYYYInIST() } },
 			{
 				$lookup: {
 					from: 'companies',

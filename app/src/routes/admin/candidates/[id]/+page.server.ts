@@ -17,6 +17,7 @@ import {
 } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, slotByType, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
+import { isoToDDMMYYYY } from '$lib/shared/dates';
 import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
 import {
@@ -655,7 +656,7 @@ export const actions: Actions = {
 			department: String(form.get('department') ?? '').trim(),
 			reportingManager: String(form.get('reportingManager') ?? '').trim(),
 			officeLocation: String(form.get('officeLocation') ?? '').trim(),
-			joiningDate: String(form.get('joiningDate') ?? '').trim(),
+			joiningDate: isoToDDMMYYYY(String(form.get('joiningDate') ?? '').trim()),
 			endDate: String(form.get('endDate') ?? '').trim(),
 			employmentType: String(form.get('employmentType') ?? '').trim() as OfferLetterInput['employmentType'],
 			ctcAmount: String(form.get('ctcAmount') ?? '').trim(),

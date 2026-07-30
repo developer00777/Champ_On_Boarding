@@ -7,6 +7,7 @@
 		TRACK_LABELS,
 		type Track
 	} from '$lib/shared/matrix';
+	import { toIsoDate } from '$lib/shared/dates';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
@@ -729,7 +730,7 @@
 				</label>
 				<label class="offer-field">
 					<span>{c.track === 'intern' ? 'Internship start date' : 'Joining date'}</span>
-					<input name="joiningDate" value={ol.joiningDate} placeholder="DD/MM/YYYY" />
+					<input type="date" name="joiningDate" value={toIsoDate(ol.joiningDate) ?? ''} />
 				</label>
 				{#if c.track === 'intern'}
 					<label class="offer-field">
