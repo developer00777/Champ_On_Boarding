@@ -26,7 +26,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 		console.error('[hooks] MongoDB connect error:', e);
 	}
 
-	const ip = event.getClientAddress();
+	// getClientAddress() throws when ADDRESS_HEADER is set but the incoming
+	// request doesn't carry that header — true for Railway's own healthcheck
+	// prober hitting /healthz, which never sends X-Forwarded-For. Letting that
+	// throw crashes every request handled here and fails the healthcheck, so
+	// treat "can't determine the IP" as unknown rather than a hard error.
+	let ip = '';
+	try {
+		ip = event.getClientAddress();
+	} catch (e) {
+		console.warn('[hooks] getClientAddress() failed, treating as unknown IP:', e);
+	}
 
 	// Office/VPN-only admin panel. ADMIN_IP_ALLOWLIST_MODE unset or "log" only
 	// logs what would be blocked, so a missing office IP can be caught before
