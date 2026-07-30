@@ -126,6 +126,7 @@
 		<div>Company</div>
 		<div>Track</div>
 		<div>Status</div>
+		<div>Date of joining</div>
 		<div>Created</div>
 		<div></div>
 	</div>
@@ -153,6 +154,7 @@
 						{statusMeta[c.status]?.label ?? c.status}
 					</span>
 				</div>
+				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{c.joiningDate ?? '—'}</div>
 				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{when(c.createdAt)}</div>
 				<div class="review-cta">
 					Review
@@ -239,5 +241,9 @@
 	}
 	.nums {
 		font-variant-numeric: tabular-nums;
+	}
+	.thead,
+	.trow {
+		grid-template-columns: 1.4fr 1fr 0.8fr 1.1fr 0.9fr 0.7fr auto;
 	}
 </style>

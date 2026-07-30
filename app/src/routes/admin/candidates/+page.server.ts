@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { Candidate } from '$lib/server/db/schema';
+import { Candidate, OfferLetter } from '$lib/server/db/schema';
 import { TRACKS } from '$lib/shared/matrix';
 import { RANGE_KEYS, rangeStart, type RangeKey } from '$lib/shared/ranges';
 
@@ -28,6 +28,12 @@ export const load: PageServerLoad = async ({ url }) => {
 		Candidate.find(where).populate('companyId').sort({ createdAt: -1 }).lean(),
 		Candidate.countDocuments()
 	]);
+	const offerLetters = await OfferLetter.find({ candidateId: { $in: docs.map((c) => c._id) } })
+		.select('candidateId joiningDate')
+		.lean();
+	const joiningDateByCandidateId = new Map(
+		offerLetters.map((o) => [String(o.candidateId), o.joiningDate ?? null])
+	);
 
 	return {
 		candidates: docs.map((c) => {
@@ -40,7 +46,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				status: c.status,
 				company: company?.name ?? '',
 				createdAt: (c as { createdAt: Date }).createdAt.toISOString(),
-				submittedAt: c.submittedAt?.toISOString() ?? null
+				submittedAt: c.submittedAt?.toISOString() ?? null,
+				joiningDate: joiningDateByCandidateId.get(String(c._id)) ?? null
 			};
 		}),
 		total,
