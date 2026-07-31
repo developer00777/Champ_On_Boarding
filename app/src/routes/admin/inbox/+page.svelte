@@ -133,7 +133,7 @@
 </div>
 
 <section class="table-card">
-	<div class="thead" style="grid-template-columns:70px 1.4fr 1.8fr 1fr 130px 90px">
+	<div class="thead mail-cols">
 		<div></div>
 		<div>From / To</div>
 		<div>Subject</div>
@@ -165,7 +165,7 @@
 					}
 				}}
 			>
-				<div class="mrow-inner" style="grid-template-columns:70px 1.4fr 1.8fr 1fr 130px 90px">
+				<div class="mrow-inner mail-cols">
 					<div>
 						<span class="pill {m.direction === 'inbound' ? 'purple' : ''}">
 							{m.direction === 'inbound' ? 'IN' : 'OUT'}
@@ -357,5 +357,58 @@
 		border-radius: 8px;
 		cursor: pointer;
 		text-decoration: none;
+	}
+	.mail-cols {
+		grid-template-columns: 70px 1.4fr 1.8fr 1fr 130px 90px;
+	}
+	@media (max-width: 900px) {
+		.thead.mail-cols {
+			display: none;
+		}
+		.mrow-inner.mail-cols {
+			grid-template-columns: auto 1fr auto;
+			grid-template-areas:
+				'badge subject   subject'
+				'badge from      from'
+				'badge candidate candidate'
+				'badge status    when';
+			row-gap: 4px;
+		}
+		.mrow-inner.mail-cols > :nth-child(1) {
+			grid-area: badge;
+		}
+		.mrow-inner.mail-cols > :nth-child(2) {
+			grid-area: from;
+		}
+		.mrow-inner.mail-cols > :nth-child(3) {
+			grid-area: subject;
+			font-weight: 600;
+		}
+		.mrow-inner.mail-cols > :nth-child(4) {
+			grid-area: candidate;
+		}
+		.mrow-inner.mail-cols > :nth-child(5) {
+			grid-area: status;
+		}
+		.mrow-inner.mail-cols > :nth-child(6) {
+			grid-area: when;
+			justify-self: end;
+		}
+		.mrow-body {
+			padding-left: 18px;
+		}
+	}
+	@media (max-width: 520px) {
+		.filterbar {
+			gap: 8px;
+		}
+		.searchbox {
+			min-width: 0;
+			flex: 1 1 100%;
+		}
+		.count {
+			margin-left: 0;
+			flex: 1 1 100%;
+		}
 	}
 </style>

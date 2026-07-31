@@ -241,4 +241,9 @@
 			display: none;
 		}
 	}
+	@media (max-width: 480px) {
+		.gen-grid {
+			grid-template-columns: 1fr;
+		}
+	}
 </style>

@@ -337,6 +337,11 @@
 			grid-template-columns: 1fr 1fr;
 		}
 	}
+	@media (max-width: 480px) {
+		.gen-grid {
+			grid-template-columns: 1fr;
+		}
+	}
 
 	.popup-overlay {
 		position: fixed;

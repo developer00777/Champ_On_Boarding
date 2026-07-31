@@ -32,6 +32,14 @@
 	:global(*) {
 		box-sizing: border-box;
 	}
+	:global(html) {
+		scroll-behavior: smooth;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(html) {
+			scroll-behavior: auto;
+		}
+	}
 	:global(body) {
 		margin: 0;
 		font-family: var(--brand-font-body, 'Montserrat', Arial, sans-serif);

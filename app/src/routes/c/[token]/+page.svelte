@@ -1301,5 +1301,54 @@
 		.appbar-name {
 			display: none;
 		}
+		.hero {
+			padding-top: 40px;
+			padding-bottom: 44px;
+		}
+		.welcome-body {
+			padding-top: 30px;
+			padding-bottom: 34px;
+		}
+		.portal {
+			padding-left: 16px;
+			padding-right: 16px;
+		}
+		.appbar-inner {
+			padding-left: 16px;
+			padding-right: 16px;
+		}
+		.submit-bar {
+			flex-direction: column;
+			align-items: stretch;
+			text-align: center;
+			padding: 20px;
+		}
+	}
+	@media (max-width: 480px) {
+		.welcome {
+			padding: 20px 14px 60px;
+		}
+		.hero {
+			padding-left: 20px;
+			padding-right: 20px;
+		}
+		.welcome-body {
+			padding-left: 20px;
+			padding-right: 20px;
+		}
+		.hero-chips {
+			gap: 8px;
+		}
+		.hero-chip {
+			font-size: 12px;
+			padding: 7px 12px;
+		}
+		.success {
+			padding: 24px 16px;
+		}
+		.offer-dl-btn {
+			padding: 13px 16px;
+			font-size: 14px;
+		}
 	}
 </style>
