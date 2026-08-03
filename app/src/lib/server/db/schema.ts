@@ -254,7 +254,11 @@ const offerLetterSchema = new Schema(
 			pfPm: { type: String, default: null },
 			gratuityPm: { type: String, default: null },
 			insurancePm: { type: String, default: null },
-			foodPm: { type: String, default: null }
+			foodPm: { type: String, default: null },
+			// Variable Pay carries its own enable flag, independent of the
+			// annexure-wide `enabled` above — HR adds/removes it per offer.
+			variablePayEnabled: { type: Boolean, default: false },
+			variablePayPm: { type: String, default: null }
 		},
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },

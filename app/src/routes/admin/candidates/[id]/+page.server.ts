@@ -718,7 +718,9 @@ export const actions: Actions = {
 				pfPm: String(form.get('annexurePfPm') ?? '').trim(),
 				gratuityPm: String(form.get('annexureGratuityPm') ?? '').trim(),
 				insurancePm: String(form.get('annexureInsurancePm') ?? '').trim(),
-				foodPm: String(form.get('annexureFoodPm') ?? '').trim()
+				foodPm: String(form.get('annexureFoodPm') ?? '').trim(),
+				variablePayEnabled: form.get('annexureVariablePayEnabled') === 'on',
+				variablePayPm: String(form.get('annexureVariablePayPm') ?? '').trim()
 			}
 		};
 

@@ -57,7 +57,9 @@
 		pfPm: '',
 		gratuityPm: '',
 		insurancePm: '',
-		foodPm: ''
+		foodPm: '',
+		variablePayEnabled: false,
+		variablePayPm: ''
 	});
 	$effect(() => {
 		annexure = { ...ol.compensationAnnexure };
@@ -76,7 +78,13 @@
 	const annexureNonCashPm = $derived(
 		n(annexure.pfPm) + n(annexure.gratuityPm) + n(annexure.insurancePm) + n(annexure.foodPm)
 	);
-	const annexureTotalPm = $derived(annexureCashPm + annexureNonCashPm);
+	// Variable Pay is excluded from annexureCashPm on purpose — "Total Cash
+	// Compensation (Before PF)" stays VP-exclusive, and "...with VP" is this
+	// extra row layered on top, not a restatement of the same subtotal.
+	const annexureCashWithVpPm = $derived(annexureCashPm + n(annexure.variablePayPm));
+	const annexureTotalPm = $derived(
+		annexureCashPm + annexureNonCashPm + (annexure.variablePayEnabled ? n(annexure.variablePayPm) : 0)
+	);
 	const annexureTotalPa = $derived(annexureTotalPm * 12);
 
 	const employmentTypeOptions = [
@@ -946,6 +954,29 @@
 										<span class="annexure-pa">{money(annexureCashPm * 12)}</span>
 									</div>
 
+									<div class="annexure-row">
+										<label class="annexure-vp-toggle">
+											<input type="checkbox" name="annexureVariablePayEnabled" bind:checked={annexure.variablePayEnabled} />
+											<span>Variable Pay</span>
+										</label>
+										<input
+											name="annexureVariablePayPm"
+											type="text"
+											inputmode="decimal"
+											bind:value={annexure.variablePayPm}
+											placeholder="0.00"
+											disabled={!annexure.variablePayEnabled}
+										/>
+										<span class="annexure-pa">{annexure.variablePayEnabled ? money(n(annexure.variablePayPm) * 12) : '—'}</span>
+									</div>
+									{#if annexure.variablePayEnabled}
+										<div class="annexure-row annexure-subtotal">
+											<span>Total Cash Compensation with VP</span>
+											<span class="annexure-pa">{money(annexureCashWithVpPm)}</span>
+											<span class="annexure-pa">{money(annexureCashWithVpPm * 12)}</span>
+										</div>
+									{/if}
+
 									<div class="annexure-row annexure-section">
 										<span>Other Non-Cash Components</span><span></span><span></span>
 									</div>
@@ -1441,6 +1472,16 @@
 	.annexure-toggle input {
 		width: 15px;
 		height: 15px;
+	}
+	.annexure-vp-toggle {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+	}
+	.annexure-vp-toggle input {
+		width: 14px;
+		height: 14px;
 	}
 	.annexure-table {
 		display: flex;

@@ -88,6 +88,14 @@ export interface CompensationAnnexure {
 	gratuityPm: string;
 	insurancePm: string;
 	foodPm: string;
+	/** Variable Pay is not every offer's structure, so it carries its own
+	 *  enable flag independent of the annexure's overall `enabled` — HR adds
+	 *  or removes it per offer without affecting the rest of the table. When
+	 *  on, it renders both as its own cash-component row and as an extra
+	 *  "Total Cash Compensation with VP" row (Total Cash Before PF + VP)
+	 *  directly below the existing before-PF subtotal. */
+	variablePayEnabled: boolean;
+	variablePayPm: string;
 }
 
 export const DEFAULT_BONUS_LABEL = 'Performance Bonus in Advance';
@@ -106,7 +114,9 @@ export const EMPTY_COMPENSATION_ANNEXURE: CompensationAnnexure = {
 	pfPm: '',
 	gratuityPm: '',
 	insurancePm: '',
-	foodPm: ''
+	foodPm: '',
+	variablePayEnabled: false,
+	variablePayPm: ''
 };
 
 /** A single computed annexure line: label, P.M. as typed, P.A. derived as
@@ -127,6 +137,14 @@ export interface AnnexureTotals {
 	cash: AnnexureLine[];
 	cashTotalPm: number;
 	cashTotalPa: number;
+	/** Only present when variablePayEnabled — the row itself, kept separate
+	 *  from `cash` so "Total Cash Compensation (Before PF)" stays VP-exclusive
+	 *  as its name promises, and "...with VP" is a genuinely additional row
+	 *  rather than restating the same subtotal. */
+	variablePay: AnnexureLine | null;
+	/** cashTotalPm/Pa + variablePay — null when Variable Pay is off. */
+	cashWithVpTotalPm: number | null;
+	cashWithVpTotalPa: number | null;
 	nonCash: AnnexureLine[];
 	nonCashTotalPm: number;
 	nonCashTotalPa: number;
@@ -164,15 +182,22 @@ export function computeAnnexureTotals(a: CompensationAnnexure): AnnexureTotals {
 	const nonCashTotalPm = sum(nonCash, 'pm');
 	const nonCashTotalPa = sum(nonCash, 'pa');
 
+	const variablePay = a.variablePayEnabled ? line('Variable Pay', a.variablePayPm) : null;
+	const cashWithVpTotalPm = variablePay ? cashTotalPm + variablePay.pm : null;
+	const cashWithVpTotalPa = variablePay ? cashTotalPa + variablePay.pa : null;
+
 	return {
 		cash,
 		cashTotalPm,
 		cashTotalPa,
+		variablePay,
+		cashWithVpTotalPm,
+		cashWithVpTotalPa,
 		nonCash,
 		nonCashTotalPm,
 		nonCashTotalPa,
-		grandTotalPm: cashTotalPm + nonCashTotalPm,
-		grandTotalPa: cashTotalPa + nonCashTotalPa
+		grandTotalPm: cashTotalPm + nonCashTotalPm + (variablePay?.pm ?? 0),
+		grandTotalPa: cashTotalPa + nonCashTotalPa + (variablePay?.pa ?? 0)
 	};
 }
 
@@ -299,7 +324,9 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 			pfPm: draft?.compensationAnnexure?.pfPm ?? '',
 			gratuityPm: draft?.compensationAnnexure?.gratuityPm ?? '',
 			insurancePm: draft?.compensationAnnexure?.insurancePm ?? '',
-			foodPm: draft?.compensationAnnexure?.foodPm ?? ''
+			foodPm: draft?.compensationAnnexure?.foodPm ?? '',
+			variablePayEnabled: draft?.compensationAnnexure?.variablePayEnabled ?? false,
+			variablePayPm: draft?.compensationAnnexure?.variablePayPm ?? ''
 		}
 	};
 }

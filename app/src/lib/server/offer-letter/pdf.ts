@@ -830,6 +830,17 @@ function renderCompensationAnnexure(
 		['Total Cash Compensation (Before PF).', formatTableAmount(totals.cashTotalPm), formatTableAmount(totals.cashTotalPa)],
 		{ bold: true, shade: true }
 	);
+	if (totals.variablePay) {
+		t.row([totals.variablePay.label, formatTableAmount(totals.variablePay.pm), formatTableAmount(totals.variablePay.pa)]);
+		t.row(
+			[
+				'Total Cash Compensation with VP',
+				formatTableAmount(totals.cashWithVpTotalPm as number),
+				formatTableAmount(totals.cashWithVpTotalPa as number)
+			],
+			{ bold: true, shade: true }
+		);
+	}
 
 	t.spanRow('Other Non-Cash Components:', { bold: true });
 	for (const line of totals.nonCash) {
