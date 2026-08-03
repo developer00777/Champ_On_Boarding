@@ -9,7 +9,7 @@ import { TRACKS, TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shar
 import { brandBySlug } from '$lib/shared/brands';
 import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
 import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
-import { todayDDMMYYYYInIST } from '$lib/shared/dates';
+import { isJoiningDateToday } from '$lib/shared/dates';
 
 /** Statuses that mean "candidate still has work to do". */
 const IN_PROGRESS = ['created', 'opened', 'in_progress', 'changes_requested'];
@@ -68,6 +68,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 		// Candidates whose offer letter has actually been emailed (status:
 		// 'sent') and whose joiningDate is today — surfaced as a popup + Home
 		// section so HR doesn't have to remember to check who starts today.
+		// joiningDate can't be matched with an exact-string $match: offer
+		// letters created before the native date picker landed may still hold
+		// whatever free text HR typed ("03-Aug-26", "30 July 2026", ...), so
+		// candidates are filtered in JS below via isJoiningDateToday, which
+		// parses every format this field has ever stored.
 		Candidate.aggregate([
 			{
 				$lookup: {
@@ -78,7 +83,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				}
 			},
 			{ $unwind: '$offerLetter' },
-			{ $match: { 'offerLetter.status': 'sent', 'offerLetter.joiningDate': todayDDMMYYYYInIST() } },
+			{ $match: { 'offerLetter.status': 'sent' } },
 			{
 				$lookup: {
 					from: 'companies',
@@ -89,6 +94,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 			}
 		])
 	]);
+	const joiningTodayFiltered = joiningTodayDocs.filter((c) =>
+		isJoiningDateToday(c.offerLetter?.joiningDate)
+	);
 
 	return {
 		stats: { total, awaitingReview, inProgress, approved, completed },
@@ -112,7 +120,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			status: c.status,
 			company: c.company?.[0]?.name ?? ''
 		})),
-		joiningToday: joiningTodayDocs.map((c) => ({
+		joiningToday: joiningTodayFiltered.map((c) => ({
 			id: String(c._id),
 			email: c.email,
 			fullName: c.fullName ?? null,
