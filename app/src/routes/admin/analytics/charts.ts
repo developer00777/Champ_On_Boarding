@@ -430,7 +430,71 @@ function stageDurationChart(sd: StageDurations): SVGSVGElement {
 	return svg;
 }
 
-export function renderFunnelTab(container: HTMLElement, funnel: FunnelData, stageDurations: StageDurations) {
+// A single horizontal proportion bar — accepted vs rejected share of DECIDED
+// candidates (undecided excluded from the bar itself, called out in the note
+// instead, matching how acceptanceRate is computed server-side). Reuses the
+// reserved status colors (good/crit), never a categorical hue, since this is
+// a state, not an identity.
+export interface HiringDecisionData {
+	accepted: number;
+	rejected: number;
+	undecided: number;
+	acceptanceRate: number | null;
+}
+
+function hiringDecisionChart(data: HiringDecisionData): SVGSVGElement {
+	const w = 560,
+		barH = 40,
+		h = barH;
+	const decided = data.accepted + data.rejected;
+	const svg = el('svg', { width: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'overflow:visible' });
+
+	if (decided === 0) {
+		const t = el('text', { x: w / 2, y: h / 2, 'text-anchor': 'middle', style: `font-size:12.5px;fill:${TXT.muted}` });
+		t.textContent = 'No hiring decisions recorded yet for this filter.';
+		svg.appendChild(t);
+		return svg;
+	}
+
+	const gap = 2; // surface gap between the two segments, per mark spec
+	const acceptedW = Math.max(0, (data.accepted / decided) * w - gap / 2);
+	const rejectedW = Math.max(0, (data.rejected / decided) * w - gap / 2);
+	const rejectedX = w - rejectedW;
+
+	const acceptedBar = el('rect', { x: 0, y: 0, width: acceptedW, height: barH, rx: '6', fill: ST.good, style: 'cursor:pointer' });
+	acceptedBar.addEventListener('mousemove', (evt) => {
+		showTooltip(evt.clientX, evt.clientY, `<div class="tt-title">Accepted</div><div class="tt-row">Candidates<span class="tt-val">${fmtNum(data.accepted)}</span></div><div class="tt-row">Share of decided<span class="tt-val">${Math.round((data.accepted / decided) * 100)}%</span></div>`);
+	});
+	acceptedBar.addEventListener('mouseleave', hideTooltip);
+	svg.appendChild(acceptedBar);
+
+	const rejectedBar = el('rect', { x: rejectedX, y: 0, width: rejectedW, height: barH, rx: '6', fill: ST.crit, style: 'cursor:pointer' });
+	rejectedBar.addEventListener('mousemove', (evt) => {
+		showTooltip(evt.clientX, evt.clientY, `<div class="tt-title">Rejected</div><div class="tt-row">Candidates<span class="tt-val">${fmtNum(data.rejected)}</span></div><div class="tt-row">Share of decided<span class="tt-val">${Math.round((data.rejected / decided) * 100)}%</span></div>`);
+	});
+	rejectedBar.addEventListener('mouseleave', hideTooltip);
+	svg.appendChild(rejectedBar);
+
+	if (acceptedW > 34) {
+		const label = el('text', { x: 10, y: barH / 2 + 5, style: `font-size:13px;font-weight:700;fill:#fff` });
+		label.textContent = Math.round((data.accepted / decided) * 100) + '%';
+		svg.appendChild(label);
+	}
+	if (rejectedW > 34) {
+		const label = el('text', { x: w - 10, y: barH / 2 + 5, 'text-anchor': 'end', style: `font-size:13px;font-weight:700;fill:#fff` });
+		label.textContent = Math.round((data.rejected / decided) * 100) + '%';
+		svg.appendChild(label);
+	}
+
+	return svg;
+}
+
+export function renderFunnelTab(
+	container: HTMLElement,
+	funnel: FunnelData,
+	stageDurations: StageDurations,
+	hiringDecision?: HiringDecisionData
+) {
 	const stages = [
 		{ label: 'Link sent', value: funnel.sent, color: SERIES[0] },
 		{ label: 'Opened', value: funnel.opened, color: SERIES[1] },
@@ -450,9 +514,27 @@ export function renderFunnelTab(container: HTMLElement, funnel: FunnelData, stag
 		'<div class="chart-note">From real timestamps (Candidate.createdAt / submittedAt / reviewedAt, LinkToken.openedAt). Blank rows mean too few candidates have both timestamps yet.</div>' +
 		'<div id="stageDurChart"></div>' +
 		'</div>' +
-		'</div>';
+		'</div>' +
+		(hiringDecision
+			? '<div class="chart-grid wide" style="margin-top:14px">' +
+				'<div class="chart-card">' +
+				'<div class="chart-card-head"><span class="chart-title">Acceptance vs. rejection</span><span class="legend" id="hiringLegend"></span></div>' +
+				'<div class="chart-note">Manual HR hiring decision, independent of onboarding progress — set from the Accept/Reject buttons on a candidate\'s profile. ' +
+				(hiringDecision.undecided > 0 ? `${fmtNum(hiringDecision.undecided)} candidate${hiringDecision.undecided === 1 ? '' : 's'} in this filter still ${hiringDecision.undecided === 1 ? 'has' : 'have'} no decision recorded and ${hiringDecision.undecided === 1 ? 'is' : 'are'} excluded from the rate below.` : 'Every candidate in this filter has a recorded decision.') +
+				'</div>' +
+				'<div id="hiringDecisionChart"></div>' +
+				'</div>' +
+				'</div>'
+			: '');
 	container.querySelector('#funnelChart')!.appendChild(funnelChart(stages));
 	container.querySelector('#stageDurChart')!.appendChild(stageDurationChart(stageDurations));
+	if (hiringDecision) {
+		container.querySelector('#hiringLegend')!.innerHTML = legendHTML([
+			{ color: ST.good, label: `Accepted (${fmtNum(hiringDecision.accepted)})` },
+			{ color: ST.crit, label: `Rejected (${fmtNum(hiringDecision.rejected)})` }
+		]);
+		container.querySelector('#hiringDecisionChart')!.appendChild(hiringDecisionChart(hiringDecision));
+	}
 }
 
 // ============================================================

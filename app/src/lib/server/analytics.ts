@@ -54,6 +54,32 @@ export async function getFunnelSnapshot(filters: AnalyticsFilters) {
 	};
 }
 
+// ── Hiring decision (manual Accept/Reject, independent of onboarding status) ─
+export interface HiringDecisionStats {
+	accepted: number;
+	rejected: number;
+	undecided: number;
+	acceptanceRate: number | null; // % of DECIDED candidates that were accepted
+}
+
+export async function getHiringDecisionStats(filters: AnalyticsFilters): Promise<HiringDecisionStats> {
+	const rows = await Candidate.aggregate<{ _id: string | null; n: number }>([
+		{ $match: matchStage(filters) },
+		{ $group: { _id: '$hiringDecision', n: { $sum: 1 } } }
+	]);
+	const byDecision = Object.fromEntries(rows.map((r) => [r._id ?? 'undecided', r.n]));
+	const accepted = byDecision.accepted ?? 0;
+	const rejected = byDecision.rejected ?? 0;
+	const undecided = byDecision.undecided ?? 0;
+	const decided = accepted + rejected;
+	return {
+		accepted,
+		rejected,
+		undecided,
+		acceptanceRate: decided > 0 ? Math.round((accepted / decided) * 100) : null
+	};
+}
+
 // ── Trend series (created / opened / submitted / approved per bucket) ──────
 export type TrendBucket = 'week' | 'month' | 'quarter' | 'year';
 

@@ -94,7 +94,14 @@ const candidateSchema = new Schema(
 		createdBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
 		submittedAt: Date,
 		reviewedAt: Date,
-		reviewedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
+		reviewedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		// A manual HR hiring call — independent of `status` above, which tracks
+		// document-onboarding progress, not whether the candidate was actually
+		// hired. Settable at any stage (e.g. rejecting someone who never
+		// finished the form) and reversible (HR can change their mind).
+		hiringDecision: { type: String, enum: ['accepted', 'rejected'], default: null },
+		hiringDecisionAt: Date,
+		hiringDecisionBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
 	},
 	{ timestamps: true }
 );

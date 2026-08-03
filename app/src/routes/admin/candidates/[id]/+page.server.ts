@@ -205,7 +205,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			consentAt: candidate.consentAt?.toISOString() ?? null,
 			createdAt: (candidate as unknown as { createdAt: Date }).createdAt.toISOString(),
 			submittedAt: candidate.submittedAt?.toISOString() ?? null,
-			reviewedAt: candidate.reviewedAt?.toISOString() ?? null
+			reviewedAt: candidate.reviewedAt?.toISOString() ?? null,
+			hiringDecision: candidate.hiringDecision ?? null,
+			hiringDecisionAt: candidate.hiringDecisionAt?.toISOString() ?? null
 		},
 		companyName: company?.name ?? '',
 		brand: brandBySlug(company?.brandSlug ?? undefined),
@@ -337,6 +339,38 @@ export const actions: Actions = {
 				brand
 			).catch((err) => console.error('[approve-alert] onboarding concern email failed:', err));
 		}
+
+		return { ok: true };
+	},
+
+	// A manual HR hiring call, independent of document-review status above —
+	// settable at any stage and reversible (see hiringDecision on the schema).
+	setHiringDecision: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+
+		const form = await request.formData();
+		const decision = String(form.get('decision') ?? '');
+		if (decision !== 'accepted' && decision !== 'rejected' && decision !== 'clear')
+			return fail(400, { message: 'Invalid decision.' });
+
+		const next = decision === 'clear' ? null : decision;
+		await Candidate.findByIdAndUpdate(params.id, {
+			hiringDecision: next,
+			hiringDecisionAt: next ? new Date() : null,
+			hiringDecisionBy: next ? locals.admin!.id : null
+		});
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'hiring_decision_set',
+			field: 'hiringDecision',
+			oldValue: row.candidate.hiringDecision ?? null,
+			newValue: next,
+			ip: getClientAddress()
+		});
 
 		return { ok: true };
 	},

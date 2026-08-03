@@ -255,6 +255,11 @@
 				{c.fullName || c.email}
 			</h1>
 			<span class="pill {statusMeta[c.status]?.cls}">{statusMeta[c.status]?.label ?? c.status}</span>
+			{#if c.hiringDecision === 'accepted'}
+				<span class="pill teal">ACCEPTED</span>
+			{:else if c.hiringDecision === 'rejected'}
+				<span class="pill red">REJECTED</span>
+			{/if}
 			<!-- On the Aegis dark chrome the plating inverts: white logo art needs no
 			     plate at all, while dark art needs a light one to stay legible. -->
 			<img
@@ -280,6 +285,33 @@
 					<button class="btn teal">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
 						Approve candidate
+					</button>
+				</fieldset>
+			</form>
+		{/if}
+		{#if c.hiringDecision}
+			<form method="POST" action="?/setHiringDecision" use:enhance>
+				<input type="hidden" name="decision" value="clear" />
+				<fieldset class="rbac" disabled={!data.isApprover}>
+					<button class="btn ghost">Undo decision</button>
+				</fieldset>
+			</form>
+		{:else}
+			<form method="POST" action="?/setHiringDecision" use:enhance>
+				<input type="hidden" name="decision" value="accepted" />
+				<fieldset class="rbac" disabled={!data.isApprover}>
+					<button class="btn teal">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
+						Accept
+					</button>
+				</fieldset>
+			</form>
+			<form method="POST" action="?/setHiringDecision" use:enhance>
+				<input type="hidden" name="decision" value="rejected" />
+				<fieldset class="rbac" disabled={!data.isApprover}>
+					<button class="btn ghost danger-hover">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+						Reject
 					</button>
 				</fieldset>
 			</form>

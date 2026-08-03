@@ -91,6 +91,11 @@
 						label: 'Verification pass rate',
 						value: passRate() + '%',
 						delta: null
+					},
+					{
+						label: 'Acceptance rate',
+						value: data.hiringDecision.acceptanceRate != null ? data.hiringDecision.acceptanceRate + '%' : '—',
+						delta: null
 					}
 				]
 			: []
@@ -134,7 +139,7 @@
 			chartsMod.renderTrendsTab(trendsEl, data.trend, data.bucket);
 			rendered.trends = true;
 		} else if (activeTab === 'funnel' && funnelEl && !rendered.funnel) {
-			chartsMod.renderFunnelTab(funnelEl, data.funnel, data.stageDurations);
+			chartsMod.renderFunnelTab(funnelEl, data.funnel, data.stageDurations, data.hiringDecision);
 			rendered.funnel = true;
 		} else if (activeTab === 'docs' && docsEl && !rendered.docs) {
 			chartsMod.renderDocsTab(docsEl, data.docSlots, data.verification);

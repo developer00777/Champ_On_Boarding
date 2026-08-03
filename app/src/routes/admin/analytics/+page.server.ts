@@ -12,6 +12,7 @@ import {
 	getAdminWorkload,
 	getConversionRates,
 	getGraphData,
+	getHiringDecisionStats,
 	type TrendBucket
 } from '$lib/server/analytics';
 
@@ -43,7 +44,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		adminWorkload,
 		conversion,
 		graph,
-		companies
+		companies,
+		hiringDecision
 	] = await Promise.all([
 		getFunnelSnapshot(filters),
 		getTrendSeries(filters, safeBucket),
@@ -54,7 +56,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		getAdminWorkload(filters),
 		getConversionRates(filters),
 		getGraphData(filters),
-		Company.find({ active: true }).sort({ name: 1 }).select('name').lean()
+		Company.find({ active: true }).sort({ name: 1 }).select('name').lean(),
+		getHiringDecisionStats(filters)
 	]);
 
 	return {
@@ -74,6 +77,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		breakdown,
 		adminWorkload,
 		conversion,
+		hiringDecision,
 		graph: {
 			nodes: graph.nodes,
 			edges: graph.edges
