@@ -68,12 +68,16 @@ export const load: PageServerLoad = async ({ locals }) => {
 		// Candidates whose offer letter has actually been emailed (status:
 		// 'sent') and whose joiningDate is today — surfaced as a popup + Home
 		// section so HR doesn't have to remember to check who starts today.
-		// joiningDate can't be matched with an exact-string $match: offer
-		// letters created before the native date picker landed may still hold
-		// whatever free text HR typed ("03-Aug-26", "30 July 2026", ...), so
-		// candidates are filtered in JS below via isJoiningDateToday, which
+		// Excludes 'complete'/'revoked': once onboarding is fully wrapped up (or
+		// the link revoked) there's nothing left for HR to act on, so keeping
+		// them in the list would just re-show the popup for someone already
+		// handled. joiningDate can't be matched with an exact-string $match:
+		// offer letters created before the native date picker landed may still
+		// hold whatever free text HR typed ("03-Aug-26", "30 July 2026", ...),
+		// so candidates are filtered in JS below via isJoiningDateToday, which
 		// parses every format this field has ever stored.
 		Candidate.aggregate([
+			{ $match: { status: { $nin: ['complete', 'revoked'] } } },
 			{
 				$lookup: {
 					from: 'offerletters',
