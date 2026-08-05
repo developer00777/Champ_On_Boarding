@@ -58,7 +58,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 			return new Response('Too many attempts, try again in a minute.', { status: 429 });
 		}
 	}
-	if (event.url.pathname.startsWith('/c/')) {
+	// /bgv/ is the previous-employer verification form — public and token-gated
+	// like /c/, so it shares the same abuse budget.
+	if (event.url.pathname.startsWith('/c/') || event.url.pathname.startsWith('/bgv/')) {
 		if (await rateLimited(`cand:${ip}`, 240, 60)) {
 			return new Response('Too many requests.', { status: 429 });
 		}

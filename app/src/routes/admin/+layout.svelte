@@ -77,11 +77,15 @@
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><path d="M16 5.5a3 3 0 0 1 0 5.6" /><path d="M17.5 20a5 5 0 0 0-2-4" /></svg>
 				Candidates
 			</a>
-			<span class="navitem soon" aria-disabled="true">
+			<a
+				href="/admin/bgv"
+				class="navitem"
+				class:on={active('/admin/bgv')}
+				aria-current={active('/admin/bgv') ? 'page' : undefined}
+			>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.5l7.5 3.4v5.4c0 4.7-3.2 8.9-7.5 10.2-4.3-1.3-7.5-5.5-7.5-10.2V5.9L12 2.5Z" /><path d="M9 12l2 2 4-4.2" /></svg>
 				BGV verification
-				<span class="soon-tag">Soon</span>
-			</span>
+			</a>
 			<a
 				href="/admin/entities"
 				class="navitem"
@@ -236,31 +240,6 @@
 	.navitem:focus-visible {
 		outline: 2px solid var(--ae-ember);
 		outline-offset: 1px;
-	}
-	.navitem.soon {
-		cursor: default;
-		color: var(--ae-faint);
-	}
-	.navitem.soon:hover {
-		background: none;
-		color: var(--ae-faint);
-	}
-	.navitem.soon svg {
-		opacity: 0.5;
-	}
-	.soon-tag {
-		margin-left: auto;
-		font-family: var(--ae-font-mono);
-		font-size: 8.5px;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ae-faint);
-		background: rgba(255, 255, 255, 0.06);
-		border: 1px solid var(--ae-line);
-		border-radius: 5px;
-		padding: 2px 5px;
-		flex: none;
 	}
 	.rail-foot {
 		margin-top: auto;

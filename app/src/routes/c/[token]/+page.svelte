@@ -107,15 +107,27 @@
 	);
 
 	// ----- progress (rail) -----
-	const SECTIONS = [
+	const isExpTrack = $derived(EXP_LIKE_TRACKS.includes(data.candidate.track as Track));
+	const SECTIONS = $derived([
 		{ label: 'Personal', keys: ['fullName', 'dob', 'mobile', 'fatherName', 'motherName'] },
 		{ label: 'Address', keys: ['presentAddress', 'presentPin', 'permanentAddress', 'permanentPin'] },
 		{ label: 'Identification', keys: ['aadhaarNo', 'panNo'] },
 		// accountNoConfirm is deliberately absent: it is a typo guard, not a field
 		// the candidate has to "complete", and counting it would stall the ring.
-		{ label: 'Bank', keys: ['bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'] }
-	];
-	const fieldsTotal = SECTIONS.reduce((a, s) => a + s.keys.length, 0);
+		{ label: 'Bank', keys: ['bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'] },
+		// Feeds the BGV request to the previous employer, so it gates submission
+		// the same way the master-sheet fields do (see validateMasterSheet).
+		...(isExpTrack
+			? [{
+					label: 'Previous employer',
+					keys: [
+						'prevCompanyName', 'prevEmployeeId', 'prevDoj', 'prevDol', 'prevDesignation',
+						'prevRemuneration', 'prevSupervisor', 'prevReasonLeaving', 'prevHrEmail'
+					]
+				}]
+			: [])
+	]);
+	const fieldsTotal = $derived(SECTIONS.reduce((a, s) => a + s.keys.length, 0));
 	// `satisfied` comes from the server, which already accounts for optional slots
 	// (they count as done so the ring can reach 100%) and for grouped alternatives
 	// — a bank statement marks the payslip slot done too. Recomputing that here
@@ -592,6 +604,32 @@
 							{@render field('branch', 'Branch', { required: true })}
 						</div>
 					</section>
+
+					{#if isExpTrack}
+						<!-- previous employment (experienced/consultant/contract) -->
+						<section class="card form-card">
+							<div class="section-head">
+								<span class="section-num">06</span>
+								<div class="eyebrow">Previous employment</div>
+							</div>
+							<h3>Your last company</h3>
+							<p class="muted" style="margin:0 0 18px;line-height:1.55">
+								These details go into your background verification (BGV) with your previous
+								employer, so please make sure they match your records exactly.
+							</p>
+							<div class="form-grid">
+								{@render field('prevCompanyName', 'Company name', { required: true })}
+								{@render field('prevEmployeeId', 'Your employee ID there', { required: true })}
+								{@render field('prevDoj', 'Date of joining', { placeholder: 'DD-MMM-YYYY', required: true })}
+								{@render field('prevDol', 'Date of leaving', { placeholder: 'DD-MMM-YYYY', required: true })}
+								{@render field('prevDesignation', 'Designation', { required: true })}
+								{@render field('prevRemuneration', 'Remuneration per annum (₹)', { required: true })}
+								{@render field('prevSupervisor', 'Supervisor name & designation', { placeholder: 'e.g. Kajal & TL', required: true })}
+								{@render field('prevReasonLeaving', 'Reason for leaving', { required: true })}
+								{@render field('prevHrEmail', 'HR / official email of the company (for verification)', { placeholder: 'hr@company.com', required: true, full: true })}
+							</div>
+						</section>
+					{/if}
 
 					<!-- submit -->
 					<section class="submit-bar">

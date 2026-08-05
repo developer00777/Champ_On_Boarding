@@ -22,7 +22,9 @@ const FIELDS = [
 	'presentAddress', 'presentPin', 'presentHouseNo',
 	'permanentAddress', 'permanentPin', 'permanentHouseNo',
 	'panNo', 'uanNo', 'dlNo', 'passportNo', 'linkedinId',
-	'bankAccountName', 'bankName', 'accountNo', 'accountNoConfirm', 'ifsc', 'branch'
+	'bankAccountName', 'bankName', 'accountNo', 'accountNoConfirm', 'ifsc', 'branch',
+	'prevCompanyName', 'prevEmployeeId', 'prevDoj', 'prevDol', 'prevDesignation',
+	'prevRemuneration', 'prevSupervisor', 'prevReasonLeaving', 'prevHrEmail'
 ] as const;
 
 const TITLE_CASE_FIELDS = new Set([
@@ -39,6 +41,7 @@ function formToFields(form: FormData): Record<string, string> {
 		let v = String(form.get(f) ?? '').trim();
 		if (TITLE_CASE_FIELDS.has(f) && v) v = titleCase(v);
 		if (f === 'panNo' || f === 'ifsc') v = v.toUpperCase();
+		if (f === 'prevHrEmail') v = v.toLowerCase();
 		out[f] = v;
 	}
 	out.aadhaarNo = String(form.get('aadhaarNo') ?? '').replace(/\s/g, '');
@@ -137,7 +140,7 @@ export const actions: Actions = {
 		if (!candidate.consentAt) return fail(400, { message: 'Consent is required.' });
 
 		const fields = formToFields(await request.formData());
-		const errors = validateMasterSheet(fields);
+		const errors = validateMasterSheet(fields, candidate.track as Track);
 
 		// Fetched here rather than at the alert-email step below because the
 		// mandatory-document gate needs the entity too: without it this would

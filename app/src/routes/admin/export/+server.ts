@@ -30,6 +30,8 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 		'Permanent Address', 'Permanent House No', 'Permanent PIN',
 		'Aadhaar No', 'PAN No', 'UAN No', 'DL No', 'Passport No', 'LinkedIn ID',
 		'Name As Per Passbook', 'Bank Name', 'Account No', 'IFSC', 'Branch',
+		'Prev Company', 'Prev Employee ID', 'Prev DOJ', 'Prev DOL', 'Prev Designation',
+		'Prev Remuneration PA', 'Prev Supervisor', 'Prev Reason For Leaving', 'Prev HR Email',
 		'Submitted At', 'Reviewed At'
 	];
 
@@ -45,6 +47,8 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 			c.aadhaarNoEncrypted ? decrypt(c.aadhaarNoEncrypted) : '',
 			c.panNo, c.uanNo, c.dlNo, c.passportNo, c.linkedinId,
 			c.bankAccountName, c.bankName, c.accountNo, c.ifsc, c.branch,
+			c.prevCompanyName, c.prevEmployeeId, c.prevDoj, c.prevDol, c.prevDesignation,
+			c.prevRemuneration, c.prevSupervisor, c.prevReasonLeaving, c.prevHrEmail,
 			c.submittedAt?.toISOString() ?? '',
 			c.reviewedAt?.toISOString() ?? ''
 		]

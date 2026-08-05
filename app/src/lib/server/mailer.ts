@@ -14,6 +14,8 @@ interface SendMailOptions {
 	from?: string;
 	/** Optional HTML body. When present, sent alongside `text` as a fallback. */
 	html?: string;
+	/** Additional Cc recipients (e.g. HRD / department manager on a BGV request). */
+	cc?: string[];
 	attachments?: MailAttachment[];
 	/** Echoed back on every Resend webhook event for this send (delivered,
 	 *  bounced, opened, ...) — see /webhooks/resend/+server.ts, which reads
@@ -68,10 +70,16 @@ export async function sendMail(to: string, subject: string, text: string, option
 	);
 	if (!env.RESEND_API_KEY) {
 		console.log(`[mail:console] to=${to} subject="${subject}"\n${text}`);
+		// Still record the send for the admin Inbox / BGV thread — local dev
+		// without a mail key should exercise the same visible flow as prod.
+		await logOutbound(null, from, to, subject, text, options).catch((e) =>
+			console.error('[mail] failed to log console-mode EmailMessage:', e)
+		);
 		return;
 	}
 	const payload: Record<string, unknown> = { from, to, subject, text };
 	if (options.html) payload.html = options.html;
+	if (options.cc?.length) payload.cc = options.cc;
 	if (options.attachments?.length) {
 		payload.attachments = options.attachments.map((a) => ({
 			filename: a.filename,
@@ -107,20 +115,31 @@ export async function sendMail(to: string, subject: string, text: string, option
 	// failure must never surface as a mail-send failure to the caller.
 	try {
 		const resendId = (JSON.parse(body) as { id?: string }).id ?? null;
-		await EmailMessage.create({
-			direction: 'outbound',
-			candidateId: options.tags?.candidate_id ?? null,
-			resendEmailId: resendId,
-			from,
-			to,
-			subject,
-			text,
-			purpose: options.tags?.purpose ?? null,
-			status: 'sent'
-		});
+		await logOutbound(resendId, from, to, subject, text, options);
 	} catch (e) {
 		console.error('[mail] failed to log outbound EmailMessage:', e);
 	}
+}
+
+async function logOutbound(
+	resendId: string | null,
+	from: string,
+	to: string,
+	subject: string,
+	text: string,
+	options: SendMailOptions
+) {
+	await EmailMessage.create({
+		direction: 'outbound',
+		candidateId: options.tags?.candidate_id ?? null,
+		resendEmailId: resendId,
+		from,
+		to,
+		subject,
+		text,
+		purpose: options.tags?.purpose ?? null,
+		status: 'sent'
+	});
 }
 
 /** Wraps plain-text body in a minimal branded HTML shell with the brand's logo. */
@@ -282,12 +301,14 @@ export async function sendBrandedMail(
 	brand: BrandTheme,
 	attachments?: MailAttachment[],
 	purpose: MailPurpose = 'onboarding',
-	candidateId?: string
+	candidateId?: string,
+	extra?: { cc?: string[]; tagPurpose?: string }
 ) {
 	await sendMail(to, subject, text, {
 		from: brandFromHeader(brand, purpose),
 		html: await brandedHtml(brand, text),
 		attachments,
-		tags: candidateId ? { candidate_id: candidateId, purpose } : undefined
+		cc: extra?.cc,
+		tags: candidateId ? { candidate_id: candidateId, purpose: extra?.tagPurpose ?? purpose } : undefined
 	});
 }

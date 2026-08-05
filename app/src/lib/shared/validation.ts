@@ -37,6 +37,7 @@ export function isValidAadhaar(value: string): boolean {
 }
 
 export const isValidPan = (v: string) => /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v.trim().toUpperCase());
+export const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 export const isValidIfsc = (v: string) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.trim().toUpperCase());
 export const isValidPin = (v: string) => /^\d{6}$/.test(v.trim());
 export const isValidMobile = (v: string) => /^[6-9]\d{9}$/.test(v.replace(/\D/g, ''));
@@ -55,8 +56,15 @@ export interface FieldError {
 	message: string;
 }
 
-/** Validate the master-sheet fields a candidate submits. Returns blocking errors. */
-export function validateMasterSheet(f: Record<string, string>): FieldError[] {
+/** Tracks that must declare previous employment (mirrors EXP_LIKE_TRACKS in
+ *  matrix.ts — restated here so this module keeps zero imports). */
+const PREV_EMPLOYMENT_TRACKS = ['experienced', 'consultant', 'contract'];
+
+/** Validate the master-sheet fields a candidate submits. Returns blocking
+ *  errors. `track`, when given, additionally enforces the previous-employment
+ *  block for experienced-like tracks — those fields feed the BGV request to
+ *  the previous employer, so a hole here becomes an unusable BGV later. */
+export function validateMasterSheet(f: Record<string, string>, track?: string): FieldError[] {
 	const errors: FieldError[] = [];
 	const req = (field: string, label: string) => {
 		if (!f[field]?.trim()) errors.push({ field, message: `${label} is required` });
@@ -120,6 +128,19 @@ export function validateMasterSheet(f: Record<string, string>): FieldError[] {
 	if (f.maritalStatus === 'married') {
 		req('spouseName', 'Spouse name');
 		req('spouseContact', 'Spouse contact');
+	}
+	if (track && PREV_EMPLOYMENT_TRACKS.includes(track)) {
+		req('prevCompanyName', 'Previous company name');
+		req('prevEmployeeId', 'Employee ID at previous company');
+		req('prevDoj', 'Date of joining (previous company)');
+		req('prevDol', 'Date of leaving (previous company)');
+		req('prevDesignation', 'Designation (previous company)');
+		req('prevRemuneration', 'Remuneration per annum (previous company)');
+		req('prevSupervisor', 'Supervisor name & designation');
+		req('prevReasonLeaving', 'Reason for leaving');
+		req('prevHrEmail', 'Previous company HR email');
+		if (f.prevHrEmail?.trim() && !isValidEmail(f.prevHrEmail))
+			errors.push({ field: 'prevHrEmail', message: 'Enter a valid HR email address' });
 	}
 	return errors;
 }

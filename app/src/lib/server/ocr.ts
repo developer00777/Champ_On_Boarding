@@ -62,8 +62,9 @@ const OCR_TIMEOUT_MS = 20_000;
 
 /** One retry on network failure or a transient (5xx/429) response — OCR calls
  *  are on the candidate submission path and a single blip shouldn't force a
- *  manual re-upload. Non-transient errors (4xx auth/validation) fail fast. */
-async function fetchWithRetry(url: string, init: RequestInit, attempt = 1): Promise<Response> {
+ *  manual re-upload. Non-transient errors (4xx auth/validation) fail fast.
+ *  Exported for other OpenRouter callers (e.g. BGV reply parsing in bgv.ts). */
+export async function fetchWithRetry(url: string, init: RequestInit, attempt = 1): Promise<Response> {
 	let res: Response;
 	try {
 		res = await fetch(url, { ...init, signal: AbortSignal.timeout(OCR_TIMEOUT_MS) });

@@ -20,7 +20,8 @@ import { error, json } from '@sveltejs/kit';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { AuditLog, Candidate, EmailMessage } from '$lib/server/db/schema';
+import { AuditLog, BgvRequest, Candidate, EmailMessage } from '$lib/server/db/schema';
+import { parseBgvReply } from '$lib/server/bgv';
 
 interface ResendWebhookEvent {
 	type: string;
@@ -30,6 +31,9 @@ interface ResendWebhookEvent {
 		from?: string;
 		to?: string[];
 		subject?: string;
+		/** Newer inbound payloads carry the body inline; older ones require the
+		 *  Received Emails API round-trip (fetchReceivedBody). */
+		text?: string;
 		tags?: Record<string, string>;
 		bounce?: { type?: string; message?: string };
 		click?: { link?: string };
@@ -125,11 +129,23 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (event.type === 'email.received') {
 		const from = event.data.from ?? '';
 		const senderAddress = bareAddress(from);
-		const candidate = senderAddress
+		let purpose: string | null = null;
+		let candidate = senderAddress
 			? await Candidate.findOne({ email: senderAddress }).lean()
 			: null;
 
-		const text = event.data.email_id ? await fetchReceivedBody(event.data.email_id) : null;
+		// Not a candidate — maybe a previous employer replying to a BGV request:
+		// match the sender against the HR address BGV requests were sent to, so
+		// the reply threads onto that candidate's BGV section and Inbox row.
+		if (!candidate && senderAddress) {
+			candidate = await Candidate.findOne({ prevHrEmail: senderAddress })
+				.sort({ createdAt: -1 })
+				.lean();
+			if (candidate) purpose = 'bgv_reply';
+		}
+
+		const text =
+			event.data.text ?? (event.data.email_id ? await fetchReceivedBody(event.data.email_id) : null);
 
 		await EmailMessage.create({
 			direction: 'inbound',
@@ -139,14 +155,50 @@ export const POST: RequestHandler = async ({ request }) => {
 			to: event.data.to?.[0] ?? '',
 			subject: event.data.subject ?? null,
 			text,
+			purpose,
 			status: 'received'
 		});
+
+		if (purpose === 'bgv_reply' && candidate) {
+			const update: Record<string, unknown> = { replyReceivedAt: new Date() };
+			let autoVerified = 0;
+
+			// LLM-map the employer's free-form reply onto the "Your Verification
+			// Inputs" column. Best-effort: a parse failure still records the reply
+			// and its receipt — HR can read the raw mail in the BGV thread.
+			if (text) {
+				try {
+					const parsed = await parseBgvReply(text, candidate as unknown as Record<string, unknown>);
+					if (parsed.providesVerification && Object.keys(parsed.fields).length) {
+						for (const [key, value] of Object.entries(parsed.fields)) {
+							update[`verification.${key}`] = value;
+						}
+						update.status = 'completed';
+						update.completedAt = new Date();
+						autoVerified = Object.keys(parsed.fields).length;
+					}
+				} catch (e) {
+					console.error('[webhooks/resend] BGV reply LLM parse failed:', e);
+				}
+			}
+
+			await BgvRequest.findOneAndUpdate({ candidateId: candidate._id }, { $set: update });
+
+			if (autoVerified) {
+				await AuditLog.create({
+					candidateId: String(candidate._id),
+					actor: senderAddress,
+					action: 'bgv_auto_verified',
+					newValue: `${autoVerified} verification inputs mapped from email reply`
+				});
+			}
+		}
 
 		if (candidate) {
 			await AuditLog.create({
 				candidateId: String(candidate._id),
 				actor: senderAddress,
-				action: 'mail_received',
+				action: purpose === 'bgv_reply' ? 'bgv_reply_received' : 'mail_received',
 				field: event.data.subject ?? null
 			});
 		}

@@ -66,7 +66,7 @@ function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | 
 		if (typeof v === 'string') fields[k] = v;
 	}
 	fields.aadhaarNo = aadhaarPlain ?? '';
-	return validateMasterSheet(fields).map((e) => e.message);
+	return validateMasterSheet(fields, fields.track).map((e) => e.message);
 }
 
 // Every candidate-submitted profile field HR can correct after the fact.
@@ -83,7 +83,9 @@ const PROFILE_FIELDS = [
 	'presentAddress', 'presentPin', 'presentHouseNo',
 	'permanentAddress', 'permanentPin', 'permanentHouseNo',
 	'panNo', 'dlNo', 'passportNo', 'linkedinId',
-	'bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'
+	'bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch',
+	'prevCompanyName', 'prevEmployeeId', 'prevDoj', 'prevDol', 'prevDesignation',
+	'prevRemuneration', 'prevSupervisor', 'prevReasonLeaving', 'prevHrEmail'
 ] as const;
 
 const PROFILE_TITLE_CASE_FIELDS = new Set([
@@ -100,6 +102,7 @@ function profileFormToUpdate(form: FormData): Record<string, string> {
 		let v = String(form.get(f) ?? '').trim();
 		if (PROFILE_TITLE_CASE_FIELDS.has(f) && v) v = titleCase(v);
 		if (f === 'panNo' || f === 'ifsc') v = v.toUpperCase();
+		if (f === 'prevHrEmail') v = v.toLowerCase();
 		out[f] = v;
 	}
 	return out;
@@ -202,6 +205,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			ifsc: candidate.ifsc ?? null,
 			branch: candidate.branch ?? null,
 			employeeId: candidate.employeeId ?? null,
+			prevCompanyName: candidate.prevCompanyName ?? null,
+			prevEmployeeId: candidate.prevEmployeeId ?? null,
+			prevDoj: candidate.prevDoj ?? null,
+			prevDol: candidate.prevDol ?? null,
+			prevDesignation: candidate.prevDesignation ?? null,
+			prevRemuneration: candidate.prevRemuneration ?? null,
+			prevSupervisor: candidate.prevSupervisor ?? null,
+			prevReasonLeaving: candidate.prevReasonLeaving ?? null,
+			prevHrEmail: candidate.prevHrEmail ?? null,
 			consentAt: candidate.consentAt?.toISOString() ?? null,
 			createdAt: (candidate as unknown as { createdAt: Date }).createdAt.toISOString(),
 			submittedAt: candidate.submittedAt?.toISOString() ?? null,

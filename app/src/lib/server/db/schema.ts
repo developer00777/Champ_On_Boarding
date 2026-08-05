@@ -66,6 +66,20 @@ const candidateSchema = new Schema(
 		dlNo: String,
 		passportNo: String,
 		linkedinId: String,
+		// Previous employment — self-declared by experienced/consultant/contract
+		// candidates in the onboarding form. These are the "Candidate's
+		// Particulars" a BGV request quotes to the previous employer, and
+		// prevHrEmail is the address the BGV form is auto-addressed to (HR can
+		// still edit the To: before sending — see /admin/bgv).
+		prevCompanyName: String,
+		prevEmployeeId: String,
+		prevDoj: String,
+		prevDol: String,
+		prevDesignation: String,
+		prevRemuneration: String,
+		prevSupervisor: String,
+		prevReasonLeaving: String,
+		prevHrEmail: { type: String, index: true },
 		// The name printed on the passbook, which is not always the candidate's
 		// fullName — maiden names, initials spelled out, a name the bank never
 		// updated. Payroll needs the bank's spelling to make a transfer land.
@@ -268,6 +282,56 @@ const offerLetterSchema = new Schema(
 );
 export const OfferLetter = models.OfferLetter ?? model('OfferLetter', offerLetterSchema);
 
+// ── BGV Requests ──────────────────────────────────────────────────────────────
+// One per experienced-track candidate: carries the token behind the public
+// employer-facing verification form (/bgv/[token]), the last-sent copy of the
+// HR-editable request email, and — once the previous employer submits the form
+// — their verification inputs. Email replies to the request are matched in the
+// Resend webhook by prevHrEmail and land in EmailMessage with purpose
+// 'bgv_reply'; replyReceivedAt mirrors that here for the BGV list view.
+const bgvRequestSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true, unique: true },
+		// Same pattern as LinkToken: sha256 hash is the source of truth for
+		// verifying /bgv/[token] requests; the AES copy is display-only so the
+		// admin panel can always show the live form link.
+		tokenHash: { type: String, required: true, unique: true },
+		tokenEncrypted: { type: String, default: null },
+		status: { type: String, enum: ['pending', 'sent', 'completed'], default: 'pending' },
+		// Last-sent copy of the request email (HR edits before each send).
+		to: { type: String, default: null },
+		cc: { type: String, default: null },
+		subject: { type: String, default: null },
+		body: { type: String, default: null },
+		sentAt: { type: Date, default: null },
+		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		sentCount: { type: Number, default: 0 },
+		replyReceivedAt: { type: Date, default: null },
+		// The previous employer's "Your Verification Inputs" column.
+		verification: {
+			candidateName: { type: String, default: null },
+			employeeId: { type: String, default: null },
+			companyName: { type: String, default: null },
+			dateOfJoining: { type: String, default: null },
+			dateOfLeaving: { type: String, default: null },
+			designation: { type: String, default: null },
+			remuneration: { type: String, default: null },
+			supervisor: { type: String, default: null },
+			reasonForLeaving: { type: String, default: null },
+			integrityIssues: { type: String, default: null },
+			rehireEligible: { type: String, enum: ['yes', 'no', null], default: null },
+			exitFormalitiesPending: { type: String, enum: ['yes', 'no', null], default: null },
+			exitFormalitiesDetails: { type: String, default: null },
+			additionalComments: { type: String, default: null },
+			verifierName: { type: String, default: null }
+		},
+		completedAt: { type: Date, default: null },
+		completedIp: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+export const BgvRequest = models.BgvRequest ?? model('BgvRequest', bgvRequestSchema);
+
 // ── Email Messages (Inbox) ───────────────────────────────────────────────────
 // Both directions in one collection so the admin Inbox is a single
 // chronological thread: `direction: 'outbound'` rows are written the moment
@@ -305,3 +369,4 @@ export type DocumentDoc = InstanceType<typeof Document> & { _id: Types.ObjectId 
 export type AdminDoc = InstanceType<typeof Admin> & { _id: Types.ObjectId };
 export type PhysicalItemDoc = InstanceType<typeof PhysicalItem> & { _id: Types.ObjectId };
 export type OfferLetterDoc = InstanceType<typeof OfferLetter> & { _id: Types.ObjectId };
+export type BgvRequestDoc = InstanceType<typeof BgvRequest> & { _id: Types.ObjectId };

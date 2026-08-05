@@ -200,6 +200,25 @@
 				['LinkedIn', c.linkedinId, 'linkedinId']
 			]
 		},
+		// Only experienced-like tracks declare a previous employer; rendering the
+		// inputs for those tracks (even mid-edit) also keeps ?/editProfile from
+		// blanking fields that were never on screen.
+		...(EXP_LIKE_TRACKS.includes(c.track as Track)
+			? [{
+					title: 'Previous employment (BGV)',
+					rows: [
+						['Company name', c.prevCompanyName, 'prevCompanyName'],
+						['Employee ID', c.prevEmployeeId, 'prevEmployeeId'],
+						['Date of joining', c.prevDoj, 'prevDoj'],
+						['Date of leaving', c.prevDol, 'prevDol'],
+						['Designation', c.prevDesignation, 'prevDesignation'],
+						['Remuneration p.a.', c.prevRemuneration, 'prevRemuneration'],
+						['Supervisor', c.prevSupervisor, 'prevSupervisor'],
+						['Reason for leaving', c.prevReasonLeaving, 'prevReasonLeaving'],
+						['Previous-company HR email', c.prevHrEmail, 'prevHrEmail']
+					]
+				}]
+			: []),
 		{
 			title: 'Bank',
 			rows: [
