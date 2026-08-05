@@ -34,14 +34,16 @@ export function brandSignoff(brand: BrandTheme): string {
 	return `— HR, ${brand.legalName}`;
 }
 
-export type MailPurpose = 'onboarding' | 'offer';
+export type MailPurpose = 'onboarding' | 'offer' | 'bgv';
 
-/** Resolves the configured mailbox for a purpose. `offer` falls back to the
- *  onboarding mailbox (MAIL_FROM) when OFFER_MAIL_FROM isn't set, so a second
- *  address is opt-in. */
+/** Resolves the configured mailbox for a purpose. `offer` and `bgv` fall back
+ *  to the onboarding mailbox (MAIL_FROM) when their variable is unset, so the
+ *  extra addresses are opt-in — e.g. set BGV_MAIL_FROM=hr@offer.championsmail.com
+ *  (a Railway env var) to send BGV verification requests from the HR desk. */
 function fromAddressFor(purpose: MailPurpose): string {
 	const onboarding = env.MAIL_FROM ?? 'onboarding@example.com';
 	if (purpose === 'offer') return env.OFFER_MAIL_FROM ?? onboarding;
+	if (purpose === 'bgv') return env.BGV_MAIL_FROM ?? onboarding;
 	return onboarding;
 }
 

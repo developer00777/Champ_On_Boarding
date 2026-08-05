@@ -53,6 +53,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-ChampHR <onboarding@offer.championsmail.com>}
       OFFER_MAIL_FROM: ${OFFER_MAIL_FROM:-}
+      BGV_MAIL_FROM: ${BGV_MAIL_FROM:-}
       ADMIN_IP_ALLOWLIST_MODE: ${ADMIN_IP_ALLOWLIST_MODE:-log}
       ADDRESS_HEADER: x-forwarded-for
     depends_on:

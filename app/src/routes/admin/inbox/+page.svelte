@@ -25,7 +25,8 @@
 	const MAILBOXES = [
 		{ value: '', label: 'All mailboxes' },
 		{ value: 'onboarding@', label: 'onboarding@' },
-		{ value: 'offer@', label: 'offer@' }
+		{ value: 'offer@', label: 'offer@' },
+		{ value: 'hr@', label: 'hr@ (BGV)' }
 	];
 
 	function href(patch: Record<string, string>): string {

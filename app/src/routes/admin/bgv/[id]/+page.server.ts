@@ -138,7 +138,7 @@ export const actions: Actions = {
 			// table and as a reply-friendly plain-text list (which the employer's
 			// reply quotes back, and parseBgvReply reads). No links.
 			await sendMail(to, subject, bgvEmailText(body, candidateRec), {
-				from: brandFromHeader(brand, 'onboarding'),
+				from: brandFromHeader(brand, 'bgv'),
 				html: bgvRequestHtml(brand, body, candidateRec),
 				cc: cc.length ? cc : undefined,
 				attachments: [{ filename: `BGV-Form-${safeName}.pdf`, content: pdf }],
