@@ -39,6 +39,22 @@
 		</p>
 	</div>
 	<span class="pill big {statusMeta[data.bgv.status].cls}">{statusMeta[data.bgv.status].label}</span>
+	{#if data.canSend}
+		<form
+			method="POST"
+			action="?/deleteBgv"
+			use:enhance
+			onsubmit={(e) => {
+				if (!confirm(`Delete ${data.candidate.name} from BGV? Their verification data and form link are removed; the onboarding record is kept.`))
+					e.preventDefault();
+			}}
+		>
+			<button class="btn danger" type="submit">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+				Delete BGV
+			</button>
+		</form>
+	{/if}
 </div>
 
 <div class="cols">
@@ -318,6 +334,16 @@
 		cursor: pointer;
 	}
 	.btn:disabled { opacity: 0.6; cursor: default; }
+	.btn.danger {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: none;
+		border: 1px solid rgba(232, 3, 58, 0.45);
+		color: #e8033a;
+		margin-top: 10px;
+	}
+	.btn.danger:hover { background: rgba(232, 3, 58, 0.08); }
 	.sent-meta { font-size: 11.5px; color: var(--ae-muted); margin-left: 10px; }
 	.sent-ok { color: #0a7c5a; font-size: 12.5px; font-weight: 600; margin: 0 0 10px; }
 	.error {

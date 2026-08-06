@@ -107,7 +107,9 @@
 	);
 
 	// ----- progress (rail) -----
-	const isExpTrack = $derived(EXP_LIKE_TRACKS.includes(data.candidate.track as Track));
+	// Previous-employment/BGV applies only to experienced hires at the BGV
+	// entities — decided server-side (see +page.server.ts load).
+	const bgvEligible = $derived(data.candidate.bgvEligible);
 	const SECTIONS = $derived([
 		{ label: 'Personal', keys: ['fullName', 'dob', 'mobile', 'fatherName', 'motherName'] },
 		{ label: 'Address', keys: ['presentAddress', 'presentPin', 'permanentAddress', 'permanentPin'] },
@@ -117,7 +119,7 @@
 		{ label: 'Bank', keys: ['bankAccountName', 'bankName', 'accountNo', 'ifsc', 'branch'] },
 		// Feeds the BGV request to the previous employer, so it gates submission
 		// the same way the master-sheet fields do (see validateMasterSheet).
-		...(isExpTrack
+		...(bgvEligible
 			? [{
 					label: 'Previous employer',
 					keys: [
@@ -605,8 +607,8 @@
 						</div>
 					</section>
 
-					{#if isExpTrack}
-						<!-- previous employment (experienced/consultant/contract) -->
+					{#if bgvEligible}
+						<!-- previous employment — experienced hires at BGV entities only -->
 						<section class="card form-card">
 							<div class="section-head">
 								<span class="section-num">06</span>

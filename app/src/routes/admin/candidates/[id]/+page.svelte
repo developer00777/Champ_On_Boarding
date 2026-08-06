@@ -200,10 +200,11 @@
 				['LinkedIn', c.linkedinId, 'linkedinId']
 			]
 		},
-		// Only experienced-like tracks declare a previous employer; rendering the
-		// inputs for those tracks (even mid-edit) also keeps ?/editProfile from
-		// blanking fields that were never on screen.
-		...(EXP_LIKE_TRACKS.includes(c.track as Track)
+		// Only BGV-eligible candidates (experienced track at a BGV entity)
+		// declare a previous employer; rendering the inputs for them (even
+		// mid-edit) also keeps ?/editProfile from blanking fields that were
+		// never on screen.
+		...(c.bgvEligible
 			? [{
 					title: 'Previous employment (BGV)',
 					rows: [

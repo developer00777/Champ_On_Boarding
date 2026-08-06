@@ -98,6 +98,10 @@ const candidateSchema = new Schema(
 			type: [{ docType: { type: String, required: true }, note: { type: String, default: null } }],
 			default: []
 		},
+		// Removed from the BGV section by HR ("delete BGV candidate"): hides the
+		// row from /admin/bgv and blocks its BGV workspace. The BgvRequest row is
+		// deleted along with setting this; onboarding data is untouched.
+		bgvExcluded: { type: Boolean, default: false },
 		consentAt: Date,
 		consentIp: String,
 		status: {

@@ -56,15 +56,12 @@ export interface FieldError {
 	message: string;
 }
 
-/** Tracks that must declare previous employment (mirrors EXP_LIKE_TRACKS in
- *  matrix.ts — restated here so this module keeps zero imports). */
-const PREV_EMPLOYMENT_TRACKS = ['experienced', 'consultant', 'contract'];
-
 /** Validate the master-sheet fields a candidate submits. Returns blocking
- *  errors. `track`, when given, additionally enforces the previous-employment
- *  block for experienced-like tracks — those fields feed the BGV request to
- *  the previous employer, so a hole here becomes an unusable BGV later. */
-export function validateMasterSheet(f: Record<string, string>, track?: string): FieldError[] {
+ *  errors. `requirePrevEmployment` additionally enforces the previous-
+ *  employment block — callers derive it from isBgvEligible() in matrix.ts
+ *  (experienced track at a BGV entity), since those fields feed the BGV
+ *  request and a hole here becomes an unusable BGV later. */
+export function validateMasterSheet(f: Record<string, string>, requirePrevEmployment = false): FieldError[] {
 	const errors: FieldError[] = [];
 	const req = (field: string, label: string) => {
 		if (!f[field]?.trim()) errors.push({ field, message: `${label} is required` });
@@ -129,7 +126,7 @@ export function validateMasterSheet(f: Record<string, string>, track?: string): 
 		req('spouseName', 'Spouse name');
 		req('spouseContact', 'Spouse contact');
 	}
-	if (track && PREV_EMPLOYMENT_TRACKS.includes(track)) {
+	if (requirePrevEmployment) {
 		req('prevCompanyName', 'Previous company name');
 		req('prevEmployeeId', 'Employee ID at previous company');
 		req('prevDoj', 'Date of joining (previous company)');

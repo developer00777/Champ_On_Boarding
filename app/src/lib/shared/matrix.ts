@@ -86,6 +86,26 @@ const EXP: Track[] = ['experienced', 'consultant', 'contract'];
  *  (e.g. the candidate self-enters their own UAN instead of HR setting it). */
 export const EXP_LIKE_TRACKS: Track[] = EXP;
 
+/** HR decision (Aug 2026): background verification runs for these four
+ *  entities only, and only for the Experienced track — not consultant or
+ *  contract. Keyed on brandSlug like ENTITY_DOC_OVERRIDES, so renamed or
+ *  duplicate company rows for the same entity all pick the rule up. */
+export const BGV_ENTITY_SLUGS = [
+	'champion-infometrics',
+	'champion-infratech',
+	'cirrologix',
+	'ip-momentum'
+];
+
+/** Gates everything BGV: the previous-employment section of the candidate
+ *  form (visibility and mandatory-field validation), the /admin/bgv listing,
+ *  and the per-candidate BGV workspace. Callers must pass the company's RAW
+ *  brandSlug — not a brandBySlug() result, whose unknown-slug fallback to the
+ *  default brand would make every unbranded entity look BGV-eligible. */
+export function isBgvEligible(track: string | null | undefined, brandSlug: string | null | undefined): boolean {
+	return track === 'experienced' && !!brandSlug && BGV_ENTITY_SLUGS.includes(brandSlug);
+}
+
 export const DOC_SLOTS: DocSlot[] = [
 	{ type: 'aadhaar_front', label: 'Aadhaar Card — Front', hint: 'Full Aadhaar number and name clearly visible, all 4 corners in frame', tracks: ALL, mandatory: true, ocr: 'aadhaar_front', maxFiles: 1 },
 	{ type: 'aadhaar_back', label: 'Aadhaar Card — Back (optional)', hint: 'Address fully visible, no glare', tracks: ALL, mandatory: false, ocr: 'aadhaar_back', maxFiles: 1 },

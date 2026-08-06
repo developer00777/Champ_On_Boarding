@@ -15,7 +15,7 @@ import {
 	isValidPin,
 	isValidMobile
 } from '$lib/shared/validation';
-import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, slotByType, type Track } from '$lib/shared/matrix';
+import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, slotByType, isBgvEligible, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { isoToDDMMYYYY } from '$lib/shared/dates';
 import { runVerification } from '$lib/server/verify/engine';
@@ -60,13 +60,13 @@ function requireApprover(locals: App.Locals) {
 	return null;
 }
 
-function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | null) {
+function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | null, requirePrevEmployment: boolean) {
 	const fields: Record<string, string> = {};
 	for (const [k, v] of Object.entries(candidate)) {
 		if (typeof v === 'string') fields[k] = v;
 	}
 	fields.aadhaarNo = aadhaarPlain ?? '';
-	return validateMasterSheet(fields, fields.track).map((e) => e.message);
+	return validateMasterSheet(fields, requirePrevEmployment).map((e) => e.message);
 }
 
 // Every candidate-submitted profile field HR can correct after the fact.
@@ -205,6 +205,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			ifsc: candidate.ifsc ?? null,
 			branch: candidate.branch ?? null,
 			employeeId: candidate.employeeId ?? null,
+			bgvEligible: isBgvEligible(candidate.track, row.company?.brandSlug),
 			prevCompanyName: candidate.prevCompanyName ?? null,
 			prevEmployeeId: candidate.prevEmployeeId ?? null,
 			prevDoj: candidate.prevDoj ?? null,
@@ -253,7 +254,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		}),
 		flags:
 			candidate.status === 'submitted'
-				? reviewFlags(candidate as unknown as Record<string, unknown>, aadhaarPlain)
+				? reviewFlags(
+						candidate as unknown as Record<string, unknown>,
+						aadhaarPlain,
+						isBgvEligible(candidate.track, row.company?.brandSlug)
+					)
 				: [],
 		verifications: verificationDocs.map((v) => {
 			const spec = VERIFY_SPECS[v.docKind];

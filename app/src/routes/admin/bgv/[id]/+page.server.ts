@@ -2,10 +2,10 @@
 // editable request email (pre-addressed to the declared previous-employer HR
 // contact), the send/re-send action, the sent/reply mail thread, and — once
 // the employer responds — the verification result.
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Candidate, Company, EmailMessage } from '$lib/server/db/schema';
-import { EXP_LIKE_TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
+import { Candidate, Company, EmailMessage, BgvRequest } from '$lib/server/db/schema';
+import { isBgvEligible, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { isValidEmail } from '$lib/shared/validation';
 import { sendMail, brandFromHeader } from '$lib/server/mailer';
@@ -24,17 +24,20 @@ function escapeRegex(v: string): string {
 	return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function getExpCandidate(id: string) {
+/** BGV workspace exists only for Experienced hires at the four BGV entities
+ *  (isBgvEligible), and never for candidates HR has deleted from BGV. */
+async function getBgvCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean().catch(() => null);
-	if (!candidate || !EXP_LIKE_TRACKS.includes(candidate.track as Track)) return null;
-	return candidate;
+	if (!candidate || candidate.bgvExcluded) return null;
+	const company = await Company.findById(candidate.companyId).lean();
+	if (!isBgvEligible(candidate.track, company?.brandSlug)) return null;
+	return { candidate, company };
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-	const candidate = await getExpCandidate(params.id);
-	if (!candidate) error(404, 'No BGV-eligible candidate with this id.');
-
-	const company = await Company.findById(candidate.companyId).lean();
+	const row = await getBgvCandidate(params.id);
+	if (!row) error(404, 'No BGV-eligible candidate with this id.');
+	const { candidate, company } = row;
 	const companyName = company?.name ?? brandBySlug(company?.brandSlug ?? undefined).name;
 	const bgv = await getOrCreateBgv(params.id);
 
@@ -108,8 +111,9 @@ export const actions: Actions = {
 		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 
-		const candidate = await getExpCandidate(params.id);
-		if (!candidate) return fail(404, { message: 'Candidate not found.' });
+		const row = await getBgvCandidate(params.id);
+		if (!row) return fail(404, { message: 'Candidate not found.' });
+		const { candidate, company } = row;
 
 		const form = await request.formData();
 		const to = String(form.get('to') ?? '').trim().toLowerCase();
@@ -125,7 +129,6 @@ export const actions: Actions = {
 		if (!subject) return fail(400, { message: 'Subject is required.' });
 		if (!body) return fail(400, { message: 'Email body is required.' });
 
-		const company = await Company.findById(candidate.companyId).lean();
 		const companyName = company?.name ?? brandBySlug(company?.brandSlug ?? undefined).name;
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
 		const bgv = await getOrCreateBgv(params.id);
@@ -175,5 +178,28 @@ export const actions: Actions = {
 		});
 
 		return { sent: true };
+	},
+
+	// Same scope as the list-page delete: removes the candidate from the BGV
+	// section (bgvExcluded) and drops their BgvRequest. Onboarding data stays.
+	deleteBgv: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+
+		const row = await getBgvCandidate(params.id);
+		if (!row) return fail(404, { message: 'Candidate not found.' });
+
+		await Candidate.findByIdAndUpdate(params.id, { bgvExcluded: true });
+		await BgvRequest.deleteOne({ candidateId: params.id });
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'bgv_deleted',
+			field: row.candidate.prevCompanyName ?? null,
+			ip: getClientAddress()
+		});
+
+		redirect(303, '/admin/bgv');
 	}
 };

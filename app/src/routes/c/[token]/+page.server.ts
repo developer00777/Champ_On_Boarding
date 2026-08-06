@@ -6,7 +6,7 @@ import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { audit } from '$lib/server/audit';
 import { encrypt } from '$lib/server/crypto';
 import { validateMasterSheet, titleCase, maskAadhaar } from '$lib/shared/validation';
-import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, isBgvEligible, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { env } from '$env/dynamic/private';
@@ -65,6 +65,9 @@ export const load: PageServerLoad = async ({ params }) => {
 		candidate: {
 			id: candidate.id,
 			track: candidate.track,
+			// Whether the previous-employment (BGV) section applies: experienced
+			// track at one of the BGV entities. Uses the company's raw brandSlug.
+			bgvEligible: isBgvEligible(candidate.track, company?.brandSlug),
 			trackLabel: TRACK_LABELS[candidate.track as Track],
 			status: candidate.status,
 			consented: !!candidate.consentAt,
@@ -139,13 +142,12 @@ export const actions: Actions = {
 			return fail(409, { message: 'This submission can no longer be edited.' });
 		if (!candidate.consentAt) return fail(400, { message: 'Consent is required.' });
 
-		const fields = formToFields(await request.formData());
-		const errors = validateMasterSheet(fields, candidate.track as Track);
-
-		// Fetched here rather than at the alert-email step below because the
-		// mandatory-document gate needs the entity too: without it this would
-		// demand documents the portal told the candidate were optional.
+		// Fetched before validation because the entity decides more than the
+		// document matrix: it also gates the previous-employment (BGV) block.
 		const company = await Company.findById(candidate.companyId).lean();
+
+		const fields = formToFields(await request.formData());
+		const errors = validateMasterSheet(fields, isBgvEligible(candidate.track, company?.brandSlug));
 		const checklist = await checklistFor(candidate.id, candidate.track as Track, company?.brandSlug);
 		for (const slot of missingMandatory(checklist)) {
 			// Grouped slots collapse to one entry, so name the alternatives rather
