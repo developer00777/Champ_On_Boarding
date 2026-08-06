@@ -10,7 +10,7 @@ import { resolveBgvToken, BGV_PARTICULARS } from '$lib/server/bgv';
 import { brandBySlug } from '$lib/shared/brands';
 import { sendBrandedMail } from '$lib/server/mailer';
 import { audit } from '$lib/server/audit';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 
 async function resolveContext(token: string) {
 	const bgv = await resolveBgvToken(token);
@@ -93,7 +93,7 @@ export const actions: Actions = {
 				const admin = await Admin.findById(bgv.sentBy).lean();
 				if (admin?.email) {
 					const brand = brandBySlug(company?.brandSlug ?? undefined);
-					const base = (publicEnv.PUBLIC_BASE_URL ?? '').replace(/\/$/, '');
+					const base = baseUrl();
 					await sendBrandedMail(
 						admin.email,
 						`✅ BGV completed: ${candidate.fullName || candidate.email}`,

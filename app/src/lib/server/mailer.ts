@@ -1,6 +1,6 @@
 // Mailer — Resend when RESEND_API_KEY is set, console otherwise (dev).
 import { env } from '$env/dynamic/private';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 import type { BrandTheme } from '$lib/shared/brands';
 import { EmailMessage } from './db/schema';
 
@@ -60,7 +60,7 @@ export function brandFromHeader(brand: BrandTheme, purpose: MailPurpose = 'onboa
  *  Most mail clients (Gmail, Outlook) strip `data:` URI images from HTML
  *  email for security reasons, so the logo must be a normal hosted URL. */
 function brandLogoUrl(brand: BrandTheme): string {
-	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	const base = baseUrl();
 	return `${base}${brand.logo.src}`;
 }
 

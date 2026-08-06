@@ -10,7 +10,7 @@ import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, isBgvEligible, type Track } from '$l
 import { brandBySlug } from '$lib/shared/brands';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { env } from '$env/dynamic/private';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 
 const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
@@ -172,7 +172,7 @@ export const actions: Actions = {
 
 		// Alert the HR admin who created this candidate's link
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
-		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+		const base = baseUrl();
 		const reviewUrl = `${base}/admin/candidates/${candidate.id}`;
 
 		const alertRecipients: string[] = [];

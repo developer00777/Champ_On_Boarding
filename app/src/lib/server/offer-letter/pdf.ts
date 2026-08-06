@@ -14,7 +14,7 @@
 import { PDFDocument, rgb, StandardFonts, PageSizes } from 'pdf-lib';
 import type { PDFFont, PDFPage, PDFImage } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { OfferLetterInput } from './fields';
 import {
@@ -59,7 +59,7 @@ async function fetchLogoBytes(brand: BrandTheme): Promise<Uint8Array | null> {
 	}
 
 	try {
-		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+		const base = baseUrl();
 		const res = await fetch(`${base}${brand.logo.src}`, { signal: AbortSignal.timeout(4000) });
 		if (!res.ok) return null;
 		return new Uint8Array(await res.arrayBuffer());

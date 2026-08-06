@@ -30,7 +30,7 @@ import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken } from '$lib/server/tokens';
 import { env } from '$env/dynamic/private';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -155,7 +155,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
 
-	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	const base = baseUrl();
 	const onboardingLink =
 		activeLinkToken?.tokenEncrypted != null
 			? {
@@ -339,7 +339,7 @@ export const actions: Actions = {
 		// Alert onboarding concern person to create employee code
 		const onboardingEmail = env.ONBOARDING_CONCERN_EMAIL;
 		if (onboardingEmail) {
-			const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+			const base = baseUrl();
 			const reviewUrl = `${base}/admin/candidates/${params.id}`;
 			await sendBrandedMail(
 				onboardingEmail,
@@ -559,7 +559,7 @@ export const actions: Actions = {
 
 		await LinkToken.updateMany({ candidateId: params.id, revoked: false }, { revoked: true });
 		const token = await createLinkToken(params.id);
-		const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+		const base = baseUrl();
 
 		await audit({
 			candidateId: params.id,

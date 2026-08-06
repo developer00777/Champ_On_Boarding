@@ -7,7 +7,7 @@ import type { CandidateDoc, OfferLetterDoc } from '$lib/server/db/schema';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { Track } from '$lib/shared/matrix';
 import { sendMail, brandFromHeader, offerLetterHtml } from '$lib/server/mailer';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 import {
 	offerLetterInputFromDraft,
 	isOfferLetterComplete,
@@ -63,7 +63,7 @@ export async function sendOfferLetterBrandedMail(
 	attachments: { filename: string; content: Buffer }[]
 ) {
 	const candidateName = candidate.fullName ?? candidate.email;
-	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	const base = baseUrl();
 	const logoUrl = `${base}${brand.logo.src}`;
 
 	const html = offerLetterHtml({

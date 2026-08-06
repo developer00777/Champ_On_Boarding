@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { env } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 import { Candidate, Company, PhysicalItem, OfferLetter } from '$lib/server/db/schema';
 import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
@@ -187,7 +187,7 @@ export const actions: Actions = {
 		);
 
 		const token = await createLinkToken(String(candidate._id));
-		const base = env.PUBLIC_BASE_URL ?? 'http://localhost:5173';
+		const base = baseUrl();
 		const link = `${base}/c/${token}`;
 
 		await audit({

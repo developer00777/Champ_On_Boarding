@@ -14,7 +14,7 @@
 import { PDFDocument, StandardFonts, PageSizes, rgb } from 'pdf-lib';
 import type { PDFFont } from 'pdf-lib';
 import { env } from '$env/dynamic/private';
-import { env as publicEnv } from '$env/dynamic/public';
+import { baseUrl } from '$lib/server/base-url';
 import type { BrandTheme } from '$lib/shared/brands';
 import { BgvRequest, type BgvRequestDoc } from './db/schema';
 import { randomToken, sha256, encrypt, decrypt } from './crypto';
@@ -61,7 +61,7 @@ export async function resolveBgvToken(token: string): Promise<BgvRequestDoc | nu
 }
 
 export function bgvFormUrl(bgv: BgvRequestDoc): string {
-	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	const base = baseUrl();
 	return `${base}/bgv/${decrypt(bgv.tokenEncrypted)}`;
 }
 
@@ -151,7 +151,7 @@ export function bgvRequestHtml(
 	bodyText: string,
 	candidate: Record<string, unknown>
 ): string {
-	const base = (publicEnv.PUBLIC_BASE_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+	const base = baseUrl();
 	const logoUrl = `${base}${brand.logo.src}`;
 	const logoBg = brand.logo.onDark ? brand.colors.ink : 'transparent';
 	const primary = brand.colors.primary;
