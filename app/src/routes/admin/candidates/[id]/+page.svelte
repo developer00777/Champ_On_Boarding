@@ -165,6 +165,7 @@
 				['Mobile', c.mobile, 'mobile'],
 				["Father's name", c.fatherName, 'fatherName'],
 				["Father's mobile", c.fatherMobile, 'fatherMobile'],
+				["Father's DOB", c.fatherDob, 'fatherDob'],
 				["Mother's name", c.motherName, 'motherName'],
 				["Mother's mobile", c.motherMobile, 'motherMobile'],
 				["Mother's DOB", c.motherDob, 'motherDob'],

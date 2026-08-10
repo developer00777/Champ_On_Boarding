@@ -495,9 +495,10 @@
 							{@render field('mobile', 'Mobile number', { placeholder: '10 digits', required: true })}
 							{@render field('fatherName', "Father's name", { required: true })}
 							{@render field('fatherMobile', "Father's mobile", { required: true })}
+							{@render field('fatherDob', "Father's DOB", { placeholder: 'DD/MM/YYYY', required: true })}
 							{@render field('motherName', "Mother's name", { required: true })}
 							{@render field('motherMobile', "Mother's mobile")}
-							{@render field('motherDob', "Mother's DOB", { placeholder: 'DD/MM/YYYY' })}
+							{@render field('motherDob', "Mother's DOB", { placeholder: 'DD/MM/YYYY', required: true })}
 							<div>
 								<label for="maritalStatus">Marital status</label>
 								<select id="maritalStatus" name="maritalStatus" bind:value={fields.maritalStatus}>

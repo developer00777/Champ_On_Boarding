@@ -72,7 +72,12 @@ export function validateMasterSheet(f: Record<string, string>, requirePrevEmploy
 	req('mobile', 'Mobile number');
 	req('fatherName', "Father's name");
 	req('fatherMobile', "Father's mobile");
+	req('fatherDob', "Father's DOB");
 	req('motherName', "Mother's name");
+	// HR decision (Aug 2026): both parents' dates of birth are mandatory. They
+	// feed insurance and PF nominee records, where a missing DOB stalls the
+	// enrolment after the candidate is already onboarded.
+	req('motherDob', "Mother's DOB");
 	req('presentAddress', 'Present address');
 	req('presentPin', 'Present PIN code');
 	req('presentHouseNo', 'Present house number');

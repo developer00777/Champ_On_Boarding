@@ -77,7 +77,7 @@ function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | 
 // those instead of updating them).
 const PROFILE_FIELDS = [
 	'fullName', 'dob', 'gender', 'mobile',
-	'fatherName', 'fatherMobile', 'motherName', 'motherMobile', 'motherDob',
+	'fatherName', 'fatherMobile', 'fatherDob', 'motherName', 'motherMobile', 'motherDob',
 	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
 	'emergencyContactName', 'emergencyContactMobile', 'emergencyContactRelation',
 	'presentAddress', 'presentPin', 'presentHouseNo',
@@ -177,6 +177,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			mobile: candidate.mobile ?? null,
 			fatherName: candidate.fatherName ?? null,
 			fatherMobile: candidate.fatherMobile ?? null,
+			fatherDob: candidate.fatherDob ?? null,
 			motherName: candidate.motherName ?? null,
 			motherMobile: candidate.motherMobile ?? null,
 			motherDob: candidate.motherDob ?? null,

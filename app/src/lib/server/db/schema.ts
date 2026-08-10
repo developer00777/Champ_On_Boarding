@@ -43,6 +43,7 @@ const candidateSchema = new Schema(
 		mobile: String,
 		fatherName: String,
 		fatherMobile: String,
+		fatherDob: String,
 		motherName: String,
 		motherMobile: String,
 		motherDob: String,

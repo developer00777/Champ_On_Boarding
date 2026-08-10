@@ -16,7 +16,7 @@ const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 
 const FIELDS = [
 	'fullName', 'dob', 'gender', 'mobile',
-	'fatherName', 'fatherMobile', 'motherName', 'motherMobile', 'motherDob',
+	'fatherName', 'fatherMobile', 'fatherDob', 'motherName', 'motherMobile', 'motherDob',
 	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
 	'emergencyContactName', 'emergencyContactMobile', 'emergencyContactRelation',
 	'presentAddress', 'presentPin', 'presentHouseNo',
