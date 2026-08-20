@@ -29,6 +29,8 @@ import {
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken } from '$lib/server/tokens';
+import { isShiftTiming } from '$lib/shared/shifts';
+import { sendItSetupMail } from '$lib/server/it-setup-mail';
 import { env } from '$env/dynamic/private';
 import { baseUrl } from '$lib/server/base-url';
 
@@ -78,6 +80,7 @@ function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | 
 const PROFILE_FIELDS = [
 	'fullName', 'dob', 'gender', 'mobile',
 	'fatherName', 'fatherMobile', 'fatherDob', 'motherName', 'motherMobile', 'motherDob',
+	'religion', 'motherTongue',
 	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
 	'emergencyContactName', 'emergencyContactMobile', 'emergencyContactRelation',
 	'presentAddress', 'presentPin', 'presentHouseNo',
@@ -90,7 +93,7 @@ const PROFILE_FIELDS = [
 
 const PROFILE_TITLE_CASE_FIELDS = new Set([
 	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName',
-	'bankAccountName', 'bankName', 'branch'
+	'bankAccountName', 'bankName', 'branch', 'motherTongue'
 ]);
 
 /** Same normalization the candidate-facing form applies (see
@@ -181,6 +184,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			motherName: candidate.motherName ?? null,
 			motherMobile: candidate.motherMobile ?? null,
 			motherDob: candidate.motherDob ?? null,
+			religion: candidate.religion ?? null,
+			motherTongue: candidate.motherTongue ?? null,
 			maritalStatus: candidate.maritalStatus ?? null,
 			spouseName: candidate.spouseName ?? null,
 			spouseContact: candidate.spouseContact ?? null,
@@ -221,7 +226,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			submittedAt: candidate.submittedAt?.toISOString() ?? null,
 			reviewedAt: candidate.reviewedAt?.toISOString() ?? null,
 			hiringDecision: candidate.hiringDecision ?? null,
-			hiringDecisionAt: candidate.hiringDecisionAt?.toISOString() ?? null
+			hiringDecisionAt: candidate.hiringDecisionAt?.toISOString() ?? null,
+			shiftTiming: candidate.shiftTiming ?? null,
+			teamName: candidate.teamName ?? null,
+			payrollEntity: candidate.payrollEntity ?? null,
+			workLocationMode: candidate.workLocationMode ?? null,
+			joiningMode: candidate.joiningMode ?? null,
+			itSetupMailSentAt: candidate.itSetupMailSentAt?.toISOString() ?? null
 		},
 		companyName: company?.name ?? '',
 		brand: brandBySlug(company?.brandSlug ?? undefined),
@@ -302,6 +313,29 @@ export const actions: Actions = {
 		if (missingMandatory(checklist).length)
 			return fail(400, { message: 'Mandatory documents are missing — cannot approve.' });
 
+		// Approve is the last step in the flow, and clicking it mails IT the
+		// System & VPN table. Every column that table fills from our records must
+		// therefore already exist: the employee code and shift timing HR assigns
+		// by hand, plus the offer letter that carries DOJ, designation, team and
+		// reporting head. Approving without them would send IT a half-blank row.
+		const offer = await OfferLetter.findOne({ candidateId: params.id }).lean();
+		const approvalBlockers: string[] = [];
+		if (!candidate.employeeId) approvalBlockers.push('assign the employee code');
+		if (!candidate.shiftTiming) approvalBlockers.push('confirm the shift timing');
+		// Team Name and Payroll Entity fall back to the offer's department and the
+		// company, so they only block when neither the override nor the fallback
+		// has a value. WFH/WFO and Mode have no fallback at all.
+		if (!candidate.teamName && !offer?.department) approvalBlockers.push('set the team name');
+		if (!candidate.workLocationMode) approvalBlockers.push('set WFH/WFO');
+		if (!candidate.payrollEntity && !row.company?.name) approvalBlockers.push('set the payroll entity');
+		if (!candidate.joiningMode) approvalBlockers.push('set the mode');
+		if (offer?.status !== 'sent') approvalBlockers.push('release the offer letter');
+		if (approvalBlockers.length)
+			return fail(400, {
+				approveBlocked: true,
+				message: `Cannot approve yet — ${approvalBlockers.join(', ')}.`
+			});
+
 		const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
 		const allPhysical = physical.length > 0 && physical.every((p) => p.received);
 
@@ -349,7 +383,7 @@ export const actions: Actions = {
 				`${candidate.fullName || candidate.email} has been approved by HR and is ready for employee code creation.\n\n` +
 				`Track: ${TRACK_LABELS[candidate.track as Track]}\n` +
 				`Company: ${row.company?.name ?? brand.name}\n` +
-				`Job title: ${(await OfferLetter.findOne({ candidateId: params.id }).lean())?.jobTitle ?? '—'}\n` +
+				`Job title: ${offer?.jobTitle ?? '—'}\n` +
 				`Email: ${candidate.email}\n` +
 				`Mobile: ${candidate.mobile ?? '—'}\n\n` +
 				`Please create their employee code and update the system:\n${reviewUrl}\n\n` +
@@ -358,7 +392,29 @@ export const actions: Actions = {
 			).catch((err) => console.error('[approve-alert] onboarding concern email failed:', err));
 		}
 
-		return { ok: true };
+		// Approval is what tells IT to provision the person, so the system/VPN
+		// setup mail goes out here. Guarded on itSetupMailSentAt so re-approving
+		// never double-mails the desk; HR can resend deliberately from the shift
+		// timing card once that or the offer details are filled in. A mail failure
+		// is logged, never surfaced — the approval itself is already committed.
+		let itSetupMailSent = false;
+		if (!candidate.itSetupMailSentAt) {
+			try {
+				await sendItSetupMail(params.id);
+				itSetupMailSent = true;
+				await audit({
+					candidateId: params.id,
+					actor: locals.admin!.email,
+					action: 'it_setup_mail_sent',
+					newValue: 'auto (candidate approved)',
+					ip: getClientAddress()
+				});
+			} catch (e) {
+				console.error(`[it-setup-mail] auto-send failed for candidate=${params.id}:`, e);
+			}
+		}
+
+		return { ok: true, itSetupMailSent };
 	},
 
 	// A manual HR hiring call, independent of document-review status above —
@@ -391,6 +447,89 @@ export const actions: Actions = {
 		});
 
 		return { ok: true };
+	},
+
+	// The four remaining IT/VPN mail columns HR fills by hand. Team Name and
+	// Payroll Entity are overrides — blanking them restores the derived value
+	// (offer department / company name) rather than emptying the column, which
+	// is why empty string is stored as null.
+	setItMailFields: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const clean = (k: string) => String(form.get(k) ?? '').trim().slice(0, 120) || null;
+		const patch = {
+			teamName: clean('teamName'),
+			payrollEntity: clean('payrollEntity'),
+			workLocationMode: clean('workLocationMode'),
+			joiningMode: clean('joiningMode')
+		};
+		await Candidate.findByIdAndUpdate(params.id, patch);
+		for (const [field, newValue] of Object.entries(patch)) {
+			const oldValue = (row.candidate as unknown as Record<string, string | null>)[field] ?? null;
+			if (oldValue === newValue) continue;
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'it_mail_field_set',
+				field,
+				oldValue,
+				newValue,
+				ip: getClientAddress()
+			});
+		}
+		return { itMailFieldsSaved: true, ...patch };
+	},
+
+	// One of the three roster shifts (Flexible / General / Night Shift). Feeds
+	// the Master Tracker export and the IT setup mail's Shift Timing column.
+	setShiftTiming: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const raw = String(form.get('shiftTiming') ?? '').trim();
+		// Empty clears the field; anything else must be one of the three, so a
+		// stale form or a hand-rolled POST can't put arbitrary text in IT's mail.
+		if (raw && !isShiftTiming(raw)) return fail(400, { message: 'Unknown shift timing.' });
+		const shiftTiming = raw || null;
+		await Candidate.findByIdAndUpdate(params.id, { shiftTiming });
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'shift_timing_set',
+			field: 'shiftTiming',
+			oldValue: row.candidate.shiftTiming ?? null,
+			newValue: shiftTiming,
+			ip: getClientAddress()
+		});
+		return { shiftTimingSaved: true, shiftTiming: shiftTiming ?? '' };
+	},
+
+	// Manual (re)send of the IT/VPN setup mail — the usual case is HR filling in
+	// shift timing or the offer letter after having already accepted.
+	sendItSetupMail: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		try {
+			const { to, cc } = await sendItSetupMail(params.id);
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'it_setup_mail_sent',
+				newValue: `manual → ${[...to, ...cc].join(', ')}`,
+				ip: getClientAddress()
+			});
+			return { itSetupMailSent: true };
+		} catch (e) {
+			console.error(`[it-setup-mail] manual send failed for candidate=${params.id}:`, e);
+			return fail(502, { message: 'Could not send the IT setup mail. Please try again.' });
+		}
 	},
 
 	requestReupload: async ({ params, request, locals, getClientAddress }) => {

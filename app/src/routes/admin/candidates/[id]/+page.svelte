@@ -9,6 +9,7 @@
 	} from '$lib/shared/matrix';
 	import { toIsoDate } from '$lib/shared/dates';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
+	import { SHIFT_TIMINGS, isShiftTiming } from '$lib/shared/shifts';
 
 	let { data, form } = $props();
 
@@ -169,6 +170,7 @@
 				["Mother's name", c.motherName, 'motherName'],
 				["Mother's mobile", c.motherMobile, 'motherMobile'],
 				["Mother's DOB", c.motherDob, 'motherDob'],
+				['Mother tongue', c.motherTongue, 'motherTongue'],
 				...(c.maritalStatus === 'married' || editingProfile
 					? [
 							['Spouse name', c.spouseName, 'spouseName'],
@@ -260,6 +262,51 @@
 
 	// Employee ID: prefer server-echoed value after save, else candidate field
 	const empId = $derived(form?.employeeIdSaved ? form.employeeId : (c.employeeId ?? ''));
+	const shiftTiming = $derived(form?.shiftTimingSaved ? form.shiftTiming : (c.shiftTiming ?? ''));
+
+	// GlassSelect is controlled, so mirror the stored shift into local state the
+	// same way the offer letter's fields do. A record saved before the list was
+	// fixed keeps its free-text value as an extra option, so re-saving the form
+	// cannot silently drop what IT was already told.
+	let shiftChoice = $state('');
+	$effect(() => {
+		shiftChoice = shiftTiming;
+	});
+	const shiftOptions = $derived([
+		...SHIFT_TIMINGS.map((s) => ({ value: s, label: s })),
+		...(shiftTiming && !isShiftTiming(shiftTiming)
+			? [{ value: shiftTiming, label: `${shiftTiming} (legacy)` }]
+			: [])
+	]);
+
+	// The four HR-filled IT-mail columns. Team Name and Payroll Entity show the
+	// derived value (offer department / company) when HR has not overridden it,
+	// so the input always previews exactly what the mail will carry.
+	const itFields = $derived({
+		teamName: form?.itMailFieldsSaved ? (form.teamName ?? '') : (c.teamName ?? ''),
+		payrollEntity: form?.itMailFieldsSaved ? (form.payrollEntity ?? '') : (c.payrollEntity ?? ''),
+		workLocationMode: form?.itMailFieldsSaved ? (form.workLocationMode ?? '') : (c.workLocationMode ?? ''),
+		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
+	});
+	const teamNameEffective = $derived(itFields.teamName || data.offerLetter.department || '');
+	const payrollEntityEffective = $derived(itFields.payrollEntity || data.companyName || '');
+
+	// Approve is the last step and clicking it mails IT the System & VPN table,
+	// so it stays locked until every column that table fills from our records
+	// exists. Mirrors the same check in ?/approve — this only tells HR why the
+	// button is dark.
+	const approvalBlockers = $derived(
+		[
+			empId ? null : 'employee code not assigned',
+			shiftTiming ? null : 'shift timing not confirmed',
+			teamNameEffective ? null : 'team name not set',
+			itFields.workLocationMode ? null : 'WFH/WFO not set',
+			payrollEntityEffective ? null : 'payroll entity not set',
+			itFields.joiningMode ? null : 'mode not set',
+			data.offerLetter.status === 'sent' ? null : 'offer letter not released'
+		].filter((x): x is string => x !== null)
+	);
+	const canApprove = $derived(approvalBlockers.length === 0);
 </script>
 
 <a href="/admin" class="backlink">
@@ -311,7 +358,13 @@
 		{#if c.status === 'submitted'}
 			<form method="POST" action="?/approve" use:enhance>
 				<fieldset class="rbac" disabled={!data.isApprover}>
-					<button class="btn teal">
+					<button
+						class="btn teal"
+						disabled={!canApprove}
+						title={canApprove
+							? 'Approve and mail IT the system & VPN setup request'
+							: `Pending: ${approvalBlockers.join(', ')}`}
+					>
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
 						Approve candidate
 					</button>
@@ -375,6 +428,16 @@
 </div>
 
 {#if form?.message}<p class="error">{form.message}</p>{/if}
+
+<!-- Why Approve is dark. Only shown while the candidate is still awaiting
+     review, so an already-approved record doesn't carry a stale checklist. -->
+{#if c.status === 'submitted' && !canApprove}
+	<p class="accept-pending">
+		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+		Approve unlocks once the employee code and shift timing are assigned and the offer letter is
+		released — it mails IT the system &amp; VPN request. Pending: {approvalBlockers.join(', ')}.
+	</p>
+{/if}
 
 {#if data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
 	<div class="linkbox">
@@ -501,23 +564,25 @@
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
 					{empId}
 				</div>
-			{:else if ['approved','complete'].includes(c.status)}
-				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Candidate approved — assign employee code.</p>
+			{:else if ['submitted','approved','complete'].includes(c.status)}
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">
+					Assign the employee code — Approve stays locked until it is set.
+				</p>
 			{:else}
-				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available after approval.</p>
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available once the candidate submits.</p>
 			{/if}
 			<form method="POST" action="?/setEmployeeId" use:enhance class="emp-form">
 				<fieldset class="rbac" disabled={!data.isApprover}>
 					<input
 						name="employeeId"
 						value={empId}
-						placeholder={['approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
+						placeholder={['submitted','approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
 						class="emp-input"
-						disabled={!['approved','complete'].includes(c.status) && !empId}
+						disabled={!['submitted','approved','complete'].includes(c.status) && !empId}
 					/>
 					<button
 						class="btn small teal"
-						disabled={!['approved','complete'].includes(c.status) && !empId}
+						disabled={!['submitted','approved','complete'].includes(c.status) && !empId}
 					>
 						{empId ? 'Update' : 'Assign'}
 					</button>
@@ -532,6 +597,123 @@
 					Code assigned · audit-logged
 				</div>
 			{/if}
+		</section>
+
+		<!-- Shift timing + IT/VPN setup mail -->
+		<section class="card emp-card">
+			<div class="eyebrow" style="margin-bottom:10px">Shift timing</div>
+			{#if shiftTiming}
+				<div class="shift-display">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+					{shiftTiming}
+				</div>
+			{:else}
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">
+					Not set — goes to the Master Tracker and the IT setup mail.
+				</p>
+			{/if}
+			<form method="POST" action="?/setShiftTiming" use:enhance class="emp-form">
+				<fieldset class="rbac" disabled={!data.isApprover}>
+					<GlassSelect
+						name="shiftTiming"
+						ariaLabel="Shift timing"
+						placeholder="Select shift…"
+						bind:value={shiftChoice}
+						options={shiftOptions}
+					/>
+					<button class="btn small teal">{shiftTiming ? 'Update' : 'Save'}</button>
+				</fieldset>
+			</form>
+			{#if form?.shiftTimingSaved}
+				<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
+			{/if}
+
+			<!-- The remaining IT-mail columns. Team Name and Payroll Entity are
+			     pre-filled from the offer letter / entity and stay editable; the
+			     placeholder shows what the mail would carry if left blank. -->
+			<div class="it-fields">
+				<div class="eyebrow" style="margin-bottom:10px">IT mail details</div>
+				<form method="POST" action="?/setItMailFields" use:enhance>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<label class="it-label" for="it-team">Team name</label>
+						<input
+							id="it-team"
+							name="teamName"
+							value={itFields.teamName}
+							placeholder={data.offerLetter.department || 'e.g. Inside Sales'}
+							class="emp-input"
+							maxlength="120"
+						/>
+						<label class="it-label" for="it-wfh">WFH/WFO</label>
+						<input
+							id="it-wfh"
+							name="workLocationMode"
+							value={itFields.workLocationMode}
+							placeholder="e.g. WFO"
+							class="emp-input"
+							list="wfh-options"
+							maxlength="120"
+						/>
+						<datalist id="wfh-options">
+							<option value="WFO"></option>
+							<option value="WFH"></option>
+							<option value="Hybrid"></option>
+						</datalist>
+						<label class="it-label" for="it-entity">Payroll entity</label>
+						<input
+							id="it-entity"
+							name="payrollEntity"
+							value={itFields.payrollEntity}
+							placeholder={data.companyName || 'Payroll entity'}
+							class="emp-input"
+							maxlength="120"
+						/>
+						<label class="it-label" for="it-mode">Mode</label>
+						<input
+							id="it-mode"
+							name="joiningMode"
+							value={itFields.joiningMode}
+							placeholder="e.g. New Joinee"
+							class="emp-input"
+							list="mode-options"
+							maxlength="120"
+						/>
+						<datalist id="mode-options">
+							<option value="New Joinee"></option>
+							<option value="Replacement"></option>
+							<option value="Rehire"></option>
+							<option value="Transfer"></option>
+						</datalist>
+						<button class="btn small teal" style="width:100%;margin-top:9px">Save IT mail details</button>
+					</fieldset>
+				</form>
+				{#if form?.itMailFieldsSaved}
+					<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
+				{/if}
+			</div>
+
+			<div class="it-mail">
+				<form method="POST" action="?/sendItSetupMail" use:enhance>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<button class="btn small ghost" style="width:100%">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+							{c.itSetupMailSentAt ? 'Resend IT setup mail' : 'Send IT setup mail'}
+						</button>
+					</fieldset>
+				</form>
+				{#if form?.itSetupMailSent}
+					<p class="saved-chip" style="margin-top:6px">IT setup mail sent ✓</p>
+				{/if}
+				<div class="emp-hint">
+					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+					{#if c.itSetupMailSentAt}
+						Sent {new Date(c.itSetupMailSentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · recipients in
+					{:else}
+						Auto-sent on approval · recipients in
+					{/if}
+					<a href="/admin/settings" style="color:inherit;text-decoration:underline">settings</a>
+				</div>
+			</div>
 		</section>
 	</aside>
 
@@ -709,6 +891,25 @@
 						</div>
 					{/each}
 				{/each}
+				<div class="group-title">Religion</div>
+				<div class="frow">
+					<span class="flabel">Religion</span>
+					{#if editingProfile}
+						<select class="fedit" name="religion" value={c.religion ?? ''}>
+							<option value="">—</option>
+							<option value="Hindu">Hindu</option>
+							<option value="Muslim">Muslim</option>
+							<option value="Christian">Christian</option>
+							<option value="Sikh">Sikh</option>
+							<option value="Buddhist">Buddhist</option>
+							<option value="Jain">Jain</option>
+							<option value="Other">Other</option>
+							<option value="Prefer not to say">Prefer not to say</option>
+						</select>
+					{:else}
+						<span class="fvalue">{c.religion || '—'}</span>
+					{/if}
+				</div>
 				<div class="group-title">Marital status</div>
 				<div class="frow">
 					<span class="flabel">Marital status</span>
@@ -1103,6 +1304,14 @@
 		opacity: 0.55;
 		cursor: not-allowed;
 	}
+	.accept-pending {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin: 0 0 14px;
+		font-size: 11.5px;
+		color: var(--ae-muted);
+	}
 	.readonly-banner {
 		display: flex;
 		align-items: center;
@@ -1257,6 +1466,12 @@
 		gap: 6px;
 		align-items: center;
 	}
+	/* GlassSelect brings its own wrapper rather than accepting .emp-input, so
+	   the flex row has to be told to let it take the free space. */
+	.emp-form :global(.gs) {
+		flex: 1;
+		min-width: 0;
+	}
 	.emp-input {
 		flex: 1;
 		min-width: 0;
@@ -1271,6 +1486,42 @@
 		background: var(--ae-sub-bg);
 		color: var(--ae-faint);
 		cursor: not-allowed;
+	}
+	.shift-display {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--ae-text);
+		background: var(--ae-sub-bg);
+		border: 1.5px solid var(--ae-line-strong);
+		border-radius: 9px;
+		padding: 8px 11px;
+		margin-bottom: 10px;
+	}
+	.it-mail {
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid var(--ae-line-soft);
+	}
+	.it-fields {
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid var(--ae-line-soft);
+	}
+	.it-fields .emp-input {
+		width: 100%;
+		margin-bottom: 8px;
+	}
+	.it-label {
+		display: block;
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+		margin-bottom: 4px;
 	}
 	.emp-hint {
 		display: flex;

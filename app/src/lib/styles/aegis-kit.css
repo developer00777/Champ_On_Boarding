@@ -161,6 +161,15 @@
 	background: #5bdbad;
 	box-shadow: 0 0 32px rgba(62, 207, 154, 0.45);
 }
+/* Variant colours (`.teal`, `.grad`) out-specify the plain `.btn:disabled`
+   rule above, so a disabled variant would otherwise still read as live. */
+.aegis .btn.teal:disabled,
+.aegis .btn.grad:disabled {
+	background: var(--ae-input-bg);
+	color: var(--ae-muted);
+	box-shadow: none;
+	cursor: not-allowed;
+}
 .aegis .btn.grad {
 	background: linear-gradient(135deg, var(--ae-ember), var(--ae-ember-deep));
 	box-shadow: 0 0 24px rgba(255, 125, 85, 0.35);

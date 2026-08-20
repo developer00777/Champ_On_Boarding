@@ -47,6 +47,12 @@ const candidateSchema = new Schema(
 		motherName: String,
 		motherMobile: String,
 		motherDob: String,
+		// Both optional and never gated at submission: religion is sensitive
+		// personal data, so the form offers an explicit "Prefer not to say" and a
+		// blank stays a legitimate answer. They exist because the Master Tracker
+		// sheet HR hands to payroll has columns for them.
+		religion: String,
+		motherTongue: String,
 		maritalStatus: { type: String, enum: ['single', 'married'], default: null },
 		spouseName: String,
 		spouseContact: String,
@@ -90,6 +96,20 @@ const candidateSchema = new Schema(
 		ifsc: String,
 		branch: String,
 		employeeId: { type: String, default: null, index: true },
+		// One of the three shifts the roster actually runs (see SHIFT_TIMINGS in
+		// shared/shifts.ts). Flows to the Master Tracker CSV and the IT/VPN setup
+		// mail (see it-setup-mail.ts). Legacy rows may still hold free text from
+		// before the three were fixed, so reads must not assume the enum.
+		shiftTiming: { type: String, default: null },
+		// The remaining IT/VPN mail columns HR fills by hand (see it-setup-mail.ts).
+		// Team Name and Payroll Entity default to the offer letter's department and
+		// the company name respectively, but HR can override either — null means
+		// "use the derived value", a set value always wins. WFH/WFO and Mode have
+		// no derivable source at all, so they are HR's entry or nothing.
+		teamName: { type: String, default: null },
+		payrollEntity: { type: String, default: null },
+		workLocationMode: { type: String, default: null },
+		joiningMode: { type: String, default: null },
 		ocrSuggestions: { type: Map, of: String, default: {} },
 		// HR asking a candidate to upload an optional document they skipped (e.g.
 		// degree certificate) — there is no Document row to flip reviewStatus on
@@ -120,7 +140,12 @@ const candidateSchema = new Schema(
 		// finished the form) and reversible (HR can change their mind).
 		hiringDecision: { type: String, enum: ['accepted', 'rejected'], default: null },
 		hiringDecisionAt: Date,
-		hiringDecisionBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
+		hiringDecisionBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		// Set the first time the IT/VPN system-enablement mail goes out for this
+		// candidate. Its only job is to stop the accept-triggered auto-send from
+		// firing twice when HR undoes and re-accepts a decision; HR can still
+		// resend deliberately from the candidate page, which updates this stamp.
+		itSetupMailSentAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
 );
@@ -367,6 +392,21 @@ const emailMessageSchema = new Schema(
 );
 emailMessageSchema.index({ candidateId: 1, createdAt: -1 });
 export const EmailMessage = models.EmailMessage ?? model('EmailMessage', emailMessageSchema);
+
+// ── App Settings ─────────────────────────────────────────────────────────────
+// Single-row-per-key store for admin-editable operational config that is not
+// per-candidate and does not belong in env vars because HR — not a deploy —
+// needs to change it (e.g. who the IT/VPN setup mail is addressed to). Code
+// always supplies a default, so an empty collection is a valid fresh install.
+const appSettingSchema = new Schema(
+	{
+		key: { type: String, required: true, unique: true },
+		value: { type: Schema.Types.Mixed, default: null },
+		updatedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
+	},
+	{ timestamps: true }
+);
+export const AppSetting = models.AppSetting ?? model('AppSetting', appSettingSchema);
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 export type CandidateDoc = InstanceType<typeof Candidate> & { _id: Types.ObjectId };

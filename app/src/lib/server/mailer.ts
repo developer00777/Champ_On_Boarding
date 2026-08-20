@@ -59,7 +59,7 @@ export function brandFromHeader(brand: BrandTheme, purpose: MailPurpose = 'onboa
 /** Absolute URL for a brand's logo, served from the app's own static assets.
  *  Most mail clients (Gmail, Outlook) strip `data:` URI images from HTML
  *  email for security reasons, so the logo must be a normal hosted URL. */
-function brandLogoUrl(brand: BrandTheme): string {
+export function brandLogoUrl(brand: BrandTheme): string {
 	const base = baseUrl();
 	return `${base}${brand.logo.src}`;
 }
@@ -283,7 +283,7 @@ export function offerLetterHtml(opts: {
 </html>`;
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
 	return value
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
@@ -304,11 +304,14 @@ export async function sendBrandedMail(
 	attachments?: MailAttachment[],
 	purpose: MailPurpose = 'onboarding',
 	candidateId?: string,
-	extra?: { cc?: string[]; tagPurpose?: string }
+	extra?: { cc?: string[]; tagPurpose?: string; html?: string }
 ) {
 	await sendMail(to, subject, text, {
 		from: brandFromHeader(brand, purpose),
-		html: await brandedHtml(brand, text),
+		// `text` stays the plain-text alternative in every case; extra.html only
+		// replaces the generic branded shell for mails that need real markup
+		// (e.g. the IT setup table — see it-setup-mail.ts).
+		html: extra?.html ?? (await brandedHtml(brand, text)),
 		attachments,
 		cc: extra?.cc,
 		tags: candidateId ? { candidate_id: candidateId, purpose: extra?.tagPurpose ?? purpose } : undefined
