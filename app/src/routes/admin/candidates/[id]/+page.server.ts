@@ -313,29 +313,6 @@ export const actions: Actions = {
 		if (missingMandatory(checklist).length)
 			return fail(400, { message: 'Mandatory documents are missing — cannot approve.' });
 
-		// Approve is the last step in the flow, and clicking it mails IT the
-		// System & VPN table. Every column that table fills from our records must
-		// therefore already exist: the employee code and shift timing HR assigns
-		// by hand, plus the offer letter that carries DOJ, designation, team and
-		// reporting head. Approving without them would send IT a half-blank row.
-		const offer = await OfferLetter.findOne({ candidateId: params.id }).lean();
-		const approvalBlockers: string[] = [];
-		if (!candidate.employeeId) approvalBlockers.push('assign the employee code');
-		if (!candidate.shiftTiming) approvalBlockers.push('confirm the shift timing');
-		// Team Name and Payroll Entity fall back to the offer's department and the
-		// company, so they only block when neither the override nor the fallback
-		// has a value. WFH/WFO and Mode have no fallback at all.
-		if (!candidate.teamName && !offer?.department) approvalBlockers.push('set the team name');
-		if (!candidate.workLocationMode) approvalBlockers.push('set WFH/WFO');
-		if (!candidate.payrollEntity && !row.company?.name) approvalBlockers.push('set the payroll entity');
-		if (!candidate.joiningMode) approvalBlockers.push('set the mode');
-		if (offer?.status !== 'sent') approvalBlockers.push('release the offer letter');
-		if (approvalBlockers.length)
-			return fail(400, {
-				approveBlocked: true,
-				message: `Cannot approve yet — ${approvalBlockers.join(', ')}.`
-			});
-
 		const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
 		const allPhysical = physical.length > 0 && physical.every((p) => p.received);
 
@@ -383,7 +360,7 @@ export const actions: Actions = {
 				`${candidate.fullName || candidate.email} has been approved by HR and is ready for employee code creation.\n\n` +
 				`Track: ${TRACK_LABELS[candidate.track as Track]}\n` +
 				`Company: ${row.company?.name ?? brand.name}\n` +
-				`Job title: ${offer?.jobTitle ?? '—'}\n` +
+				`Job title: ${(await OfferLetter.findOne({ candidateId: params.id }).lean())?.jobTitle ?? '—'}\n` +
 				`Email: ${candidate.email}\n` +
 				`Mobile: ${candidate.mobile ?? '—'}\n\n` +
 				`Please create their employee code and update the system:\n${reviewUrl}\n\n` +
@@ -392,29 +369,7 @@ export const actions: Actions = {
 			).catch((err) => console.error('[approve-alert] onboarding concern email failed:', err));
 		}
 
-		// Approval is what tells IT to provision the person, so the system/VPN
-		// setup mail goes out here. Guarded on itSetupMailSentAt so re-approving
-		// never double-mails the desk; HR can resend deliberately from the shift
-		// timing card once that or the offer details are filled in. A mail failure
-		// is logged, never surfaced — the approval itself is already committed.
-		let itSetupMailSent = false;
-		if (!candidate.itSetupMailSentAt) {
-			try {
-				await sendItSetupMail(params.id);
-				itSetupMailSent = true;
-				await audit({
-					candidateId: params.id,
-					actor: locals.admin!.email,
-					action: 'it_setup_mail_sent',
-					newValue: 'auto (candidate approved)',
-					ip: getClientAddress()
-				});
-			} catch (e) {
-				console.error(`[it-setup-mail] auto-send failed for candidate=${params.id}:`, e);
-			}
-		}
-
-		return { ok: true, itSetupMailSent };
+		return { ok: true };
 	},
 
 	// A manual HR hiring call, independent of document-review status above —

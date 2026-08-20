@@ -9,7 +9,7 @@
 	} from '$lib/shared/matrix';
 	import { toIsoDate } from '$lib/shared/dates';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
-	import { SHIFT_TIMINGS, isShiftTiming } from '$lib/shared/shifts';
+	import { SHIFT_TIMINGS, isShiftTiming, TRACK_MODE, MODE_OPTIONS } from '$lib/shared/shifts';
 
 	let { data, form } = $props();
 
@@ -288,25 +288,6 @@
 		workLocationMode: form?.itMailFieldsSaved ? (form.workLocationMode ?? '') : (c.workLocationMode ?? ''),
 		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
 	});
-	const teamNameEffective = $derived(itFields.teamName || data.offerLetter.department || '');
-	const payrollEntityEffective = $derived(itFields.payrollEntity || data.companyName || '');
-
-	// Approve is the last step and clicking it mails IT the System & VPN table,
-	// so it stays locked until every column that table fills from our records
-	// exists. Mirrors the same check in ?/approve — this only tells HR why the
-	// button is dark.
-	const approvalBlockers = $derived(
-		[
-			empId ? null : 'employee code not assigned',
-			shiftTiming ? null : 'shift timing not confirmed',
-			teamNameEffective ? null : 'team name not set',
-			itFields.workLocationMode ? null : 'WFH/WFO not set',
-			payrollEntityEffective ? null : 'payroll entity not set',
-			itFields.joiningMode ? null : 'mode not set',
-			data.offerLetter.status === 'sent' ? null : 'offer letter not released'
-		].filter((x): x is string => x !== null)
-	);
-	const canApprove = $derived(approvalBlockers.length === 0);
 </script>
 
 <a href="/admin" class="backlink">
@@ -358,13 +339,7 @@
 		{#if c.status === 'submitted'}
 			<form method="POST" action="?/approve" use:enhance>
 				<fieldset class="rbac" disabled={!data.isApprover}>
-					<button
-						class="btn teal"
-						disabled={!canApprove}
-						title={canApprove
-							? 'Approve and mail IT the system & VPN setup request'
-							: `Pending: ${approvalBlockers.join(', ')}`}
-					>
+					<button class="btn teal">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
 						Approve candidate
 					</button>
@@ -428,16 +403,6 @@
 </div>
 
 {#if form?.message}<p class="error">{form.message}</p>{/if}
-
-<!-- Why Approve is dark. Only shown while the candidate is still awaiting
-     review, so an already-approved record doesn't carry a stale checklist. -->
-{#if c.status === 'submitted' && !canApprove}
-	<p class="accept-pending">
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-		Approve unlocks once the employee code and shift timing are assigned and the offer letter is
-		released — it mails IT the system &amp; VPN request. Pending: {approvalBlockers.join(', ')}.
-	</p>
-{/if}
 
 {#if data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
 	<div class="linkbox">
@@ -564,25 +529,23 @@
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
 					{empId}
 				</div>
-			{:else if ['submitted','approved','complete'].includes(c.status)}
-				<p class="muted" style="font-size:11.5px;margin:0 0 10px">
-					Assign the employee code — Approve stays locked until it is set.
-				</p>
+			{:else if ['approved','complete'].includes(c.status)}
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Candidate approved — assign employee code.</p>
 			{:else}
-				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available once the candidate submits.</p>
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available after approval.</p>
 			{/if}
 			<form method="POST" action="?/setEmployeeId" use:enhance class="emp-form">
 				<fieldset class="rbac" disabled={!data.isApprover}>
 					<input
 						name="employeeId"
 						value={empId}
-						placeholder={['submitted','approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
+						placeholder={['approved','complete'].includes(c.status) ? 'e.g. EMP-0042' : '—'}
 						class="emp-input"
-						disabled={!['submitted','approved','complete'].includes(c.status) && !empId}
+						disabled={!['approved','complete'].includes(c.status) && !empId}
 					/>
 					<button
 						class="btn small teal"
-						disabled={!['submitted','approved','complete'].includes(c.status) && !empId}
+						disabled={!['approved','complete'].includes(c.status) && !empId}
 					>
 						{empId ? 'Update' : 'Assign'}
 					</button>
@@ -620,6 +583,7 @@
 						placeholder="Select shift…"
 						bind:value={shiftChoice}
 						options={shiftOptions}
+						disabled={!data.isApprover}
 					/>
 					<button class="btn small teal">{shiftTiming ? 'Update' : 'Save'}</button>
 				</fieldset>
@@ -673,16 +637,15 @@
 							id="it-mode"
 							name="joiningMode"
 							value={itFields.joiningMode}
-							placeholder="e.g. New Joinee"
+							placeholder={TRACK_MODE[c.track] ?? 'e.g. New Joinee'}
 							class="emp-input"
 							list="mode-options"
 							maxlength="120"
 						/>
 						<datalist id="mode-options">
-							<option value="New Joinee"></option>
-							<option value="Replacement"></option>
-							<option value="Rehire"></option>
-							<option value="Transfer"></option>
+							{#each MODE_OPTIONS as m}
+								<option value={m}></option>
+							{/each}
 						</datalist>
 						<button class="btn small teal" style="width:100%;margin-top:9px">Save IT mail details</button>
 					</fieldset>
@@ -709,7 +672,7 @@
 					{#if c.itSetupMailSentAt}
 						Sent {new Date(c.itSetupMailSentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · recipients in
 					{:else}
-						Auto-sent on approval · recipients in
+						Sent manually when you're ready · recipients in
 					{/if}
 					<a href="/admin/settings" style="color:inherit;text-decoration:underline">settings</a>
 				</div>
@@ -1296,21 +1259,26 @@
 <style>
 	/* Reset so a disabling <fieldset> (hr_admin read-only gate) doesn't add its
 	   own border/padding/display around the form controls it wraps. */
+	/* `display: contents` on a fieldset stops browsers propagating its
+	   `disabled` state to the controls inside — the fieldset generates no box,
+	   so the whole set silently stays interactive. Keep it boxless via margin/
+	   border/padding resets instead, which preserves the disabling. */
 	fieldset.rbac {
-		all: unset;
-		display: contents;
+		border: 0;
+		margin: 0;
+		padding: 0;
+		min-width: 0;
+		/* Inherit whatever layout the parent form used to apply directly to
+		   these controls, so removing `display: contents` does not reflow the
+		   rows it used to be transparent in. */
+		display: inherit;
+		gap: inherit;
+		align-items: inherit;
+		flex-wrap: inherit;
 	}
 	fieldset.rbac:disabled {
 		opacity: 0.55;
 		cursor: not-allowed;
-	}
-	.accept-pending {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		margin: 0 0 14px;
-		font-size: 11.5px;
-		color: var(--ae-muted);
 	}
 	.readonly-banner {
 		display: flex;

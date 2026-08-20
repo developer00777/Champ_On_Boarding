@@ -64,22 +64,31 @@ export function brandLogoUrl(brand: BrandTheme): string {
 	return `${base}${brand.logo.src}`;
 }
 
-export async function sendMail(to: string, subject: string, text: string, options: SendMailOptions = {}) {
+export async function sendMail(
+	to: string | string[],
+	subject: string,
+	text: string,
+	options: SendMailOptions = {}
+) {
 	const from = options.from ?? env.MAIL_FROM ?? 'onboarding@example.com';
+	// Resend takes either a string or an array for `to`; everything downstream
+	// that logs or stores a single recipient uses the first address.
+	const toList = Array.isArray(to) ? to : [to];
+	const toPrimary = toList[0];
 	console.log(
-		`[mail] key_set=${!!env.RESEND_API_KEY} from="${from}" to=${to}` +
+		`[mail] key_set=${!!env.RESEND_API_KEY} from="${from}" to=${toList.join(', ')}` +
 			(options.attachments?.length ? ` attachments=${options.attachments.map((a) => a.filename).join(',')}` : '')
 	);
 	if (!env.RESEND_API_KEY) {
-		console.log(`[mail:console] to=${to} subject="${subject}"\n${text}`);
+		console.log(`[mail:console] to=${toList.join(', ')} subject="${subject}"\n${text}`);
 		// Still record the send for the admin Inbox / BGV thread — local dev
 		// without a mail key should exercise the same visible flow as prod.
-		await logOutbound(null, from, to, subject, text, options).catch((e) =>
+		await logOutbound(null, from, toPrimary, subject, text, options).catch((e) =>
 			console.error('[mail] failed to log console-mode EmailMessage:', e)
 		);
 		return;
 	}
-	const payload: Record<string, unknown> = { from, to, subject, text };
+	const payload: Record<string, unknown> = { from, to: toList, subject, text };
 	if (options.html) payload.html = options.html;
 	if (options.cc?.length) payload.cc = options.cc;
 	if (options.attachments?.length) {
@@ -117,7 +126,7 @@ export async function sendMail(to: string, subject: string, text: string, option
 	// failure must never surface as a mail-send failure to the caller.
 	try {
 		const resendId = (JSON.parse(body) as { id?: string }).id ?? null;
-		await logOutbound(resendId, from, to, subject, text, options);
+		await logOutbound(resendId, from, toPrimary, subject, text, options);
 	} catch (e) {
 		console.error('[mail] failed to log outbound EmailMessage:', e);
 	}
@@ -297,7 +306,7 @@ export function escapeHtml(value: string): string {
  *  webhook (/webhooks/resend) can log delivered/bounced/opened events back
  *  onto that candidate's audit trail. */
 export async function sendBrandedMail(
-	to: string,
+	to: string | string[],
 	subject: string,
 	text: string,
 	brand: BrandTheme,

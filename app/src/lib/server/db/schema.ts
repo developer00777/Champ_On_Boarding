@@ -141,10 +141,10 @@ const candidateSchema = new Schema(
 		hiringDecision: { type: String, enum: ['accepted', 'rejected'], default: null },
 		hiringDecisionAt: Date,
 		hiringDecisionBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
-		// Set the first time the IT/VPN system-enablement mail goes out for this
-		// candidate. Its only job is to stop the accept-triggered auto-send from
-		// firing twice when HR undoes and re-accepts a decision; HR can still
-		// resend deliberately from the candidate page, which updates this stamp.
+		// Set each time the IT/VPN system-enablement mail goes out for this
+		// candidate. The mail is sent manually from the candidate page, so this is
+		// a record of when the desk was last told — it drives the button's
+		// Send/Resend label rather than gating anything.
 		itSetupMailSentAt: { type: Date, default: null }
 	},
 	{ timestamps: true }

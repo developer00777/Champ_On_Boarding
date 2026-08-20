@@ -3,15 +3,17 @@
 //
 // The body is the single-row table IT already works from, in the column order
 // they expect. DOJ, Designation and Reporting Head come off the offer letter.
-// The rest are HR's own call, stored on the candidate: Shift Timing, WFH/WFO
-// and Mode are typed in outright, while Team Name and Payroll Entity start
-// from the offer's department and the company name and are overridable — a set
-// candidate value always wins over the derived one.
+// The rest are HR's own call, stored on the candidate: Shift Timing and
+// WFH/WFO are picked outright, while Team Name, Payroll Entity and Mode start
+// from the offer's department, the company name and the hiring track
+// respectively — all three overridable, and a set candidate value always wins
+// over the derived one.
 import { Candidate, Company, OfferLetter } from './db/schema';
 import { brandBySlug } from '$lib/shared/brands';
 import type { BrandTheme } from '$lib/shared/brands';
 import { sendBrandedMail, escapeHtml, brandLogoUrl } from './mailer';
 import { getItSetupMailSettings } from './settings';
+import { TRACK_MODE } from '$lib/shared/shifts';
 
 /** Column order is IT's, not ours — do not reorder without asking them. */
 const COLUMNS = [
@@ -42,7 +44,8 @@ function rowFor(
 		String(candidate.mobile ?? ''),
 		String(candidate.workLocationMode ?? ''),
 		String(candidate.payrollEntity ?? companyName),
-		String(candidate.joiningMode ?? '')
+		// Mode follows the hiring track unless HR overrode it.
+		String(candidate.joiningMode ?? TRACK_MODE[String(candidate.track ?? '')] ?? '')
 	];
 }
 
@@ -124,9 +127,9 @@ export async function sendItSetupMail(candidateId: string): Promise<{ to: string
 
 	const name = candidate.fullName || candidate.email;
 	await sendBrandedMail(
-		// Resend takes a single `to` string here; the rest of the desk goes on
-		// Cc alongside HRD, which keeps one thread for everyone.
-		settings.to[0],
+		// The whole desk goes on To — helpdesk, workforce and learning are all
+		// primary recipients of this request, not observers — with HRD on Cc.
+		settings.to,
 		`System & VPN setup — ${name} (${companyName})`,
 		bodyText(cells, settings.signoffName, settings.signoffDesignation),
 		brand,
@@ -134,7 +137,7 @@ export async function sendItSetupMail(candidateId: string): Promise<{ to: string
 		'onboarding',
 		candidateId,
 		{
-			cc: [...settings.to.slice(1), ...settings.cc],
+			cc: settings.cc,
 			tagPurpose: 'it_setup',
 			html: bodyHtml(brand, cells, settings.signoffName, settings.signoffDesignation)
 		}
