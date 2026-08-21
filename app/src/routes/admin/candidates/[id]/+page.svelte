@@ -10,6 +10,7 @@
 	import { toIsoDate } from '$lib/shared/dates';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import { SHIFT_TIMINGS, isShiftTiming, TRACK_MODE, MODE_OPTIONS } from '$lib/shared/shifts';
+	import { RELIGIONS, MOTHER_TONGUES } from '$lib/shared/demographics';
 
 	let { data, form } = $props();
 
@@ -288,12 +289,132 @@
 		workLocationMode: form?.itMailFieldsSaved ? (form.workLocationMode ?? '') : (c.workLocationMode ?? ''),
 		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
 	});
+
+	// ── IT setup mail preview ────────────────────────────────────────────────
+	// Sending to IT is a one-way door — a blank Shift Timing column is a phone
+	// call from the helpdesk — so the button opens the mail as IT will receive
+	// it and the send only fires from inside the modal. The HTML comes from the
+	// same builder the send uses, so what HR approves here is what goes out.
+	type ItMailPreview = {
+		to: string[];
+		cc: string[];
+		subject: string;
+		html: string;
+		fields: { label: string; value: string }[];
+		missing: string[];
+	};
+	let itPreview: ItMailPreview | null = $state(null);
+	let itPreviewLoading = $state(false);
+	let itPreviewError: string | null = $state(null);
+	let itSending = $state(false);
+	/** The hidden form the modal's Send button submits — keeps the real
+	 *  `use:enhance` POST (and its progressive-enhancement fallback) rather
+	 *  than hand-rolling a fetch that would bypass the action's audit log. */
+	let itSendForm: HTMLFormElement | null = $state(null);
+
+	async function openItPreview() {
+		itPreviewLoading = true;
+		itPreviewError = null;
+		itPreview = null;
+		try {
+			const res = await fetch(`/admin/candidates/${c.id}/it-setup-preview`);
+			if (!res.ok) throw new Error(await res.text());
+			itPreview = await res.json();
+		} catch {
+			itPreviewError = 'Could not build the preview. Please try again.';
+		} finally {
+			itPreviewLoading = false;
+		}
+	}
+
+	function closeItPreview() {
+		if (itSending) return;
+		itPreview = null;
+		itPreviewError = null;
+		itPreviewLoading = false;
+	}
+
+	// Close the modal once the send round-trips, so the "sent ✓" chip on the
+	// page is what HR sees next rather than a stale preview.
+	$effect(() => {
+		if (form?.itSetupMailSent) {
+			itPreview = null;
+			itSending = false;
+		}
+	});
 </script>
 
 <a href="/admin" class="backlink">
 	<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 6l-6 6 6 6" /></svg>
 	All candidates
 </a>
+
+<!-- IT/VPN mail confirm — the mail rendered as IT will receive it, with the
+     recipient list and a warning for any column that would go out blank. -->
+{#if itPreview}
+	<div
+		class="it-modal-overlay"
+		role="button"
+		tabindex="-1"
+		onclick={closeItPreview}
+		onkeydown={(e) => e.key === 'Escape' && closeItPreview()}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -- click-catcher only, stops the overlay's dismiss-on-click from firing; not itself interactive -->
+		<div
+			class="it-modal"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="it-preview-title"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="it-modal-head">
+				<div>
+					<div class="it-modal-eyebrow">Before it goes out</div>
+					<h2 id="it-preview-title">IT setup mail preview</h2>
+				</div>
+				<button class="it-modal-x" type="button" onclick={closeItPreview} aria-label="Close preview">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+				</button>
+			</div>
+
+			<div class="it-modal-meta">
+				<div class="it-meta-row"><span class="it-meta-k">To</span><span class="it-meta-v">{itPreview.to.join(', ')}</span></div>
+				{#if itPreview.cc.length}
+					<div class="it-meta-row"><span class="it-meta-k">Cc</span><span class="it-meta-v">{itPreview.cc.join(', ')}</span></div>
+				{/if}
+				<div class="it-meta-row"><span class="it-meta-k">Subject</span><span class="it-meta-v">{itPreview.subject}</span></div>
+			</div>
+
+			{#if itPreview.missing.length}
+				<div class="it-modal-warn">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0Z"/></svg>
+					<span>
+						{itPreview.missing.length === 1 ? 'This column is blank' : 'These columns are blank'}:
+						<strong>{itPreview.missing.join(', ')}</strong>. IT will have to chase it — fill it in above and
+						reopen this preview, or send as-is.
+					</span>
+				</div>
+			{/if}
+
+			<!-- srcdoc, sandboxed: the mail body is rendered markup, so showing it
+			     inline would let its styles leak into the admin page. -->
+			<iframe class="it-modal-frame" title="IT setup mail body" sandbox="" srcdoc={itPreview.html}></iframe>
+
+			<div class="it-modal-actions">
+				<button class="btn small ghost" type="button" onclick={closeItPreview} disabled={itSending}>Cancel</button>
+				<button
+					class="btn small teal"
+					type="button"
+					disabled={itSending || !data.isApprover}
+					onclick={() => itSendForm?.requestSubmit()}
+				>
+					{itSending ? 'Sending…' : c.itSetupMailSentAt ? 'Resend to IT' : 'Send to IT'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 {#if !data.isSuperAdmin}
 	<div class="readonly-banner">
@@ -336,8 +457,16 @@
 		</div>
 	</div>
 	<div style="display:flex;gap:10px;flex-wrap:wrap">
-		{#if c.status === 'submitted'}
-			<form method="POST" action="?/approve" use:enhance>
+		<!-- Approval is HR's call, so this stays live at every stage rather than
+		     only at 'submitted' — asking for a re-upload (which moves the record to
+		     'changes_requested') must not take the button away. Hidden only where
+		     approving is contradictory: already approved/complete, or revoked. -->
+		{#if !['approved', 'complete', 'revoked'].includes(c.status)}
+			<form method="POST" action="?/approve" use:enhance onsubmit={(e) => {
+				if (c.status !== 'submitted' && !confirm(
+					'This candidate has not submitted their onboarding form yet. Approve anyway?'
+				)) e.preventDefault();
+			}}>
 				<fieldset class="rbac" disabled={!data.isApprover}>
 					<button class="btn teal">
 						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5" /></svg>
@@ -656,14 +785,41 @@
 			</div>
 
 			<div class="it-mail">
-				<form method="POST" action="?/sendItSetupMail" use:enhance>
+				<!-- The send lives in the preview modal; this only opens it. The form
+				     stays a real POST so the modal's Send keeps the action's audit
+				     log and its no-JS fallback. -->
+				<form
+					method="POST"
+					action="?/sendItSetupMail"
+					use:enhance={() => {
+						itSending = true;
+						return async ({ update }) => {
+							await update();
+							itSending = false;
+						};
+					}}
+					bind:this={itSendForm}
+				>
 					<fieldset class="rbac" disabled={!data.isApprover}>
-						<button class="btn small ghost" style="width:100%">
+						<button
+							class="btn small ghost"
+							style="width:100%"
+							type="button"
+							onclick={openItPreview}
+							disabled={itPreviewLoading}
+						>
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
-							{c.itSetupMailSentAt ? 'Resend IT setup mail' : 'Send IT setup mail'}
+							{#if itPreviewLoading}
+								Building preview…
+							{:else}
+								{c.itSetupMailSentAt ? 'Review & resend IT mail' : 'Review & send IT mail'}
+							{/if}
 						</button>
 					</fieldset>
 				</form>
+				{#if itPreviewError}
+					<p class="it-preview-err">{itPreviewError}</p>
+				{/if}
 				{#if form?.itSetupMailSent}
 					<p class="saved-chip" style="margin-top:6px">IT setup mail sent ✓</p>
 				{/if}
@@ -847,27 +1003,31 @@
 						<div class="frow">
 							<span class="flabel">{label}</span>
 							{#if editingProfile && field}
-								<input class="fedit" name={field} value={value ?? ''} />
+								<!-- Mother tongue offers the same suggestions the candidate form
+								     does (demographics.ts) so both sides spell it the same way. -->
+								<input class="fedit" name={field} value={value ?? ''} list={field === 'motherTongue' ? 'mother-tongues' : undefined} />
 							{:else}
 								<span class="fvalue">{value || '—'}</span>
 							{/if}
 						</div>
 					{/each}
 				{/each}
+				<datalist id="mother-tongues">
+					{#each MOTHER_TONGUES as t}<option value={t}></option>{/each}
+				</datalist>
 				<div class="group-title">Religion</div>
 				<div class="frow">
 					<span class="flabel">Religion</span>
 					{#if editingProfile}
 						<select class="fedit" name="religion" value={c.religion ?? ''}>
 							<option value="">—</option>
-							<option value="Hindu">Hindu</option>
-							<option value="Muslim">Muslim</option>
-							<option value="Christian">Christian</option>
-							<option value="Sikh">Sikh</option>
-							<option value="Buddhist">Buddhist</option>
-							<option value="Jain">Jain</option>
-							<option value="Other">Other</option>
-							<option value="Prefer not to say">Prefer not to say</option>
+							{#each RELIGIONS as r}<option value={r}>{r}</option>{/each}
+							<!-- Legacy rows may hold a value the list no longer offers (e.g. the
+							     retired "Prefer not to say"). Keep it selectable so opening the
+							     editor to fix an unrelated field does not silently blank it. -->
+							{#if c.religion && !RELIGIONS.includes(c.religion as (typeof RELIGIONS)[number])}
+								<option value={c.religion}>{c.religion}</option>
+							{/if}
 						</select>
 					{:else}
 						<span class="fvalue">{c.religion || '—'}</span>
@@ -1468,6 +1628,154 @@
 		padding: 8px 11px;
 		margin-bottom: 10px;
 	}
+	.it-preview-err {
+		margin: 7px 0 0;
+		font-size: 11.5px;
+		color: var(--ae-crimson, #e5636b);
+	}
+
+	/* IT mail confirm modal */
+	.it-modal-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 200;
+		background: rgba(8, 9, 14, 0.55);
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		display: grid;
+		place-items: center;
+		padding: 20px;
+	}
+	.it-modal {
+		width: 100%;
+		max-width: 780px;
+		/* The mail body is the point of the dialog, so the card takes the height
+		   it can and the body iframe absorbs the rest. */
+		max-height: min(88vh, 900px);
+		display: flex;
+		flex-direction: column;
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		border-radius: var(--ae-card-radius);
+		box-shadow: var(--ae-card-shadow);
+		backdrop-filter: var(--ae-card-blur);
+		-webkit-backdrop-filter: var(--ae-card-blur);
+		padding: 22px;
+		text-align: left;
+	}
+	.it-modal-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 14px;
+	}
+	.it-modal-eyebrow {
+		font-family: var(--ae-font-mono);
+		font-size: 10.5px;
+		font-weight: 600;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+		margin-bottom: 4px;
+	}
+	.it-modal h2 {
+		font-family: var(--ae-font-display);
+		font-size: 19px;
+		font-weight: 600;
+		margin: 0;
+		color: var(--ae-text);
+	}
+	.it-modal-x {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 30px;
+		height: 30px;
+		border-radius: 8px;
+		border: 1px solid var(--ae-line-strong);
+		background: var(--ae-sub-bg);
+		color: var(--ae-muted);
+		cursor: pointer;
+	}
+	.it-modal-x:hover {
+		color: var(--ae-text);
+	}
+	.it-modal-meta {
+		background: var(--ae-sub-bg);
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 10px;
+		padding: 10px 12px;
+		margin-bottom: 12px;
+	}
+	.it-meta-row {
+		display: flex;
+		gap: 10px;
+		font-size: 12px;
+		line-height: 1.55;
+	}
+	.it-meta-k {
+		flex: none;
+		width: 52px;
+		font-family: var(--ae-font-mono);
+		font-size: 10.5px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+		padding-top: 2px;
+	}
+	.it-meta-v {
+		color: var(--ae-text);
+		word-break: break-word;
+	}
+	.it-modal-warn {
+		display: flex;
+		align-items: flex-start;
+		gap: 9px;
+		font-size: 12px;
+		line-height: 1.55;
+		color: var(--ae-text);
+		background: rgba(242, 177, 92, 0.12);
+		border: 1px solid rgba(242, 177, 92, 0.35);
+		border-radius: 10px;
+		padding: 10px 12px;
+		margin-bottom: 12px;
+	}
+	.it-modal-warn svg {
+		flex: none;
+		margin-top: 2px;
+		color: var(--ae-amber);
+	}
+	.it-modal-frame {
+		flex: 1;
+		min-height: 260px;
+		width: 100%;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 10px;
+		/* The mail body paints its own light background; keep it that way so the
+		   preview matches an inbox rather than the admin theme. */
+		background: #f2f4f7;
+	}
+	.it-modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 9px;
+		margin-top: 14px;
+	}
+	@media (max-width: 560px) {
+		.it-modal {
+			padding: 16px;
+			max-height: 92vh;
+		}
+		.it-meta-row {
+			flex-direction: column;
+			gap: 1px;
+		}
+		.it-meta-k {
+			width: auto;
+		}
+	}
+
 	.it-mail {
 		margin-top: 12px;
 		padding-top: 12px;

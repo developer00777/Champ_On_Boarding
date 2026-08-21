@@ -30,6 +30,7 @@ import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken } from '$lib/server/tokens';
 import { isShiftTiming } from '$lib/shared/shifts';
+import { RELIGIONS } from '$lib/shared/demographics';
 import { sendItSetupMail } from '$lib/server/it-setup-mail';
 import { env } from '$env/dynamic/private';
 import { baseUrl } from '$lib/server/base-url';
@@ -115,7 +116,7 @@ function profileFormToUpdate(form: FormData): Record<string, string> {
  *  unrelated field the candidate never filled in — so this checks format only
  *  where a value is present, not the full master-sheet completeness gate
  *  candidates face at submission. */
-function validateProfileEdit(fields: Record<string, string>): string[] {
+function validateProfileEdit(fields: Record<string, string>, original?: { religion?: string | null }): string[] {
 	const errors: string[] = [];
 	if (fields.panNo && !isValidPan(fields.panNo)) errors.push('PAN must match AAAAA9999A');
 	if (fields.ifsc && !isValidIfsc(fields.ifsc)) errors.push('IFSC must match AAAA0XXXXXX');
@@ -135,6 +136,15 @@ function validateProfileEdit(fields: Record<string, string>): string[] {
 	}
 	if (fields.maritalStatus && !['single', 'married'].includes(fields.maritalStatus))
 		errors.push('Marital status must be single or married');
+	// Same closed-list check as marital status. A legacy value already on the row
+	// (e.g. the retired "Prefer not to say") is left alone — the editor re-offers
+	// it as an option, so round-tripping an unrelated edit must not fail here.
+	if (
+		fields.religion &&
+		!RELIGIONS.includes(fields.religion as (typeof RELIGIONS)[number]) &&
+		fields.religion !== original?.religion
+	)
+		errors.push('Religion must be one of the listed options');
 	return errors;
 }
 
@@ -302,16 +312,31 @@ export const actions: Actions = {
 		if (!row) return fail(404);
 		const { candidate } = row;
 		const brand = brandBySlug(row.company?.brandSlug ?? undefined);
-		if (candidate.status !== 'submitted')
-			return fail(409, { message: 'Only submitted candidates can be approved.' });
+		// Approval is HR's call and nothing else's. It used to require status
+		// 'submitted' AND a complete mandatory-document checklist, which meant
+		// asking one candidate for one re-upload took approval away twice over:
+		// requestReupload flips the status to 'changes_requested', and the
+		// re-requested document stops counting as usable in checklistFor(). HR
+		// routinely approves someone whose paperwork is still being chased, so the
+		// button stays live and the checklist is advisory (it is still shown on the
+		// page, and the approval mail below names anything outstanding).
+		//
+		// Only genuinely contradictory states are refused: an already-decided
+		// record, and a revoked link (whose candidate can no longer be onboarded
+		// at all — un-revoke by regenerating the link first).
+		if (['approved', 'complete'].includes(candidate.status))
+			return fail(409, { message: 'This candidate has already been approved.' });
+		if (candidate.status === 'revoked')
+			return fail(409, {
+				message: 'This onboarding link is revoked — regenerate it before approving.'
+			});
 
 		const checklist = await checklistFor(
 			String(candidate._id),
 			candidate.track as Track,
 			row.company?.brandSlug
 		);
-		if (missingMandatory(checklist).length)
-			return fail(400, { message: 'Mandatory documents are missing — cannot approve.' });
+		const stillMissing = missingMandatory(checklist);
 
 		const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
 		const allPhysical = physical.length > 0 && physical.every((p) => p.received);
@@ -327,10 +352,26 @@ export const actions: Actions = {
 			action: 'approved',
 			ip: getClientAddress()
 		});
+		// Approval can now happen with paperwork still outstanding, so the mail says
+		// so rather than implying the file is closed — otherwise a candidate reads
+		// "approved" and stops uploading. The pending list is the same one the
+		// checklist shows HR.
+		const pendingNote = stillMissing.length
+			? `\nStill pending from your side — please open your onboarding link and upload:\n` +
+				stillMissing
+					.map((s) =>
+						s.alternatives?.length
+							? `  • ${s.label} (or ${s.alternatives.join(' or ')})`
+							: `  • ${s.label}`
+					)
+					.join('\n') +
+				`\n`
+			: '';
 		await sendBrandedMail(
 			candidate.email,
 			'Your onboarding is approved',
 			`Hello,\n\nYour onboarding submission has been reviewed and approved by HR.\n` +
+				pendingNote +
 				`Reminder for your joining day: bring 4 passport-size photos and the signed hard copy of your offer letter.\n\n${brandSignoff(brand)}`,
 			brand,
 			undefined,
@@ -363,6 +404,10 @@ export const actions: Actions = {
 				`Job title: ${(await OfferLetter.findOne({ candidateId: params.id }).lean())?.jobTitle ?? '—'}\n` +
 				`Email: ${candidate.email}\n` +
 				`Mobile: ${candidate.mobile ?? '—'}\n\n` +
+				(stillMissing.length
+					? `Note: approved with ${stillMissing.length} mandatory document(s) still outstanding — ` +
+						`${stillMissing.map((s) => s.label).join(', ')}.\n\n`
+					: '') +
 				`Please create their employee code and update the system:\n${reviewUrl}\n\n` +
 				`${brandSignoff(brand)}`,
 				brand
@@ -860,7 +905,7 @@ export const actions: Actions = {
 
 		const form = await request.formData();
 		const fields = profileFormToUpdate(form);
-		const errors = validateProfileEdit(fields);
+		const errors = validateProfileEdit(fields, row.candidate);
 		if (errors.length) return fail(400, { message: errors.join('; '), profileEditError: true });
 
 		await Candidate.findByIdAndUpdate(params.id, fields);

@@ -104,11 +104,29 @@ function bodyText(cells: string[], signoffName: string, signoffDesignation: stri
 	return `Hi Team,\n\nPlease enable the System & Configure the VPN.\n\n${pairs}\n\nRegards,\n${signoffName}\n${signoffDesignation}`;
 }
 
-/** Builds and sends the IT setup mail for a candidate. Throws on send failure
- *  so a manual resend can surface the error; the approval-triggered auto-send
- *  catches it (see the approve action) — a mail problem must not block an
- *  approval that has already been committed. */
-export async function sendItSetupMail(candidateId: string): Promise<{ to: string[]; cc: string[] }> {
+/** Everything the send needs, and exactly what the preview shows. Built once
+ *  so the modal HR confirms in and the mail IT receives can never drift: the
+ *  preview renders `html` verbatim and the send hands the same string to
+ *  Resend. `missing` names the columns that would go out blank — the whole
+ *  point of the confirm step is catching an unset shift timing before IT does. */
+export interface ItSetupMailDraft {
+	to: string[];
+	cc: string[];
+	subject: string;
+	html: string;
+	text: string;
+	/** COLUMNS-aligned label/value pairs, for a preview that wants the fields
+	 *  as data rather than as the rendered table. */
+	fields: { label: string; value: string }[];
+	missing: string[];
+	/** The brand whose from-name and logo the mail carries. Kept on the draft so
+	 *  the send does not have to re-resolve the company. */
+	brandSlug: string;
+}
+
+/** Builds the mail without sending it. Shared by the preview endpoint and the
+ *  send, so what HR approves in the modal is byte-for-byte what goes out. */
+export async function buildItSetupMail(candidateId: string): Promise<ItSetupMailDraft> {
 	const candidate = await Candidate.findById(candidateId).lean();
 	if (!candidate) throw new Error(`IT setup mail: candidate ${candidateId} not found`);
 	const [company, offer, settings] = await Promise.all([
@@ -126,23 +144,40 @@ export async function sendItSetupMail(candidateId: string): Promise<{ to: string
 	);
 
 	const name = candidate.fullName || candidate.email;
-	await sendBrandedMail(
+	return {
 		// The whole desk goes on To — helpdesk, workforce and learning are all
 		// primary recipients of this request, not observers — with HRD on Cc.
-		settings.to,
-		`System & VPN setup — ${name} (${companyName})`,
-		bodyText(cells, settings.signoffName, settings.signoffDesignation),
-		brand,
+		to: settings.to,
+		cc: settings.cc,
+		subject: `System & VPN setup — ${name} (${companyName})`,
+		html: bodyHtml(brand, cells, settings.signoffName, settings.signoffDesignation),
+		text: bodyText(cells, settings.signoffName, settings.signoffDesignation),
+		fields: COLUMNS.map((label, i) => ({ label, value: cells[i] ?? '' })),
+		brandSlug: brand.slug,
+		// Sl.no is ours and always filled, so an empty cell here is genuinely a
+		// gap in what HR entered.
+		missing: COLUMNS.filter((_, i) => !cells[i]).map((c) => c)
+	};
+}
+
+/** Builds and sends the IT setup mail for a candidate. Throws on send failure
+ *  so a manual resend can surface the error; the approval-triggered auto-send
+ *  catches it (see the approve action) — a mail problem must not block an
+ *  approval that has already been committed. */
+export async function sendItSetupMail(candidateId: string): Promise<{ to: string[]; cc: string[] }> {
+	const draft = await buildItSetupMail(candidateId);
+
+	await sendBrandedMail(
+		draft.to,
+		draft.subject,
+		draft.text,
+		brandBySlug(draft.brandSlug),
 		undefined,
 		'onboarding',
 		candidateId,
-		{
-			cc: settings.cc,
-			tagPurpose: 'it_setup',
-			html: bodyHtml(brand, cells, settings.signoffName, settings.signoffDesignation)
-		}
+		{ cc: draft.cc, tagPurpose: 'it_setup', html: draft.html }
 	);
 
 	await Candidate.findByIdAndUpdate(candidateId, { itSetupMailSentAt: new Date() });
-	return { to: settings.to, cc: settings.cc };
+	return { to: draft.to, cc: draft.cc };
 }
