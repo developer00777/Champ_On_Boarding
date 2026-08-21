@@ -78,6 +78,14 @@ export function validateMasterSheet(f: Record<string, string>, requirePrevEmploy
 	// feed insurance and PF nominee records, where a missing DOB stalls the
 	// enrolment after the candidate is already onboarded.
 	req('motherDob', "Mother's DOB");
+	// HR decision (Aug 2026): religion and mother tongue are mandatory. They are
+	// Master Tracker columns payroll and the statutory registers read, and a
+	// blank there had to be chased down by hand after joining. Making them
+	// required also retired religion's "Prefer not to say" option — an optional
+	// field with an opt-out and a mandatory one are different promises, and the
+	// sheet needs a value either way.
+	req('religion', 'Religion');
+	req('motherTongue', 'Mother tongue');
 	req('presentAddress', 'Present address');
 	req('presentPin', 'Present PIN code');
 	req('presentHouseNo', 'Present house number');

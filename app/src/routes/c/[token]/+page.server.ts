@@ -17,6 +17,7 @@ const EDITABLE_STATUSES = ['opened', 'in_progress', 'changes_requested'];
 const FIELDS = [
 	'fullName', 'dob', 'gender', 'mobile',
 	'fatherName', 'fatherMobile', 'fatherDob', 'motherName', 'motherMobile', 'motherDob',
+	'religion', 'motherTongue',
 	'maritalStatus', 'spouseName', 'spouseContact', 'spouseDob',
 	'emergencyContactName', 'emergencyContactMobile', 'emergencyContactRelation',
 	'presentAddress', 'presentPin', 'presentHouseNo',
@@ -29,7 +30,7 @@ const FIELDS = [
 
 const TITLE_CASE_FIELDS = new Set([
 	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName',
-	'bankAccountName', 'bankName', 'branch'
+	'bankAccountName', 'bankName', 'branch', 'motherTongue'
 ]);
 
 /** Read back to the candidate and validated, but never stored: see validation.ts. */

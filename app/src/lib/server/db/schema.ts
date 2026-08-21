@@ -47,10 +47,12 @@ const candidateSchema = new Schema(
 		motherName: String,
 		motherMobile: String,
 		motherDob: String,
-		// Both optional and never gated at submission: religion is sensitive
-		// personal data, so the form offers an explicit "Prefer not to say" and a
-		// blank stays a legitimate answer. They exist because the Master Tracker
-		// sheet HR hands to payroll has columns for them.
+		// Master Tracker columns HR hands to payroll, and mandatory at submission
+		// since Aug 2026 (validateMasterSheet) — religion's old "Prefer not to
+		// say" opt-out went with that change. Not `required` at the schema level:
+		// rows are created by HR before the candidate fills anything in, and rows
+		// predating the rule still hold blanks. Option lists live in
+		// shared/demographics.ts, shared by the candidate form and HR's editor.
 		religion: String,
 		motherTongue: String,
 		maritalStatus: { type: String, enum: ['single', 'married'], default: null },

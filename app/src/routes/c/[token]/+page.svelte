@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { brandCssVars, brandFontsHref } from '$lib/shared/brands';
 	import { EXP_LIKE_TRACKS, type Track } from '$lib/shared/matrix';
+	import { RELIGIONS, MOTHER_TONGUES } from '$lib/shared/demographics';
 	import { untrack } from 'svelte';
 
 	let { data, form } = $props();
@@ -499,6 +500,25 @@
 							{@render field('motherName', "Mother's name", { required: true })}
 							{@render field('motherMobile', "Mother's mobile")}
 							{@render field('motherDob', "Mother's DOB", { placeholder: 'DD/MM/YYYY', required: true })}
+							<div>
+								<label for="religion">Religion</label>
+								<select id="religion" name="religion" bind:value={fields.religion} required>
+									<option value="">—</option>
+									{#each RELIGIONS as r}<option value={r}>{r}</option>{/each}
+								</select>
+								{#if errors.has('religion')}<div class="error">{errors.get('religion')}</div>{/if}
+							</div>
+							<div>
+								<label for="motherTongue">
+									Mother tongue
+									{#if autofilled.motherTongue}<span class="autotag">✨ auto-filled</span>{/if}
+								</label>
+								<input id="motherTongue" name="motherTongue" list="mother-tongues" placeholder="e.g. Tamil" bind:value={fields.motherTongue} required class:auto={autofilled.motherTongue} />
+								<datalist id="mother-tongues">
+									{#each MOTHER_TONGUES as t}<option value={t}></option>{/each}
+								</datalist>
+								{#if errors.has('motherTongue')}<div class="error">{errors.get('motherTongue')}</div>{/if}
+							</div>
 							<div>
 								<label for="maritalStatus">Marital status</label>
 								<select id="maritalStatus" name="maritalStatus" bind:value={fields.maritalStatus}>
