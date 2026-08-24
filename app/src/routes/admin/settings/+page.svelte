@@ -14,6 +14,20 @@
 	const isDefault = $derived(
 		to.trim() === data.defaults.to.join('\n') && cc.trim() === data.defaults.cc.join('\n')
 	);
+
+	// Same seed-once treatment for the offboarding recipient lists.
+	// svelte-ignore state_referenced_locally
+	let itTo = $state(data.exitMail.itTo.join('\n'));
+	// svelte-ignore state_referenced_locally
+	let itCc = $state(data.exitMail.itCc.join('\n'));
+	// svelte-ignore state_referenced_locally
+	let hrCc = $state(data.exitMail.hrCc.join('\n'));
+
+	const exitIsDefault = $derived(
+		itTo.trim() === data.exitDefaults.itTo.join('\n') &&
+			itCc.trim() === data.exitDefaults.itCc.join('\n') &&
+			hrCc.trim() === data.exitDefaults.hrCc.join('\n')
+	);
 </script>
 
 <h1 class="page-title">Settings</h1>
@@ -26,8 +40,10 @@
 	<p class="flash err">{form.error}</p>
 {:else if form?.saved}
 	<p class="flash ok">Settings saved.</p>
-{:else if form?.reset}
+{:else if form?.reset || form?.exitReset}
 	<p class="flash ok">Reset to defaults.</p>
+{:else if form?.exitSaved}
+	<p class="flash ok">Offboarding mail settings saved.</p>
 {/if}
 
 <section class="card">
@@ -68,6 +84,61 @@
 				<button class="btn teal">Save</button>
 				{#if !isDefault}
 					<button class="btn ghost small" formaction="?/resetItSetupMail">Reset to defaults</button>
+				{/if}
+			</div>
+		</fieldset>
+	</form>
+
+	{#if !data.isSuperAdmin}
+		<p class="muted" style="font-size:12px;margin:12px 0 0">
+			View-only — changing these requires a super admin login.
+		</p>
+	{/if}
+</section>
+
+<section class="card" style="margin-top:18px">
+	<h2 class="card-title">Offboarding mail</h2>
+	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
+		Who the exit process writes to. The IT list receives the
+		<strong>&ldquo;block system access&rdquo;</strong> request on an employee's last working day; the
+		HR list is copied on the employee's exit-forms invitation and their final document handover.
+	</p>
+
+	<form method="POST" action="?/saveExitMail" use:enhance>
+		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+			<div class="grid">
+				<label class="field">
+					<span>IT team — To</span>
+					<textarea name="itTo" bind:value={itTo} rows="3" placeholder="one address per line"></textarea>
+					<small>Receives the access-revocation request.</small>
+				</label>
+				<label class="field">
+					<span>IT team — Cc</span>
+					<textarea name="itCc" bind:value={itCc} rows="3" placeholder="one address per line"></textarea>
+					<small>Leave empty to copy no one.</small>
+				</label>
+				<label class="field">
+					<span>HR desk — Cc</span>
+					<textarea name="hrCc" bind:value={hrCc} rows="3" placeholder="one address per line"></textarea>
+					<small>Copied on every mail sent to the exiting employee.</small>
+				</label>
+				<label class="field">
+					<span>Sign-off name</span>
+					<input name="exitSignoffName" value={data.exitMail.signoffName} maxlength="80" />
+				</label>
+				<label class="field">
+					<span>Sign-off designation</span>
+					<input
+						name="exitSignoffDesignation"
+						value={data.exitMail.signoffDesignation}
+						maxlength="80"
+					/>
+				</label>
+			</div>
+			<div class="actions">
+				<button class="btn teal">Save</button>
+				{#if !exitIsDefault}
+					<button class="btn ghost small" formaction="?/resetExitMail">Reset to defaults</button>
 				{/if}
 			</div>
 		</fieldset>

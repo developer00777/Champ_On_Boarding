@@ -417,3 +417,347 @@ export type AdminDoc = InstanceType<typeof Admin> & { _id: Types.ObjectId };
 export type PhysicalItemDoc = InstanceType<typeof PhysicalItem> & { _id: Types.ObjectId };
 export type OfferLetterDoc = InstanceType<typeof OfferLetter> & { _id: Types.ObjectId };
 export type BgvRequestDoc = InstanceType<typeof BgvRequest> & { _id: Types.ObjectId };
+
+// ── Offboarding: Exits ───────────────────────────────────────────────────────
+// One row per employee separation, created by HR from /admin/offboarding with
+// just the four things they know at resignation time (employee id, name,
+// personal email, resignation date). Deliberately NOT a stage on Candidate:
+// most people leaving today were hired before this app existed and have no
+// Candidate row at all. `candidateId` is an optional back-link, matched on
+// creation by employee id or email, which lets the exit prefill DOJ,
+// designation, manager, UAN and bank details from their onboarding record —
+// and stays null for everyone else, who HR fills in by hand.
+//
+// The document data the employee submits lives in the four `*Form` sub-objects
+// (one per entity exit form, per the Exit Process SOP §5). Every generated PDF
+// is rendered live from these fields, so HR can download a current copy at any
+// instant — nothing is frozen into a file until the employee signs.
+const exitSchema = new Schema(
+	{
+		companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
+		// Optional link to the onboarding record — see note above.
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', default: null, index: true },
+
+		// ── What HR types to initiate (SOP steps 1-2) ────────────────────────
+		employeeId: { type: String, required: true, index: true },
+		fullName: { type: String, required: true, index: true },
+		/** Personal (non-company) address — company mail is revoked on LWD, so
+		 *  every exit link and the final document handover must go here. */
+		personalEmail: { type: String, required: true, index: true },
+		personalMobile: { type: String, default: null },
+		resignationDate: { type: String, required: true },
+		/** Confirmed Last Working Day. Set by HR at resignation approval (SOP
+		 *  step 2) — not known at initiation, so not required. */
+		lwd: { type: String, default: null },
+		noticePeriod: { type: String, default: null },
+		separationType: { type: String, enum: ['voluntary', 'involuntary'], default: 'voluntary' },
+
+		// ── Employment particulars the exit forms print ──────────────────────
+		// Prefilled from the linked Candidate/OfferLetter where one exists,
+		// otherwise HR's own entry. Stored on the exit rather than read through
+		// the link every time: an exit document must keep saying what it said
+		// when it was signed, even if the onboarding record is later edited.
+		doj: { type: String, default: null },
+		designation: { type: String, default: null },
+		department: { type: String, default: null },
+		reportingManager: { type: String, default: null },
+		division: { type: String, default: null },
+		uanNo: { type: String, default: null },
+		panNo: { type: String, default: null },
+		bankAccountName: { type: String, default: null },
+
+		// ── Stage machine ────────────────────────────────────────────────────
+		// initiated        HR created the row; no link sent yet
+		// link_sent        exit-forms link emailed to the employee
+		// in_progress      employee has opened it and started filling
+		// submitted        employee submitted all applicable forms
+		// changes_requested HR asked for specific fields again (see requestedFields)
+		// clearances       HR accepted the submission; approvers are signing
+		// cleared          every requested approver has signed off
+		// fnf              HR has filled the F&F / PF / payroll block
+		// completed        final document handover link sent; exit closed
+		status: {
+			type: String,
+			enum: [
+				'initiated', 'link_sent', 'in_progress', 'submitted',
+				'changes_requested', 'clearances', 'cleared', 'fnf', 'completed'
+			],
+			default: 'initiated'
+		},
+
+		createdBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		submittedAt: { type: Date, default: null },
+		reviewedAt: { type: Date, default: null },
+		reviewedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		completedAt: { type: Date, default: null },
+
+		/** HR sending the employee back to specific fields rather than the whole
+		 *  form again (the "confirm and re-request a particular info" step).
+		 *  `field` is a dotted path into the form objects below, e.g.
+		 *  'ndc.nameAsPerBank'. Cleared per-field as the employee resubmits. */
+		requestedFields: {
+			type: [{ field: { type: String, required: true }, note: { type: String, default: null } }],
+			default: []
+		},
+
+		consentAt: { type: Date, default: null },
+		consentIp: { type: String, default: null },
+
+		// ── 5.1 No Dues / Clearance Certificate (employee's half) ────────────
+		// The approval columns are NOT here: each department's tick, remark and
+		// signature lives on its own ExitClearance row, so the live NDC PDF is
+		// assembled from this plus whatever clearances have landed so far.
+		ndc: {
+			team: { type: String, default: null },
+			nameAsPerBank: { type: String, default: null },
+			/** Free-text handover notes the NDC asks for ("List should be
+			 *  attached" / "Brief backside of the page"), per section. */
+			filesHandover: { type: String, default: null },
+			loginsHandover: { type: String, default: null },
+			leadsHandover: { type: String, default: null },
+			deptOthers: { type: String, default: null },
+			submittedAt: { type: Date, default: null }
+		},
+
+		// ── 5.2 Non-Disclosure & Non-Compete Agreement ───────────────────────
+		nda: {
+			agreementDate: { type: String, default: null },
+			fullName: { type: String, default: null },
+			permanentAddress: { type: String, default: null },
+			/** AES-256-GCM like Candidate.aadhaarNoEncrypted — never stored raw. */
+			aadhaarNoEncrypted: { type: String, default: null },
+			aadhaarLast4: { type: String, default: null },
+			acceptedAt: { type: Date, default: null },
+			submittedAt: { type: Date, default: null }
+		},
+
+		// ── 5.3 Exit Interview Form ──────────────────────────────────────────
+		// Q1-Q9, Q14A and Q15 are free text; Q10/Q14B are single choice; Q11-Q13
+		// are rating grids stored as { rowKey: choice } maps so a new row in the
+		// printed form is a change to the row list in offboarding/forms.ts, not
+		// a schema migration.
+		exitInterview: {
+			supervisor: { type: String, default: null },
+			division: { type: String, default: null },
+			jobTitle: { type: String, default: null },
+			reasonForLeaving: { type: String, default: null },
+			q1DecideToLeave: { type: String, default: null },
+			q2MostSatisfying: { type: String, default: null },
+			q3LeastSatisfying: { type: String, default: null },
+			q4MostFrustrating: { type: String, default: null },
+			q5SupportLevel: { type: String, default: null },
+			q6PoliciesInhibited: { type: String, default: null },
+			q7PerformanceFeedback: { type: String, default: null },
+			q8SalarySatisfied: { type: String, default: null },
+			q9QualitiesNeeded: { type: String, default: null },
+			q10Workload: { type: String, enum: ['too_heavy', 'about_right', 'too_light', null], default: null },
+			/** Q11 — supervisor ratings, rowKey → almost_always|usually|sometimes|never */
+			q11Supervisor: { type: Map, of: String, default: {} },
+			/** Q12 — organisation ratings, rowKey → excellent|good|fair|poor */
+			q12Ratings: { type: Map, of: String, default: {} },
+			q12Comments: { type: String, default: null },
+			/** Q13 — benefits ratings, rowKey → excellent|good|fair|poor|no_opinion */
+			q13Benefits: { type: Map, of: String, default: {} },
+			q14aAdviceToSuccessor: { type: String, default: null },
+			q14bWouldRecommend: {
+				type: String,
+				enum: ['most_definitely', 'with_reservations', 'no', null],
+				default: null
+			},
+			q15Suggestions: { type: String, default: null },
+			submittedAt: { type: Date, default: null }
+		},
+
+		// ── 5.4 Relieving Formalities Form ───────────────────────────────────
+		// Every numbered item on the printed form is a Yes/No the employee
+		// answers; `*Note` carries the explanation a "no" needs.
+		relievingFormalities: {
+			jobTitle: { type: String, default: null },
+			division: { type: String, default: null },
+			resignationInWriting: { type: String, enum: ['yes', 'no', null], default: null },
+			commitmentPeriodComplete: { type: String, enum: ['yes', 'no', null], default: null },
+			newEmployerOfferSubmitted: { type: String, enum: ['yes', 'no', null], default: null },
+			salesApproval: { type: String, enum: ['yes', 'no', 'na', null], default: null },
+			accountingCleared: { type: String, enum: ['yes', 'no', null], default: null },
+			hrAlumniEnrolled: { type: String, enum: ['yes', 'no', null], default: null },
+			itEmailBackedUp: { type: String, enum: ['yes', 'no', null], default: null },
+			notes: { type: String, default: null },
+			/** Alumni-forum contact details the HR item (4c) collects. */
+			futureContactEmail: { type: String, default: null },
+			futureContactMobile: { type: String, default: null },
+			futureContactAddress: { type: String, default: null },
+			emergencyContactName: { type: String, default: null },
+			emergencyContactMobile: { type: String, default: null },
+			submittedAt: { type: Date, default: null }
+		},
+
+		// ── 5.5 Gratuity (Form I) — only at 4 years 7 months+ service ────────
+		// `applicable` is computed from doj/lwd on save (see offboarding/service.ts)
+		// but stored so HR can override an edge case rather than fight the maths.
+		gratuity: {
+			applicable: { type: Boolean, default: false },
+			totalService: { type: String, default: null },
+			nomineeName: { type: String, default: null },
+			nomineeRelation: { type: String, default: null },
+			addressForCorrespondence: { type: String, default: null },
+			submittedAt: { type: Date, default: null }
+		},
+
+		// ── Asset return (SOP step 6) ────────────────────────────────────────
+		// Employee declares, IT/Admin verify on their clearance page. Stored as
+		// rows so the asset list can grow without a migration.
+		assets: {
+			type: [
+				{
+					item: { type: String, required: true },
+					returned: { type: Boolean, default: false },
+					note: { type: String, default: null },
+					verifiedAt: { type: Date, default: null }
+				}
+			],
+			default: []
+		},
+
+		// ── Payroll / F&F (SOP step 8) — HR's own entry ──────────────────────
+		fnf: {
+			salaryDueFrom: { type: String, default: null },
+			salaryDueTo: { type: String, default: null },
+			leaveBalanceDays: { type: String, default: null },
+			leaveEncashmentAmount: { type: String, default: null },
+			noticePayRecovery: { type: String, default: null },
+			assetRecovery: { type: String, default: null },
+			otherDeductions: { type: String, default: null },
+			/** Net F&F payable and the date it is/was settled — printed on the
+			 *  final handover page and mailed with the closing documents. */
+			netAmount: { type: String, default: null },
+			settlementDate: { type: String, default: null },
+			approvedBy: { type: String, default: null },
+			/** EPFO exit (SOP 10.4). `pfExitProcessed` gates whether PF details
+			 *  are shown to the employee in the final handover. */
+			pfExitProcessed: { type: Boolean, default: false },
+			pfDateOfExit: { type: String, default: null },
+			pfRemarks: { type: String, default: null },
+			/** Taxation block — only surfaced when HR marks it applicable. */
+			taxationApplicable: { type: Boolean, default: false },
+			taxationRemarks: { type: String, default: null },
+			updatedAt: { type: Date, default: null }
+		},
+
+		/** Whether a recommendation letter is being issued — HR's call, per the
+		 *  brief ("the recommendation letter if applicable"). */
+		recommendationApplicable: { type: Boolean, default: false },
+
+		/** SOP 10.7 exit-completion checklist: itemKey → checked. Kept as a map
+		 *  so the checklist is data (offboarding/forms.ts), not schema. */
+		closureChecklist: { type: Map, of: Boolean, default: {} },
+
+		// ── System-update tracking (SOP step 10) ─────────────────────────────
+		itAccessRevokedMailSentAt: { type: Date, default: null },
+		handoverMailSentAt: { type: Date, default: null }
+	},
+	{ timestamps: true }
+);
+exitSchema.index({ companyId: 1, status: 1 });
+export const Exit = models.Exit ?? model('Exit', exitSchema);
+
+// ── Offboarding: Exit Link Tokens ────────────────────────────────────────────
+// Same hash-plus-encrypted-copy pattern as LinkToken/BgvRequest: sha256 is the
+// source of truth for verifying an incoming request, the AES copy is
+// display-only so HR can always re-show a live link without regenerating it.
+//
+// One row per (exit, purpose) — an exit hands out three different kinds of
+// link over its life, and they must be independently expirable:
+//   forms     the employee's exit-documents portal (/x/[token])
+//   clearance a single approver's clearance page (/x/clearance/[token])
+//   handover  the final documents page, ~30-45 days after LWD (/x/final/[token])
+const exitTokenSchema = new Schema(
+	{
+		exitId: { type: Schema.Types.ObjectId, ref: 'Exit', required: true, index: true },
+		purpose: { type: String, enum: ['forms', 'clearance', 'handover'], required: true },
+		/** Set only on clearance tokens — which ExitClearance row this link is for. */
+		clearanceId: { type: Schema.Types.ObjectId, ref: 'ExitClearance', default: null },
+		tokenHash: { type: String, required: true, unique: true },
+		tokenEncrypted: { type: String, default: null },
+		expiresAt: { type: Date, required: true },
+		openedAt: { type: Date, default: null },
+		revoked: { type: Boolean, default: false }
+	},
+	{ timestamps: true }
+);
+export const ExitToken = models.ExitToken ?? model('ExitToken', exitTokenSchema);
+
+// ── Offboarding: Departmental Clearances ─────────────────────────────────────
+// One row per approver asked to clear an exit (SOP step 7). Each carries the
+// No-Dues rows that department owns, so the live NDC PDF is the employee's half
+// plus every clearance row that has come back. `department` matches a key in
+// NDC_SECTIONS (offboarding/forms.ts), which defines the printed rows.
+const exitClearanceSchema = new Schema(
+	{
+		exitId: { type: Schema.Types.ObjectId, ref: 'Exit', required: true, index: true },
+		department: {
+			type: String,
+			enum: ['manager', 'department', 'salesforce', 'it', 'hrd', 'admin', 'finance', 'payroll'],
+			required: true
+		},
+		approverName: { type: String, default: null },
+		approverEmail: { type: String, required: true },
+		approverDesignation: { type: String, default: null },
+		status: { type: String, enum: ['pending', 'sent', 'completed'], default: 'pending' },
+		/** Per-row verdict for this department's NDC rows: rowKey → dues|no_dues. */
+		rows: { type: Map, of: String, default: {} },
+		/** Per-row remark, rowKey → text. */
+		rowRemarks: { type: Map, of: String, default: {} },
+		/** Department-level overall verdict and remarks (the NDC's Remarks column). */
+		verdict: { type: String, enum: ['dues', 'no_dues', null], default: null },
+		remarks: { type: String, default: null },
+		/** Signature image in GridFS, drawn into the NDC PDF. */
+		signatureGridfsId: { type: Schema.Types.ObjectId, default: null },
+		signatureMime: { type: String, default: null },
+		sentAt: { type: Date, default: null },
+		sentCount: { type: Number, default: 0 },
+		completedAt: { type: Date, default: null },
+		completedIp: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+exitClearanceSchema.index({ exitId: 1, department: 1 }, { unique: true });
+export const ExitClearance = models.ExitClearance ?? model('ExitClearance', exitClearanceSchema);
+
+// ── Offboarding: Exit Documents (file bytes in GridFS) ───────────────────────
+// Both directions of file exchange for an exit, in one collection:
+//   - `source: 'employee'` — what the employee uploads (their signature image,
+//     an asset-return photo, the new employer's offer letter the Relieving
+//     Formalities form asks for).
+//   - `source: 'hr'` — what HR uploads for the final handover: the three
+//     payslips, the relieving and experience letters, the recommendation
+//     letter, PF withdrawal proof, Form 16. These are the files the employee
+//     downloads from the handover link.
+// Generated PDFs (NDC, NDA, exit interview, relieving formalities, gratuity)
+// are NOT stored here — they are rendered live on every download so HR always
+// gets current data, per the brief.
+const exitDocumentSchema = new Schema(
+	{
+		exitId: { type: Schema.Types.ObjectId, ref: 'Exit', required: true, index: true },
+		source: { type: String, enum: ['employee', 'hr'], required: true },
+		docType: { type: String, required: true },
+		label: { type: String, default: null },
+		gridfsId: { type: Schema.Types.ObjectId, required: true },
+		mime: { type: String, required: true },
+		sizeBytes: { type: Number, required: true },
+		uploadedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		reviewStatus: {
+			type: String,
+			enum: ['uploaded', 'accepted', 'reupload_requested'],
+			default: 'uploaded'
+		},
+		reviewNote: { type: String, default: null }
+	},
+	{ timestamps: true }
+);
+exitDocumentSchema.index({ exitId: 1, docType: 1 });
+export const ExitDocument = models.ExitDocument ?? model('ExitDocument', exitDocumentSchema);
+
+export type ExitDoc = InstanceType<typeof Exit> & { _id: Types.ObjectId };
+export type ExitClearanceDoc = InstanceType<typeof ExitClearance> & { _id: Types.ObjectId };
+export type ExitTokenDoc = InstanceType<typeof ExitToken> & { _id: Types.ObjectId };
+export type ExitDocumentDoc = InstanceType<typeof ExitDocument> & { _id: Types.ObjectId };

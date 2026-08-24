@@ -7,12 +7,22 @@ import {
 	parseRecipients,
 	IT_SETUP_MAIL_DEFAULTS
 } from '$lib/server/settings';
+import {
+	EXIT_MAIL_DEFAULTS,
+	getExitMailSettings,
+	saveExitMailSettings
+} from '$lib/server/offboarding/mail';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const itSetupMail = await getItSetupMailSettings();
+	const [itSetupMail, exitMail] = await Promise.all([
+		getItSetupMailSettings(),
+		getExitMailSettings()
+	]);
 	return {
 		itSetupMail,
 		defaults: IT_SETUP_MAIL_DEFAULTS,
+		exitMail,
+		exitDefaults: EXIT_MAIL_DEFAULTS,
 		isSuperAdmin: locals.admin?.role === 'super_admin'
 	};
 };
@@ -62,5 +72,55 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { reset: true };
+	},
+
+	// Offboarding mail: who IT's "block system access" request goes to, who is
+	// copied on the employee-facing exit and handover mails, and how they sign
+	// off. Same reasoning as the IT setup mail above — an operational call HR
+	// makes, but it changes what leaves the building, so super-admin only.
+	saveExitMail: async ({ request, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { error: 'Only a super admin can change these settings.' });
+
+		const form = await request.formData();
+		const itTo = parseRecipients(String(form.get('itTo') ?? ''));
+		const itCc = parseRecipients(String(form.get('itCc') ?? ''));
+		const hrCc = parseRecipients(String(form.get('hrCc') ?? ''));
+		const signoffName = String(form.get('exitSignoffName') ?? '').trim().slice(0, 80);
+		const signoffDesignation = String(form.get('exitSignoffDesignation') ?? '')
+			.trim()
+			.slice(0, 80);
+
+		// As with the IT setup mail, an empty To would send nowhere. Both Cc
+		// lists are legitimately clearable.
+		if (!itTo.length)
+			return fail(400, { error: 'Enter at least one valid IT "To" address for exit mails.' });
+
+		await saveExitMailSettings(
+			{ itTo, itCc, hrCc, signoffName, signoffDesignation },
+			locals.admin.id
+		);
+		await audit({
+			actor: locals.admin.email,
+			action: 'settings_updated',
+			field: 'exit_mail',
+			newValue: `it: ${itTo.join(', ')} | hrCc: ${hrCc.join(', ') || '—'} | signoff: ${signoffName}`,
+			ip: getClientAddress()
+		});
+		return { exitSaved: true };
+	},
+
+	resetExitMail: async ({ locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { error: 'Only a super admin can change these settings.' });
+		await saveExitMailSettings(EXIT_MAIL_DEFAULTS, locals.admin.id);
+		await audit({
+			actor: locals.admin.email,
+			action: 'settings_updated',
+			field: 'exit_mail',
+			newValue: 'reset to defaults',
+			ip: getClientAddress()
+		});
+		return { exitReset: true };
 	}
 };
