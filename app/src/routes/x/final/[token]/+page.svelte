@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
 	import { brandCssVars, brandFontsHref } from '$lib/shared/brands';
 
 	let { data } = $props();
@@ -8,6 +9,17 @@
 	const brandStyle = $derived(brandCssVars(brand));
 	const fontsHref = $derived(brandFontsHref(brand));
 	const s = $derived(data.settlement);
+
+	// HR can still add handover files (payslips, the F&F statement) after this
+	// link is sent, so poll rather than telling someone to keep manually
+	// reloading a page they were told "stays valid, come back to it".
+	$effect(() => {
+		const tick = () => {
+			if (document.visibilityState === 'visible') invalidateAll();
+		};
+		const interval = setInterval(tick, 20_000);
+		return () => clearInterval(interval);
+	});
 
 	function kb(bytes: number): string {
 		return bytes > 1024 * 1024

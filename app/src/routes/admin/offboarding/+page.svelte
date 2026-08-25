@@ -63,7 +63,9 @@
 		<div class="eyebrow" style="margin-bottom:4px">Step 1 — Resignation received</div>
 		<p class="muted" style="margin:0 0 18px;font-size:13px">
 			Enter what you have from the resignation email. If this person was onboarded through this
-			portal, their joining date, designation, manager and bank details are filled in automatically.
+			portal, their joining date, designation, manager and bank details are filled in
+			automatically — otherwise, enter the joining date yourself so gratuity eligibility (4 years
+			7 months or more of service) can be worked out automatically.
 		</p>
 		<form
 			method="POST"
@@ -92,6 +94,10 @@
 				<label class="f">
 					<span>Personal mobile</span>
 					<input name="personalMobile" inputmode="numeric" placeholder="10 digits" />
+				</label>
+				<label class="f">
+					<span>Date of joining</span>
+					<input name="doj" type="date" />
 				</label>
 				<label class="f">
 					<span>Date of resignation <b class="req">*</b></span>

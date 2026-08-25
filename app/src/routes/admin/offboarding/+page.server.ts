@@ -111,6 +111,7 @@ export const actions: Actions = {
 		const personalMobile = get('personalMobile');
 		const resignationDate = isoToDDMMYYYY(get('resignationDate'));
 		const lwd = isoToDDMMYYYY(get('lwd'));
+		const dojInput = isoToDDMMYYYY(get('doj'));
 		const companyId = get('companyId');
 		const separationType = get('separationType') === 'involuntary' ? 'involuntary' : 'voluntary';
 
@@ -143,7 +144,10 @@ export const actions: Actions = {
 			match?.offer as Record<string, unknown> | null
 		);
 
-		const doj = prefill.doj ?? null;
+		// HR's own entry always wins over the onboarding record's default —
+		// either because they are looking at the resignation email, or because
+		// this employee predates the portal and has no onboarding record at all.
+		const doj = dojInput || prefill.doj || null;
 		const applicable = gratuityApplicable(doj, lwd || null);
 
 		const exit = await Exit.create({
@@ -152,13 +156,12 @@ export const actions: Actions = {
 			employeeId,
 			fullName,
 			personalEmail,
-			// The onboarding record's mobile is a reasonable default, but HR's own
-			// entry always wins — they are looking at the resignation email.
-			personalMobile: personalMobile || prefill.personalMobile || null,
 			resignationDate,
 			lwd: lwd || null,
 			separationType,
 			...prefill,
+			personalMobile: personalMobile || prefill.personalMobile || null,
+			doj,
 			gratuity: { applicable: applicable === true },
 			status: 'initiated',
 			createdBy: locals.admin!.id

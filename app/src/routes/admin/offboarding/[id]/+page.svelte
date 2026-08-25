@@ -32,6 +32,18 @@
 	// Which review items HR has ticked to send back to the employee.
 	let changeFields = $state<string[]>([]);
 
+	// Polls for changes made elsewhere — an approver signing a clearance, the
+	// employee submitting their forms — so the live-documents rail and every
+	// status on this page update on their own rather than waiting on HR to
+	// hit refresh. Paused while the tab is in the background.
+	$effect(() => {
+		const tick = () => {
+			if (document.visibilityState === 'visible') invalidateAll();
+		};
+		const interval = setInterval(tick, 20_000);
+		return () => clearInterval(interval);
+	});
+
 	function track(key: string) {
 		return () => {
 			sending[key] = true;
@@ -794,7 +806,8 @@
 		<section class="card">
 			<div class="eyebrow" style="margin-bottom:12px">Live documents</div>
 			<p class="muted tiny" style="margin:0 0 14px">
-				Generated fresh on every download, so a clearance signed a minute ago is already in the PDF.
+				Generated fresh on every download, so a clearance signed a minute ago is already in the PDF —
+				and this list refreshes on its own as things change.
 			</p>
 			<div class="doclist">
 				{#each data.documents as d}
