@@ -213,7 +213,7 @@ export async function sendExitFormsMail(opts: {
 		text,
 		opts.brand,
 		undefined,
-		'onboarding',
+		'exit',
 		undefined,
 		{ cc: s.hrCc.length ? s.hrCc : undefined, tagPurpose: isRework ? 'exit_changes' : 'exit_forms', html }
 	);
@@ -307,7 +307,7 @@ export async function sendClearanceMail(opts: {
 		text,
 		opts.brand,
 		opts.attachments,
-		'onboarding',
+		'exit',
 		undefined,
 		{ tagPurpose: 'exit_clearance', html }
 	);
@@ -392,7 +392,7 @@ export async function sendItExitMail(opts: Parameters<typeof buildItExitMail>[0]
 		draft.text,
 		opts.brand,
 		undefined,
-		'onboarding',
+		'exit',
 		undefined,
 		{ cc: draft.cc.length ? draft.cc : undefined, tagPurpose: 'exit_it_block', html: draft.html }
 	);
@@ -480,7 +480,7 @@ export async function sendHandoverMail(opts: {
 		text,
 		opts.brand,
 		opts.attachments,
-		'onboarding',
+		'exit',
 		undefined,
 		{ cc: s.hrCc.length ? s.hrCc : undefined, tagPurpose: 'exit_handover', html }
 	);
@@ -514,7 +514,7 @@ export async function sendExitAlert(opts: {
 		textBody([...opts.lines, '', opts.url], s.signoffName, s.signoffDesignation, opts.brand.legalName),
 		opts.brand,
 		undefined,
-		'onboarding',
+		'exit',
 		undefined,
 		{ tagPurpose: 'exit_alert', html }
 	);

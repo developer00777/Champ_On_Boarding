@@ -34,17 +34,34 @@ export function brandSignoff(brand: BrandTheme): string {
 	return `— HR, ${brand.legalName}`;
 }
 
-export type MailPurpose = 'onboarding' | 'offer' | 'bgv';
+export type MailPurpose = 'onboarding' | 'offer' | 'bgv' | 'exit';
 
-/** Resolves the configured mailbox for a purpose. `offer` and `bgv` fall back
- *  to the onboarding mailbox (MAIL_FROM) when their variable is unset, so the
- *  extra addresses are opt-in — e.g. set BGV_MAIL_FROM=hr@offer.championsmail.com
- *  (a Railway env var) to send BGV verification requests from the HR desk. */
+/** Resolves the configured mailbox for a purpose. `offer`, `bgv` and `exit`
+ *  fall back to the onboarding mailbox (MAIL_FROM) when their variable is
+ *  unset, so the extra addresses are opt-in — e.g. set
+ *  BGV_MAIL_FROM=hr@offer.championsmail.com (a Railway env var) to send BGV
+ *  verification requests from the HR desk. `exit` defaults to offboarding@ on
+ *  the same verified domain, so a resignation mail does not arrive from the
+ *  onboarding mailbox. */
 function fromAddressFor(purpose: MailPurpose): string {
 	const onboarding = env.MAIL_FROM ?? 'onboarding@example.com';
 	if (purpose === 'offer') return env.OFFER_MAIL_FROM ?? onboarding;
 	if (purpose === 'bgv') return env.BGV_MAIL_FROM ?? onboarding;
+	if (purpose === 'exit') return env.EXIT_MAIL_FROM ?? defaultExitFrom(onboarding);
 	return onboarding;
+}
+
+/** offboarding@<same verified domain as MAIL_FROM>. Derived rather than
+ *  hard-coded so a domain change to MAIL_FROM carries over, and so this never
+ *  sends from a domain Resend has not verified. Any display name on MAIL_FROM
+ *  is dropped — brandFromHeader supplies the brand's name. Falls back to the
+ *  onboarding mailbox if MAIL_FROM has no parseable address. */
+function defaultExitFrom(onboarding: string): string {
+	const match = onboarding.match(/<([^>]+)>/);
+	const address = (match ? match[1] : onboarding).trim();
+	const at = address.lastIndexOf('@');
+	if (at < 1) return onboarding;
+	return `offboarding@${address.slice(at + 1)}`;
 }
 
 /** "Brand Legal Name <mailbox@domain>" — keeps a per-purpose sending mailbox
