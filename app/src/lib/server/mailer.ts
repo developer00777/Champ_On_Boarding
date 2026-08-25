@@ -69,7 +69,10 @@ function defaultExitFrom(onboarding: string): string {
 export function brandFromHeader(brand: BrandTheme, purpose: MailPurpose = 'onboarding'): string {
 	const configured = fromAddressFor(purpose);
 	const match = configured.match(/<([^>]+)>/);
-	const address = match ? match[1] : configured;
+	// Trimmed because these come from env vars: a stray space around a bare
+	// address would otherwise land inside the angle brackets and Resend
+	// rejects the header.
+	const address = (match ? match[1] : configured).trim();
 	return `${brand.legalName} <${address}>`;
 }
 
