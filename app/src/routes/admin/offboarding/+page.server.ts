@@ -87,7 +87,10 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		q,
 		statuses: Object.keys(EXIT_STATUS_META),
 		companies: companies.map((c) => ({ id: String(c._id), name: c.name })),
-		canInitiate: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
+		canInitiate: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin',
+		// Deleting an exit is super-admin-only (see the deleteExit action), so the
+		// control is hidden rather than shown-and-rejected for an hr_admin.
+		canDelete: locals.admin?.role === 'super_admin'
 	};
 };
 

@@ -9,6 +9,10 @@
 
 	let showInitiate = $state(false);
 	let initiating = $state(false);
+	// Deleting an exit is irreversible and cascades to its files, so the button
+	// arms a per-row confirm rather than firing on the first click.
+	let confirming = $state<string | null>(null);
+	let deleting = $state<string | null>(null);
 
 	/** Filters are URL params, so a filtered view is shareable and survives a
 	 *  refresh. Build links rather than posting — this is a read. */
@@ -239,6 +243,43 @@
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 6l6 6-6 6" /></svg>
 				</div>
 			</a>
+			{#if data.canDelete}
+				<!-- Outside the <a> above: a form inside an anchor is invalid markup,
+				     and a nested button would swallow the row's own click. -->
+				<form
+					method="POST"
+					action="?/deleteExit"
+					class="delcell"
+					use:enhance={() => {
+						deleting = e.id;
+						return async ({ update }) => {
+							await update();
+							deleting = null;
+							confirming = null;
+						};
+					}}
+				>
+					<input type="hidden" name="exitId" value={e.id} />
+					{#if confirming === e.id}
+						<button type="submit" class="del confirm" disabled={deleting === e.id}>
+							{deleting === e.id ? 'Deleting…' : 'Confirm'}
+						</button>
+						<button type="button" class="del cancel" onclick={() => (confirming = null)}>Cancel</button>
+					{:else}
+						<button
+							type="button"
+							class="del"
+							title="Delete this offboarding record"
+							aria-label="Delete offboarding for {e.fullName}"
+							onclick={() => (confirming = e.id)}
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+								<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+							</svg>
+						</button>
+					{/if}
+				</form>
+			{/if}
 		{/each}
 	{/if}
 </section>
@@ -393,5 +434,60 @@
 	.thead,
 	.trow {
 		grid-template-columns: 1.5fr 1fr 0.8fr 0.9fr 1.2fr 0.7fr auto;
+	}
+
+	/* Sits in the row's own grid track so the button lines up under the header,
+	   and stays quiet until hovered — destructive, so never the loud control. */
+	.delcell {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 6px;
+		padding: 0 14px 12px;
+		margin-top: -8px;
+	}
+	.del {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		background: none;
+		border: 1px solid transparent;
+		border-radius: 7px;
+		padding: 5px 8px;
+		font: inherit;
+		font-size: 12px;
+		color: var(--ae-muted);
+		cursor: pointer;
+		opacity: 0.65;
+		transition: opacity 0.14s, color 0.14s, border-color 0.14s, background 0.14s;
+	}
+	.del:hover {
+		opacity: 1;
+		color: #b42318;
+		border-color: #fda29b;
+		background: #fef3f2;
+	}
+	.del:focus-visible {
+		outline: 2px solid #b42318;
+		outline-offset: 1px;
+		opacity: 1;
+	}
+	.del.confirm {
+		opacity: 1;
+		color: #fff;
+		background: #b42318;
+		border-color: #b42318;
+		font-weight: 600;
+	}
+	.del.confirm:hover {
+		background: #912018;
+		color: #fff;
+	}
+	.del.confirm:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
+	.del.cancel {
+		opacity: 1;
 	}
 </style>
