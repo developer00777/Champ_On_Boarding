@@ -52,7 +52,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		optional: true,
 		rows: [
 			{ key: 'sf_thirdparty', label: 'SalesForce / Third party Applications' },
-			{ key: 'sf_gotomeeting', label: 'Go-To-Meeting Username or Email' },
+			{ key: 'sf_gotomeeting', label: 'Lead Portal Username' },
 			{ key: 'sf_linkpoint', label: 'Link point 360 Login' },
 			{ key: 'sf_others', label: 'Others' }
 		]
@@ -76,7 +76,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		signatory: 'HRD',
 		optional: false,
 		rows: [
-			{ key: 'hrd_company_property', label: 'Company Car / Cheque / LED TV' },
+			{ key: 'hrd_company_property', label: 'Company Car / Cheque / LED TV / Loan' },
 			{ key: 'hrd_edu_declaration', label: 'Educational Declaration, if any' },
 			{ key: 'hrd_cards', label: 'ID, Access & Health Insurance Card' },
 			{ key: 'hrd_others', label: 'Others' }
