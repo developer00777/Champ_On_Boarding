@@ -15,6 +15,8 @@
 		EXIT_WORKLOAD_OPTIONS,
 		NDA_CLAUSES,
 		NDA_REGISTERED_OFFICE,
+		NDC_EMPLOYEE_DECLARATIONS,
+		NDC_EMPLOYEE_SECTIONS,
 		RELIEVING_ITEMS
 	} from '$lib/shared/offboarding';
 
@@ -315,6 +317,49 @@
 							<span>Anything else worth noting</span>
 							<textarea name="deptOthers" rows="2" value={e.ndc.deptOthers}></textarea>
 						</label>
+
+						<!-- The certificate's own rows, section by section. Each approver
+						     sees your answer beside the row they sign, so this is the
+						     claim they check against — not a duplicate of the boxes
+						     above (the Employee's Department rows reuse those as their
+						     note, which is why they carry no note field here). -->
+						<div class="eyebrow" style="margin:22px 0 8px">Clearance items</div>
+						<p class="hint" style="margin-top:0">
+							For each item below, tell us where it stands. Each department sees your answer
+							next to the row they sign off, so anything you flag as still with you is chased
+							rather than missed.
+						</p>
+						{#each NDC_EMPLOYEE_SECTIONS as section}
+							<div class="ndc-sec">
+								<h3 class="ndc-sec-head">{section.label}</h3>
+								{#each section.rows as row}
+									<div class="ndc-row">
+										<p class="ndc-row-label">{row.label}</p>
+										<div class="ndc-opts">
+											{#each NDC_EMPLOYEE_DECLARATIONS as opt}
+												<label class="ndc-opt">
+													<input
+														type="radio"
+														name={`ndcrow_${row.key}`}
+														value={opt.value}
+														checked={e.ndc.rows[row.key] === opt.value}
+													/>
+													<span>{opt.label}</span>
+												</label>
+											{/each}
+										</div>
+										{#if !row.noteField}
+											<input
+												class="ndc-note"
+												name={`ndcnote_${row.key}`}
+												value={e.ndc.rowNotes[row.key] ?? ''}
+												placeholder="note (optional)"
+											/>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{/each}
 
 						<div class="eyebrow" style="margin:20px 0 8px">Company assets</div>
 						<p class="hint" style="margin-top:0">
@@ -1077,6 +1122,50 @@
 	.cell input {
 		accent-color: var(--brand-primary, #6b4cf6);
 	}
+	.ndc-sec {
+		border: 1px solid var(--line, #e4e7ec);
+		border-radius: 10px;
+		padding: 12px 14px;
+		margin: 0 0 10px;
+	}
+	.ndc-sec-head {
+		margin: 0 0 8px;
+		font-size: 12.5px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		opacity: 0.72;
+	}
+	.ndc-row + .ndc-row {
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px dashed var(--line, #e4e7ec);
+	}
+	.ndc-row-label {
+		margin: 0 0 6px;
+		font-size: 13px;
+		line-height: 1.5;
+	}
+	.ndc-opts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+	}
+	.ndc-opt {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12.5px;
+		cursor: pointer;
+	}
+	.ndc-opt input {
+		accent-color: var(--primary, #0b63ce);
+	}
+	.ndc-note {
+		margin-top: 8px;
+		width: 100%;
+	}
+
 	.assets {
 		display: flex;
 		flex-direction: column;

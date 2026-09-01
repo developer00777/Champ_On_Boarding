@@ -171,7 +171,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			// The four form payloads, as plain objects for the review panel. Maps
 			// come back differently from .lean() than from a hydrated doc, so every
 			// Map field goes through asRecord.
-			ndc: e.ndc ?? {},
+			// rows/rowNotes are Map fields — see the note above; .lean() does not
+			// hand them back as plain objects reliably, so both go through asRecord.
+			ndc: {
+				...(e.ndc ?? {}),
+				rows: asRecord(e.ndc?.rows),
+				rowNotes: asRecord(e.ndc?.rowNotes)
+			},
 			nda: {
 				...(e.nda ?? {}),
 				// The number itself is never sent to the browser — only its last four,

@@ -14,6 +14,8 @@
 		EXIT_STATUS_META,
 		EXIT_TEXT_QUESTIONS,
 		EXIT_WORKLOAD_OPTIONS,
+		NDC_EMPLOYEE_DECLARATION_LABELS,
+		NDC_EMPLOYEE_SECTIONS,
 		RELIEVING_ITEMS
 	} from '$lib/shared/offboarding';
 
@@ -109,6 +111,17 @@
 	const scaleLabel = (scale: readonly { value: string; label: string }[], v: string | null) =>
 		scale.find((s) => s.value === v)?.label ?? '—';
 
+	/** One No-Dues row as the employee left it: their declaration plus whatever
+	 *  note goes with it — the dedicated ndc.* field for the four Employee's-
+	 *  Department rows, the generic notes map for the rest. */
+	function ndcDeclared(key: string, noteField?: string): string {
+		const declared = (e.ndc?.rows ?? {})[key];
+		if (!declared) return '';
+		const label = NDC_EMPLOYEE_DECLARATION_LABELS[declared] ?? declared;
+		const note = noteField ? e.ndc?.[noteField] : (e.ndc?.rowNotes ?? {})[key];
+		return note ? `${label} — ${note}` : label;
+	}
+
 	// The employee's answers, flattened into the review list HR ticks items from.
 	// `field` is the dotted path the re-request action stores and the mail names.
 	const reviewGroups = $derived([
@@ -120,7 +133,17 @@
 				{ field: 'ndc.filesHandover', label: 'Files handed over', value: e.ndc?.filesHandover },
 				{ field: 'ndc.loginsHandover', label: 'Logins handed over', value: e.ndc?.loginsHandover },
 				{ field: 'ndc.leadsHandover', label: 'Leads & client follow-up', value: e.ndc?.leadsHandover },
-				{ field: 'ndc.deptOthers', label: 'Other remarks', value: e.ndc?.deptOthers }
+				{ field: 'ndc.deptOthers', label: 'Other remarks', value: e.ndc?.deptOthers },
+				// The employee's declaration against the certificate's own rows —
+				// the same claim each approver cross-checks on their clearance
+				// page, so HR reviews exactly what the approvers are shown.
+				...NDC_EMPLOYEE_SECTIONS.flatMap((section) =>
+					section.rows.map((row) => ({
+						field: `ndc.rows.${row.key}`,
+						label: `${section.label} — ${row.label}`,
+						value: ndcDeclared(row.key, row.noteField)
+					}))
+				)
 			]
 		},
 		{

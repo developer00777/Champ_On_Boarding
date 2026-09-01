@@ -165,6 +165,18 @@
 						{#each data.rows as row}
 							<div class="row">
 								<div class="rlabel">{row.label}</div>
+								{#if row.employeeSaid}
+									<p class="declared" class:pending={row.employeeSaidValue === 'pending'}>
+										<span class="dtag">Employee says</span>
+										<span class="dval">{row.employeeSaid}</span>
+										{#if row.employeeNote}<span class="dnote">— {row.employeeNote}</span>{/if}
+									</p>
+								{:else if data.employeeDeclaresSection}
+									<p class="declared unanswered">
+										<span class="dtag">Employee says</span>
+										<span class="dval">not answered yet</span>
+									</p>
+								{/if}
 								<div class="ropts">
 									{#each VERDICTS as v}
 										<label class="radio">
@@ -384,6 +396,39 @@
 		padding: 13px 0;
 		border-top: 1px solid var(--brand-border, #e6e6ee);
 	}
+	/* The employee's own claim for this row, so the approver confirms or
+	   contradicts something specific rather than ticking from memory. */
+	.declared {
+		margin: 6px 0 8px;
+		font-size: 12px;
+		line-height: 1.5;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		align-items: baseline;
+	}
+	.dtag {
+		font-weight: 800;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		font-size: 10px;
+		opacity: 0.6;
+	}
+	.dval {
+		font-weight: 700;
+	}
+	/* "Still with me" is the answer the approver most needs to notice. */
+	.declared.pending .dval {
+		color: #b42318;
+	}
+	.declared.unanswered {
+		opacity: 0.55;
+		font-style: italic;
+	}
+	.dnote {
+		opacity: 0.8;
+	}
+
 	.rlabel {
 		font-size: 13px;
 		font-weight: 500;

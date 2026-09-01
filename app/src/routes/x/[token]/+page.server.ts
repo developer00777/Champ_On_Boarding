@@ -19,6 +19,9 @@ import {
 	EXIT_Q13_ROWS,
 	EXIT_TEXT_QUESTIONS,
 	EXIT_UPLOAD_DOCS,
+	NDC_EMPLOYEE_DECLARATIONS,
+	NDC_EMPLOYEE_ROW_KEYS,
+	NDC_EMPLOYEE_SECTIONS,
 	RELIEVING_ITEMS
 } from '$lib/shared/offboarding';
 import {
@@ -106,6 +109,8 @@ export const load: PageServerLoad = async ({ params }) => {
 				loginsHandover: e.ndc?.loginsHandover ?? '',
 				leadsHandover: e.ndc?.leadsHandover ?? '',
 				deptOthers: e.ndc?.deptOthers ?? '',
+				rows: asRecord(e.ndc?.rows),
+				rowNotes: asRecord(e.ndc?.rowNotes),
 				submitted: !!e.ndc?.submittedAt
 			},
 			nda: {
@@ -274,6 +279,34 @@ export const actions: Actions = {
 			};
 		});
 
+		// The employee's declaration against the certificate's own tick-rows. Only
+		// keys NDC_EMPLOYEE_ROW_KEYS knows about are accepted, and only the three
+		// declared values, so a hand-crafted POST cannot invent a row or smuggle
+		// an approver's `no_dues` verdict in through the employee's form.
+		const allowed = new Set<string>(NDC_EMPLOYEE_DECLARATIONS.map((d) => d.value));
+		const priorRows = asRecord((c!.exit as unknown as Record<string, any>).ndc?.rows);
+		const priorNotes = asRecord((c!.exit as unknown as Record<string, any>).ndc?.rowNotes);
+		const ndcRows: Record<string, string> = {};
+		const ndcRowNotes: Record<string, string> = {};
+		for (const section of NDC_EMPLOYEE_SECTIONS) {
+			for (const row of section.rows) {
+				// A row the rendered form did not carry keeps whatever it had —
+				// saving one section must never blank another's answers.
+				if (!form.has(`ndcrow_${row.key}`)) {
+					if (priorRows[row.key]) ndcRows[row.key] = priorRows[row.key];
+					if (priorNotes[row.key]) ndcRowNotes[row.key] = priorNotes[row.key];
+					continue;
+				}
+				const value = get(`ndcrow_${row.key}`);
+				if (allowed.has(value) && NDC_EMPLOYEE_ROW_KEYS.has(row.key)) ndcRows[row.key] = value;
+				// Rows with a `noteField` keep their note on that dedicated field
+				// (filesHandover and friends), so they are never doubled up here.
+				if (row.noteField) continue;
+				const note = get(`ndcnote_${row.key}`);
+				if (note) ndcRowNotes[row.key] = note;
+			}
+		}
+
 		await Exit.findByIdAndUpdate(c!.exit._id, {
 			'ndc.team': get('team') || null,
 			'ndc.nameAsPerBank': titleCase(get('nameAsPerBank')) || null,
@@ -281,6 +314,8 @@ export const actions: Actions = {
 			'ndc.loginsHandover': get('loginsHandover') || null,
 			'ndc.leadsHandover': get('leadsHandover') || null,
 			'ndc.deptOthers': get('deptOthers') || null,
+			'ndc.rows': ndcRows,
+			'ndc.rowNotes': ndcRowNotes,
 			'ndc.submittedAt': new Date(),
 			assets
 		});
