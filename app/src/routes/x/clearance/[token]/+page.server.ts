@@ -16,6 +16,7 @@ import { brandBySlug } from '$lib/shared/brands';
 import { deleteFromGridFS, uploadBytesToGridFS } from '$lib/server/storage';
 import {
 	CLEARANCE_DEPT_LABELS,
+	NDC_EMPLOYEE_DECLARATION_LABELS,
 	NDC_SECTION_BY_DEPT,
 	type ClearanceDept
 } from '$lib/shared/offboarding';
@@ -52,6 +53,12 @@ export const load: PageServerLoad = async ({ params }) => {
 	const rows = asRecord(clearance.rows);
 	const remarks = asRecord(clearance.rowRemarks);
 
+	// What the employee declared against these same rows on their exit form.
+	// Read at load time, so reopening the link always shows the current claim
+	// rather than a snapshot taken when the request was emailed.
+	const declaredRows = asRecord(e.ndc?.rows);
+	const declaredNotes = asRecord(e.ndc?.rowNotes);
+
 	return {
 		brand,
 		companyName: company?.name ?? brand.legalName,
@@ -62,7 +69,18 @@ export const load: PageServerLoad = async ({ params }) => {
 			key: r.key,
 			label: r.label,
 			verdict: rows[r.key] ?? '',
-			remark: remarks[r.key] ?? ''
+			remark: remarks[r.key] ?? '',
+			// The employee's own claim for this row, so the approver is confirming
+			// or contradicting something specific. Null on the sections the
+			// employee is not asked to declare (payroll, finance) and on rows they
+			// have not answered yet.
+			employeeSaid: declaredRows[r.key]
+				? NDC_EMPLOYEE_DECLARATION_LABELS[declaredRows[r.key]] ?? declaredRows[r.key]
+				: null,
+			employeeSaidValue: declaredRows[r.key] ?? null,
+			// Rows with a `noteField` carry their note on the dedicated ndc.* field
+			// the employee's form writes; the rest use the generic notes map.
+			employeeNote: (r.noteField ? e.ndc?.[r.noteField] : declaredNotes[r.key]) || null
 		})),
 		employee: {
 			fullName: exit.fullName,
@@ -98,7 +116,11 @@ export const load: PageServerLoad = async ({ params }) => {
 			completedAt: clearance.completedAt?.toISOString() ?? null
 		},
 		/** IT and admin also confirm the physical asset return (SOP step 6). */
-		verifiesAssets: dept === 'it' || dept === 'admin'
+		verifiesAssets: dept === 'it' || dept === 'admin',
+		/** Whether this section's rows are ones the employee self-declares. Drives
+		 *  the "not answered yet" prompt: on payroll and finance there is nothing
+		 *  for the employee to have said, so silence there is not an omission. */
+		employeeDeclaresSection: !!section?.employeeDeclares
 	};
 };
 

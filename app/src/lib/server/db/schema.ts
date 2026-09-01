@@ -516,6 +516,17 @@ const exitSchema = new Schema(
 			loginsHandover: { type: String, default: null },
 			leadsHandover: { type: String, default: null },
 			deptOthers: { type: String, default: null },
+			/** The employee's own declaration against the certificate's tick-rows,
+			 *  rowKey -> handed_over|pending|na (NDC_EMPLOYEE_DECLARATIONS). Kept
+			 *  as a Map for the same reason the exit-interview grids are: a new row
+			 *  in NDC_SECTIONS must not need a migration. This is the claim each
+			 *  approver cross-checks on their clearance page — it never becomes
+			 *  the clearance itself, which stays on ExitClearance.rows. */
+			rows: { type: Map, of: String, default: {} },
+			/** rowKey -> the employee's note for that row. The four Employee's-
+			 *  Department rows are not in here: their note is the dedicated field
+			 *  above (see NdcRow.noteField). */
+			rowNotes: { type: Map, of: String, default: {} },
 			submittedAt: { type: Date, default: null }
 		},
 

@@ -22,14 +22,47 @@
 export type ClearanceDept =
 	| 'manager' | 'department' | 'salesforce' | 'it' | 'hrd' | 'admin' | 'finance' | 'payroll';
 
+export interface NdcRow {
+	key: string;
+	label: string;
+	/** The four Employee's-Department rows already have the employee's free-text
+	 *  answer on a dedicated `ndc.*` field — the certificate prints it and HR's
+	 *  review screen lists it. Those rows reuse that field as their note instead
+	 *  of storing a second copy that could drift out of step with it. Every
+	 *  other row keeps its note in the generic `ndc.rowNotes` map. */
+	noteField?: 'filesHandover' | 'loginsHandover' | 'leadsHandover' | 'deptOthers';
+}
+
 export interface NdcSection {
 	dept: ClearanceDept;
 	label: string;
 	signatory: string;
 	optional: boolean;
+	/** Whether the employee is asked to declare these rows on their own exit
+	 *  form, so the approver signs against a stated claim rather than from
+	 *  memory. False for the sections whose rows are an internal computation the
+	 *  employee has no way to answer — payroll's settlement total, finance's
+	 *  recovery and tax checks. */
+	employeeDeclares: boolean;
 	/** The tick-rows this department owns, printed as No Dues / Dues / Sign. */
-	rows: { key: string; label: string }[];
+	rows: NdcRow[];
 }
+
+/** What the employee declares against a row they own, before any approver has
+ *  looked at it. Deliberately not the approver's own no_dues/dues vocabulary:
+ *  this is a claim, not a clearance, and the two must stay distinguishable on
+ *  the approver's screen. */
+export const NDC_EMPLOYEE_DECLARATIONS = [
+	{ value: 'handed_over', label: 'Handed over / returned' },
+	{ value: 'pending', label: 'Still with me' },
+	{ value: 'na', label: 'Not applicable' }
+] as const;
+
+export type NdcEmployeeDeclaration = (typeof NDC_EMPLOYEE_DECLARATIONS)[number]['value'];
+
+export const NDC_EMPLOYEE_DECLARATION_LABELS: Record<string, string> = Object.fromEntries(
+	NDC_EMPLOYEE_DECLARATIONS.map((d) => [d.value, d.label])
+);
 
 /** The No-Dues certificate, section by section, exactly as the form prints it. */
 export const NDC_SECTIONS: NdcSection[] = [
@@ -38,11 +71,12 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: "Employee's Department",
 		signatory: 'Departmental Head',
 		optional: false,
+		employeeDeclares: true,
 		rows: [
-			{ key: 'files_handover', label: 'To handover files handled by him/her (soft & hard copies) (List should be attached)' },
-			{ key: 'login_credentials', label: 'User Name/Password for all his official logins' },
-			{ key: 'leads_followup', label: 'Leads & Client follow up details' },
-			{ key: 'dept_others', label: 'Others' }
+			{ key: 'files_handover', label: 'To handover files handled by him/her (soft & hard copies) (List should be attached)', noteField: 'filesHandover' },
+			{ key: 'login_credentials', label: 'User Name/Password for all his official logins', noteField: 'loginsHandover' },
+			{ key: 'leads_followup', label: 'Leads & Client follow up details', noteField: 'leadsHandover' },
+			{ key: 'dept_others', label: 'Others', noteField: 'deptOthers' }
 		]
 	},
 	{
@@ -50,6 +84,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'Sales Force Team',
 		signatory: 'Sales Force Team',
 		optional: true,
+		employeeDeclares: true,
 		rows: [
 			{ key: 'sf_thirdparty', label: 'SalesForce / Third party Applications' },
 			{ key: 'sf_gotomeeting', label: 'Lead Portal Username' },
@@ -62,6 +97,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'IT Section (PC & any other tools provided)',
 		signatory: 'IT Section',
 		optional: false,
+		employeeDeclares: true,
 		rows: [
 			{ key: 'it_system_logins', label: 'System / Project Central / Skype / LinkedIn login' },
 			{ key: 'it_datasources', label: 'Infocheckpoint / Data sources login' },
@@ -75,6 +111,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'HRD',
 		signatory: 'HRD',
 		optional: false,
+		employeeDeclares: true,
 		rows: [
 			{ key: 'hrd_company_property', label: 'Company Car / Cheque / LED TV / Loan' },
 			{ key: 'hrd_edu_declaration', label: 'Educational Declaration, if any' },
@@ -87,6 +124,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'Administration',
 		signatory: 'Administration',
 		optional: false,
+		employeeDeclares: true,
 		rows: [
 			{ key: 'admin_locker_books', label: 'Locker Key / Library Books' },
 			{ key: 'admin_others', label: 'Others' }
@@ -97,6 +135,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'Payroll',
 		signatory: 'Payroll In-Charge',
 		optional: false,
+		employeeDeclares: false,
 		rows: [
 			{
 				key: 'payroll_total',
@@ -111,6 +150,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'Reporting Manager — Knowledge Transfer',
 		signatory: 'Reporting Manager',
 		optional: false,
+		employeeDeclares: true,
 		// SOP step 4: the KT confirmations the reporting manager signs off.
 		rows: [
 			{ key: 'kt_project_handover', label: 'Project handover completed' },
@@ -125,6 +165,7 @@ export const NDC_SECTIONS: NdcSection[] = [
 		label: 'Finance',
 		signatory: 'Finance Team',
 		optional: false,
+		employeeDeclares: false,
 		rows: [
 			{ key: 'fin_recoveries', label: 'Recoveries verified (notice pay, asset, other deductions)' },
 			{ key: 'fin_advances', label: 'Loans / advances cleared' },
@@ -134,6 +175,16 @@ export const NDC_SECTIONS: NdcSection[] = [
 ];
 
 export const NDC_SECTION_BY_DEPT = new Map(NDC_SECTIONS.map((s) => [s.dept, s]));
+
+/** The sections the employee self-declares, in printed order — what the exit
+ *  form renders and what the approver pages cross-check against. */
+export const NDC_EMPLOYEE_SECTIONS: NdcSection[] = NDC_SECTIONS.filter((s) => s.employeeDeclares);
+
+/** Every row key the employee may answer. Used to bound what the exit form is
+ *  allowed to write, so a hand-crafted POST cannot invent rows. */
+export const NDC_EMPLOYEE_ROW_KEYS: ReadonlySet<string> = new Set(
+	NDC_EMPLOYEE_SECTIONS.flatMap((s) => s.rows.map((r) => r.key))
+);
 
 export const CLEARANCE_DEPT_LABELS: Record<ClearanceDept, string> = Object.fromEntries(
 	NDC_SECTIONS.map((s) => [s.dept, s.label])
