@@ -369,6 +369,102 @@ function wrap(ctx: Ctx, text: string, font: PDFFont, size: number, maxW: number)
 	return lines.length ? lines : [''];
 }
 
+// ── inline bold runs ─────────────────────────────────────────────────────────
+//
+// Body copy is drawn one string at a time in a single font, so a phrase that has
+// to stand out inside a sentence — the designation the letter offers — had no way
+// to be set apart. `**like this**` marks a bold run; everything below wraps and
+// draws a line as a sequence of styled pieces instead of one flat string.
+
+interface RichPiece {
+	text: string;
+	bold: boolean;
+}
+/** One whitespace-delimited word, which may itself span a style boundary. */
+type RichWord = RichPiece[];
+
+function parseRich(text: string): RichPiece[] {
+	const out: RichPiece[] = [];
+	const re = /\*\*(.+?)\*\*/gs;
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(text))) {
+		if (m.index > last) out.push({ text: text.slice(last, m.index), bold: false });
+		out.push({ text: m[1], bold: true });
+		last = m.index + m[0].length;
+	}
+	if (last < text.length) out.push({ text: text.slice(last), bold: false });
+	return out;
+}
+
+function richWords(text: string): RichWord[] {
+	const words: RichWord[] = [];
+	let cur: RichWord = [];
+	for (const piece of parseRich(sanitize(text))) {
+		for (const part of piece.text.split(/(\s+)/)) {
+			if (!part) continue;
+			if (/^\s+$/.test(part)) {
+				if (cur.length) {
+					words.push(cur);
+					cur = [];
+				}
+			} else {
+				cur.push({ text: part, bold: piece.bold });
+			}
+		}
+	}
+	if (cur.length) words.push(cur);
+	return words;
+}
+
+/** Greedy word-wrap over styled words. `base` is the font for unmarked text —
+ *  bold runs always use ctx.fontB, so a bold paragraph stays bold throughout. */
+function wrapRich(ctx: Ctx, text: string, base: PDFFont, size: number, maxW: number): RichWord[][] {
+	const fontFor = (p: RichPiece) => (p.bold ? ctx.fontB : base);
+	const wordWidth = (w: RichWord) =>
+		w.reduce((sum, p) => sum + fontFor(p).widthOfTextAtSize(p.text, size), 0);
+	const spaceW = base.widthOfTextAtSize(' ', size);
+
+	const lines: RichWord[][] = [];
+	let line: RichWord[] = [];
+	let lineW = 0;
+	for (const word of richWords(text)) {
+		const w = wordWidth(word);
+		const advance = line.length ? spaceW + w : w;
+		if (line.length && lineW + advance > maxW) {
+			lines.push(line);
+			line = [word];
+			lineW = w;
+		} else {
+			line.push(word);
+			lineW += advance;
+		}
+	}
+	if (line.length) lines.push(line);
+	return lines.length ? lines : [[]];
+}
+
+function drawRichLine(
+	ctx: Ctx,
+	line: RichWord[],
+	x: number,
+	y: number,
+	base: PDFFont,
+	size: number,
+	color: ReturnType<typeof rgb>
+) {
+	const spaceW = base.widthOfTextAtSize(' ', size);
+	let cx = x;
+	line.forEach((word, i) => {
+		if (i) cx += spaceW;
+		for (const piece of word) {
+			const font = piece.bold ? ctx.fontB : base;
+			ctx.page.drawText(piece.text, { x: cx, y, font, size, color });
+			cx += font.widthOfTextAtSize(piece.text, size);
+		}
+	});
+}
+
 /** Draw a paragraph (optionally indented), wrapping + paging as needed. */
 function para(
 	ctx: Ctx,
@@ -381,10 +477,9 @@ function para(
 	const indent = opts.indent ?? 0;
 	const lineGap = opts.lineGap ?? leadingFor(size);
 	const maxW = ctx.CW - indent;
-	const lines = wrap(ctx, text, font, size, maxW);
-	for (const line of lines) {
+	for (const line of wrapRich(ctx, text, font, size, maxW)) {
 		ensure(ctx, size + lineGap);
-		ctx.page.drawText(line, { x: ctx.M + indent, y: ctx.y, font, size, color });
+		drawRichLine(ctx, line, ctx.M + indent, ctx.y, font, size, color);
 		ctx.y -= size + lineGap;
 	}
 	ctx.y -= (opts.gapAfter ?? 6) * ctx.blockGap;
@@ -396,16 +491,16 @@ function clause(ctx: Ctx, marker: string, text: string, opts: { size?: number; g
 	const lineGap = leadingFor(size);
 	const gutter = ctx.fontR.widthOfTextAtSize(marker + ' ', size) + 2;
 	const maxW = ctx.CW - gutter;
-	const lines = wrap(ctx, text, ctx.fontR, size, maxW);
+	const lines = wrapRich(ctx, text, ctx.fontR, size, maxW);
 	ensure(ctx, size + lineGap);
 	// marker
 	ctx.page.drawText(sanitize(marker), { x: ctx.M, y: ctx.y, font: ctx.fontR, size, color: BLACK });
 	// first line beside marker
-	ctx.page.drawText(lines[0], { x: ctx.M + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+	drawRichLine(ctx, lines[0], ctx.M + gutter, ctx.y, ctx.fontR, size, BLACK);
 	ctx.y -= size + lineGap;
 	for (let i = 1; i < lines.length; i++) {
 		ensure(ctx, size + lineGap);
-		ctx.page.drawText(lines[i], { x: ctx.M + gutter, y: ctx.y, font: ctx.fontR, size, color: BLACK });
+		drawRichLine(ctx, lines[i], ctx.M + gutter, ctx.y, ctx.fontR, size, BLACK);
 		ctx.y -= size + lineGap;
 	}
 	ctx.y -= (opts.gapAfter ?? 5) * ctx.blockGap;
@@ -500,10 +595,12 @@ function signatureLineRight(ctx: Ctx, caption: string, opts: { width?: number } 
 /** Two side-by-side signature columns (Intern | Mentor, or Employee | Employer)
  *  with an optional "Date: ____" row beneath, mirroring the internship
  *  acceptance block. When `employerSignature` is supplied, the right (employer)
- *  column gets the uploaded image instead of a blank rule to sign on, and its
- *  date is auto-filled rather than left blank — that column represents HR's
- *  own signature, already captured, not a wet-ink line for someone else to
- *  fill in later. The left column is untouched either way. */
+ *  column is stamped with the uploaded image and its date is auto-filled rather
+ *  than left blank — that column represents HR's own signature, already
+ *  captured, not a wet-ink line for someone else to fill in later. The signing
+ *  rule is drawn either way: the stamp sits ON the line, it does not replace it,
+ *  so the two columns stay symmetrical instead of one side losing its rule. The
+ *  left column is untouched. */
 function signatureColumns(
 	ctx: Ctx,
 	left: string,
@@ -520,9 +617,8 @@ function signatureColumns(
 	ensure(ctx, above + (opts.dateRow ? 46 : 20));
 	ctx.y -= above;
 	const ruleY = ctx.y;
-	ctx.page.drawRectangle({ x: leftX, y: ruleY, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
-	if (!sig) {
-		ctx.page.drawRectangle({ x: rightX, y: ruleY, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	for (const x of [leftX, rightX]) {
+		ctx.page.drawRectangle({ x, y: ruleY, width: colW, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
 	}
 	ctx.y -= 12;
 	for (const [x, label] of [[leftX, left], [rightX, right]] as const) {
@@ -531,10 +627,12 @@ function signatureColumns(
 		ctx.page.drawText(t, { x: x + (colW - tw) / 2, y: ctx.y, font: ctx.fontB, size: ctx.bodySize, color: BLACK });
 	}
 	if (sig) {
-		const dims = sig.image.scaleToFit(colW - 10, 38);
+		// Sits on the rule, centred in the column, and capped to the room actually
+		// cleared above it so a tall signature can never ride up into the text.
+		const dims = sig.image.scaleToFit(colW - 20, Math.min(38, above - 6));
 		ctx.page.drawImage(sig.image, {
 			x: rightX + (colW - dims.width) / 2,
-			y: ruleY + 4,
+			y: ruleY + 2,
 			width: dims.width,
 			height: dims.height
 		});
@@ -592,6 +690,21 @@ function table(ctx: Ctx, cols: TableCol[], rowH: number) {
 	}
 	colX.push(x0 + tw);
 
+	const PAD = 7;
+	// Every cell shares one baseline, derived from the row height and the letter's
+	// body size, so a cell that had to shrink to fit still sits on the same line
+	// as its neighbours.
+	const baselineY = (y0: number) => y0 - rowH / 2 - ctx.bodySize * 0.32;
+
+	/** Largest size at/below the body size at which `text` fits `maxW`. Component
+	 *  labels are recruiter-editable (bonus scheme, shift pattern), so a long one
+	 *  has to stay inside its column rather than run over the P.M. figures. */
+	function fitSize(text: string, font: PDFFont, maxW: number): number {
+		let size = ctx.bodySize;
+		while (size > 6.5 && font.widthOfTextAtSize(text, size) > maxW) size -= 0.25;
+		return size;
+	}
+
 	function row(cells: string[], opts: TableRowOpts = {}) {
 		ensure(ctx, rowH);
 		const y0 = ctx.y;
@@ -599,16 +712,15 @@ function table(ctx: Ctx, cols: TableCol[], rowH: number) {
 			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: rowH, color: rgb(0.88, 0.88, 0.88) });
 		}
 		const font = opts.bold ? ctx.fontB : ctx.fontR;
-		const size = ctx.bodySize;
-		const textY = y0 - rowH / 2 - size * 0.32;
+		const textY = baselineY(y0);
 		cells.forEach((raw, i) => {
 			const text = sanitize(raw);
-			const w = font.widthOfTextAtSize(text, size);
 			const colW = colX[i + 1] - colX[i];
-			const pad = 6;
-			let tx = colX[i] + pad;
+			const size = fitSize(text, font, colW - PAD * 2);
+			const w = font.widthOfTextAtSize(text, size);
+			let tx = colX[i] + PAD;
 			const align = cols[i].align ?? 'left';
-			if (align === 'right') tx = colX[i + 1] - pad - w;
+			if (align === 'right') tx = colX[i + 1] - PAD - w;
 			else if (align === 'center') tx = colX[i] + (colW - w) / 2;
 			ctx.page.drawText(text, { x: tx, y: textY, font, size, color: BLACK });
 		});
@@ -631,12 +743,12 @@ function table(ctx: Ctx, cols: TableCol[], rowH: number) {
 			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: rowH, color: rgb(0.88, 0.88, 0.88) });
 		}
 		const font = opts.bold ? ctx.fontB : ctx.fontR;
-		const size = ctx.bodySize;
-		ctx.page.drawText(sanitize(text), {
-			x: x0 + 6,
-			y: y0 - rowH / 2 - size * 0.32,
+		const clean = sanitize(text);
+		ctx.page.drawText(clean, {
+			x: x0 + PAD,
+			y: baselineY(y0),
 			font,
-			size,
+			size: fitSize(clean, font, tw - PAD * 2),
 			color: BLACK
 		});
 		ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: 0.6, height: rowH, color: rgb(0.55, 0.55, 0.55) });
@@ -647,11 +759,56 @@ function table(ctx: Ctx, cols: TableCol[], rowH: number) {
 		ctx.y -= rowH;
 	}
 
+	/** Full-width row carrying a bold label and its value, with the value pinned
+	 *  to `valueX` points from the table's left edge. A stack of these (Employee
+	 *  Name / Effective Date / Designation Offered) then lines its values up in a
+	 *  column instead of each one starting wherever its own label happened to
+	 *  end — which is what padding the label with spaces used to do. */
+	function labelRow(label: string, value: string, valueX: number, opts: TableRowOpts = {}) {
+		ensure(ctx, rowH);
+		const y0 = ctx.y;
+		const textY = baselineY(y0);
+		const cleanLabel = sanitize(label);
+		const cleanValue = sanitize(value);
+		ctx.page.drawText(cleanLabel, {
+			x: x0 + PAD,
+			y: textY,
+			font: ctx.fontB,
+			size: fitSize(cleanLabel, ctx.fontB, valueX - PAD),
+			color: BLACK
+		});
+		ctx.page.drawText(cleanValue, {
+			x: x0 + valueX,
+			y: textY,
+			font: opts.bold ? ctx.fontB : ctx.fontR,
+			size: fitSize(cleanValue, opts.bold ? ctx.fontB : ctx.fontR, tw - valueX - PAD),
+			color: BLACK
+		});
+		for (const x of [x0, x0 + tw]) {
+			ctx.page.drawRectangle({ x, y: y0 - rowH, width: 0.6, height: rowH, color: rgb(0.55, 0.55, 0.55) });
+		}
+		if (opts.rule !== false) {
+			ctx.page.drawRectangle({ x: x0, y: y0 - rowH, width: tw, height: 0.6, color: rgb(0.55, 0.55, 0.55) });
+		}
+		ctx.y -= rowH;
+	}
+
+	/** Rule across the top of the table — without it the first row's cell borders
+	 *  hang off nothing and the grid reads as an open box. */
 	function topRule() {
 		ctx.page.drawRectangle({ x: x0, y: ctx.y, width: tw, height: 0.6, color: rgb(0.55, 0.55, 0.55) });
 	}
 
-	return { row, spanRow, topRule };
+	/** Width of the label gutter needed to clear the longest of `labels`. */
+	function labelGutter(labels: string[]): number {
+		return (
+			PAD +
+			Math.max(...labels.map((l) => ctx.fontB.widthOfTextAtSize(sanitize(l), ctx.bodySize))) +
+			12
+		);
+	}
+
+	return { row, spanRow, labelRow, topRule, labelGutter };
 }
 
 // ── header block (Name / Contact / Email + Place / Date) ─────────────────────
@@ -718,7 +875,7 @@ function renderOfferOfAppointment(
 
 	para(
 		ctx,
-		`Further to your recent interview and its results, we are pleased to offer you an employment with our organization ${company} as "${o.jobTitle || '____________'}" with "subject to the following terms and conditions".`,
+		`Further to your recent interview and its results, we are pleased to offer you an employment with our organization ${company} as "**${o.jobTitle || '____________'}**" with "subject to the following terms and conditions".`,
 		{ gapAfter: 8 }
 	);
 
@@ -806,20 +963,34 @@ function renderCompensationAnnexure(
 ) {
 	pageBreak(ctx);
 
+	// The page clause 1 points at with "*Refer Annexure*". Titled like every other
+	// section of the letter, so the sheet does not open on a bare grid.
+	heading(ctx, 'ANNEXURE - COMPENSATION STRUCTURE');
+	gap(ctx, 6);
+
 	const totals = computeAnnexureTotals(o.compensationAnnexure);
-	const rowH = 15.5;
+	// Row height follows the letter's body size rather than a fixed 15.5, which
+	// was set against the old 9.5pt body and left the 11pt appointment letters'
+	// rows visibly cramped.
+	const rowH = ctx.bodySize + 7.5;
 	const cols: TableCol[] = [
 		{ width: 0.5, align: 'left' },
 		{ width: 0.25, align: 'right' },
 		{ width: 0.25, align: 'right' }
 	];
 	const t = table(ctx, cols, rowH);
+	t.topRule();
 
 	// Header block: Employee Name / Effective Date / Designation Offered — three
-	// full-width rows above the Components|P.M.|P.A. grid, as in the reference.
-	t.spanRow(`Employee Name :   ${c.name}`, { bold: true });
-	t.spanRow(`Effective Date :   ${o.joiningDate || today()}`, { bold: true });
-	t.spanRow(`Designation Offered :   ${o.jobTitle || '____________'}`, { bold: true });
+	// full-width rows above the Components|P.M.|P.A. grid, as in the reference,
+	// with their values aligned to one gutter so they read as a column.
+	const headerRows: Array<[string, string]> = [
+		['Employee Name :', c.name],
+		['Effective Date :', o.joiningDate || today()],
+		['Designation Offered :', o.jobTitle || '____________']
+	];
+	const gutter = t.labelGutter(headerRows.map(([label]) => label));
+	for (const [label, value] of headerRows) t.labelRow(label, value, gutter, { bold: true });
 
 	t.row(['Components', 'P.M.', 'P.A.'], { bold: true, shade: true });
 
@@ -854,11 +1025,15 @@ function renderCompensationAnnexure(
 		['Total Yearly Cost to Company', formatTableAmount(totals.grandTotalPm), formatTableAmount(totals.grandTotalPa)],
 		{ bold: true, shade: true }
 	);
-	t.spanRow(`  CTC: ${formatLakhs(totals.grandTotalPa)}+`, { rule: false });
+	// Closes the grid: a bottom rule, and the CTC summary set on the table's own
+	// left padding instead of being nudged across with leading spaces.
+	t.spanRow(`CTC: ${formatLakhs(totals.grandTotalPa)}+`, { bold: true });
 
-	gap(ctx, 28);
+	gap(ctx, 30);
 
-	keepTogether(ctx, 90, () => {
+	// above (14 x blockGap) + rule-to-caption 12 + caption row + date row, so the
+	// block is never split across the page break.
+	keepTogether(ctx, 14 * ctx.blockGap + 12 + 36 * ctx.blockGap + 12, () => {
 		signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
 			dateRow: true,
 			employerSignature: ctx.employerSignature ?? undefined
@@ -893,7 +1068,7 @@ function renderInternship(
 
 	para(
 		ctx,
-		`With reference to your application we would like to congratulate you on being selected for internship with ${company}, based at ${place} as "${o.jobTitle || 'Trainee'}". Your internship is scheduled to start effective from ${start} to ${end}.`,
+		`With reference to your application we would like to congratulate you on being selected for internship with ${company}, based at ${place} as "**${o.jobTitle || 'Trainee'}**". Your internship is scheduled to start effective from ${start} to ${end}.`,
 		{ gapAfter: 8 }
 	);
 
@@ -1007,7 +1182,7 @@ function renderConsultant(
 	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8 });
 	para(
 		ctx,
-		`With reference to your application and the subsequent discussions you had with us, we are pleased to offer you the position of "${o.jobTitle || '____________'}" on contractual assignment with us on the following terms and conditions:`,
+		`With reference to your application and the subsequent discussions you had with us, we are pleased to offer you the position of "**${o.jobTitle || '____________'}**" on contractual assignment with us on the following terms and conditions:`,
 		{ gapAfter: 8 }
 	);
 

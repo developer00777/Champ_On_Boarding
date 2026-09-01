@@ -17,7 +17,6 @@ import {
 } from '$lib/shared/validation';
 import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, slotByType, isBgvEligible, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
-import { isoToDDMMYYYY } from '$lib/shared/dates';
 import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
 import {
@@ -26,6 +25,7 @@ import {
 	missingOfferLetterFields,
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
+import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken } from '$lib/server/tokens';
@@ -829,57 +829,11 @@ export const actions: Actions = {
 		if (!row) return fail(404);
 		const form = await request.formData();
 
-		// Handle signature image upload — convert to base64 data-URI for storage.
-		// If no new file is uploaded, preserve the existing value from the hidden field.
-		let signatoryImageBase64 = String(form.get('signatoryImageBase64Existing') ?? '');
-		const sigFile = form.get('signatoryImage');
-		if (sigFile instanceof File && sigFile.size > 0) {
-			if (sigFile.size > 2 * 1024 * 1024)
-				return fail(400, { message: 'Signature image must be under 2 MB.' });
-			if (!['image/png', 'image/jpeg', 'image/webp'].includes(sigFile.type))
-				return fail(400, { message: 'Signature must be a PNG, JPG, or WebP image.' });
-			const bytes = await sigFile.arrayBuffer();
-			signatoryImageBase64 = `data:${sigFile.type};base64,${Buffer.from(bytes).toString('base64')}`;
-		}
-
-		const input: OfferLetterInput = {
-			jobTitle: String(form.get('jobTitle') ?? '').trim(),
-			department: String(form.get('department') ?? '').trim(),
-			reportingManager: String(form.get('reportingManager') ?? '').trim(),
-			officeLocation: String(form.get('officeLocation') ?? '').trim(),
-			joiningDate: isoToDDMMYYYY(String(form.get('joiningDate') ?? '').trim()),
-			endDate: String(form.get('endDate') ?? '').trim(),
-			employmentType: String(form.get('employmentType') ?? '').trim() as OfferLetterInput['employmentType'],
-			ctcAmount: String(form.get('ctcAmount') ?? '').trim(),
-			monthlyCompensation: String(form.get('monthlyCompensation') ?? '').trim(),
-			noticePeriod: String(form.get('noticePeriod') ?? '').trim(),
-			confirmedNoticePeriod: String(form.get('confirmedNoticePeriod') ?? '').trim(),
-			acceptanceDueDate: String(form.get('acceptanceDueDate') ?? '').trim(),
-			signatoryName: String(form.get('signatoryName') ?? '').trim(),
-			signatoryDesignation: String(form.get('signatoryDesignation') ?? '').trim(),
-			signatoryImageBase64,
-			weeklyExpectation: String(form.get('weeklyExpectation') ?? '').trim(),
-			keyResponsibilities: String(form.get('keyResponsibilities') ?? '').trim(),
-			internCriteria: String(form.get('internCriteria') ?? '').trim(),
-			paymentClause: String(form.get('paymentClause') ?? '').trim(),
-			compensationAnnexure: {
-				enabled: form.get('annexureEnabled') === 'on',
-				basicPm: String(form.get('annexureBasicPm') ?? '').trim(),
-				hraPm: String(form.get('annexureHraPm') ?? '').trim(),
-				bonusLabel: String(form.get('annexureBonusLabel') ?? '').trim(),
-				bonusPm: String(form.get('annexureBonusPm') ?? '').trim(),
-				ltaPm: String(form.get('annexureLtaPm') ?? '').trim(),
-				shiftLabel: String(form.get('annexureShiftLabel') ?? '').trim(),
-				shiftPm: String(form.get('annexureShiftPm') ?? '').trim(),
-				specialPm: String(form.get('annexureSpecialPm') ?? '').trim(),
-				pfPm: String(form.get('annexurePfPm') ?? '').trim(),
-				gratuityPm: String(form.get('annexureGratuityPm') ?? '').trim(),
-				insurancePm: String(form.get('annexureInsurancePm') ?? '').trim(),
-				foodPm: String(form.get('annexureFoodPm') ?? '').trim(),
-				variablePayEnabled: form.get('annexureVariablePayEnabled') === 'on',
-				variablePayPm: String(form.get('annexureVariablePayPm') ?? '').trim()
-			}
-		};
+		// Same parse the preview endpoint runs, so what HR previews and what gets
+		// saved can never diverge.
+		const parsed = await offerLetterInputFromForm(form);
+		if (!parsed.ok) return fail(400, { message: parsed.error });
+		const input: OfferLetterInput = parsed.input;
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });
 		await audit({

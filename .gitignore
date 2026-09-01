@@ -5,7 +5,7 @@ node_modules/
 *.log
 
 # Generated offer letter samples — regenerate with:
-#   cd app && npx vite-node scripts/gen-offer-samples.ts
+#   cd app && node scripts/run-vite-node.mjs scripts/gen-offer-samples.ts
 offer_samples/
 
 # Throwaway UI mockups used to agree a design before building it. The real

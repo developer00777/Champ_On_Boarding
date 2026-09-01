@@ -2,13 +2,14 @@
 // production renderer, so what HR reviews is identical to what the portal sends.
 // Candidate data is invented — no real employee's details appear here.
 //
-// Run:  npx vite-node scripts/gen-offer-samples.ts
+// Run:  node scripts/run-vite-node.mjs scripts/gen-offer-samples.ts
+// Output dir: $OFFER_SAMPLES_OUT (default ./offer_samples)
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
 import { brandBySlug } from '$lib/shared/brands';
 import type { OfferLetterInput } from '$lib/server/offer-letter/fields';
 
-const OUT = '/home/hemang/Champ_On_Boarding/offer_samples';
+const OUT = process.env.OFFER_SAMPLES_OUT ?? 'offer_samples';
 mkdirSync(OUT, { recursive: true });
 
 // Demo signature stamp — a placeholder squiggle, not anyone's real signature —
@@ -37,7 +38,7 @@ const base: OfferLetterInput = {
 	acceptanceDueDate: '',
 	signatoryName: 'Anitha M S',
 	signatoryDesignation: 'HR Manager',
-	signatoryImageBase64: '',
+	signatoryImageBase64: DEMO_SIGNATURE,
 	weeklyExpectation: '',
 	keyResponsibilities: '',
 	internCriteria: '',
@@ -55,7 +56,9 @@ const base: OfferLetterInput = {
 		pfPm: '',
 		gratuityPm: '',
 		insurancePm: '',
-		foodPm: ''
+		foodPm: '',
+		variablePayEnabled: false,
+		variablePayPm: ''
 	}
 };
 
@@ -78,7 +81,6 @@ const samples = [
 			employmentType: 'full_time' as const,
 			ctcAmount: '360000',
 			monthlyCompensation: '25000',
-			signatoryImageBase64: DEMO_SIGNATURE,
 			noticePeriod: '30 days',
 			confirmedNoticePeriod: '60 days',
 			acceptanceDueDate: '25-Jul-2026',
@@ -95,7 +97,9 @@ const samples = [
 				pfPm: '1500',
 				gratuityPm: '600',
 				insurancePm: '500',
-				foodPm: '900'
+				foodPm: '900',
+				variablePayEnabled: false,
+				variablePayPm: ''
 			}
 		}
 	},
@@ -133,7 +137,9 @@ const samples = [
 				pfPm: '3480',
 				gratuityPm: '1394',
 				insurancePm: '1200',
-				foodPm: '2000'
+				foodPm: '2000',
+				variablePayEnabled: true,
+				variablePayPm: '4000'
 			}
 		}
 	},

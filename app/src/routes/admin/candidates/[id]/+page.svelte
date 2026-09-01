@@ -28,6 +28,46 @@
 		navigator.clipboard.writeText(link);
 	}
 
+	// ── Offer letter preview ──────────────────────────────────────────────────
+	// Posts the offer-letter form exactly as it stands to the preview endpoint,
+	// which renders it with the production renderer and returns the PDF without
+	// saving anything. Going through the form (rather than linking to the
+	// download URL) is the point: HR sees the edits they have on screen, not the
+	// last saved draft, so a typo is caught before the letter is sent.
+	let offerForm: HTMLFormElement | null = $state(null);
+	let previewing = $state(false);
+	let previewError: string | null = $state(null);
+	let previewUrl: string | null = null;
+
+	async function previewOfferLetter() {
+		if (!offerForm || previewing) return;
+		previewing = true;
+		previewError = null;
+		try {
+			const res = await fetch(`/admin/candidates/${c.id}/offer-letter`, {
+				method: 'POST',
+				body: new FormData(offerForm)
+			});
+			if (!res.ok) {
+				previewError = `Preview failed (${res.status}). Try saving first.`;
+				return;
+			}
+			// One object URL per candidate page, revoked before it is replaced —
+			// each preview is a ~600 KB blob and HR previews repeatedly while
+			// editing, so holding them all would leak the tab's memory.
+			const blob = await res.blob();
+			if (previewUrl) URL.revokeObjectURL(previewUrl);
+			previewUrl = URL.createObjectURL(blob);
+			if (!window.open(previewUrl, '_blank')) {
+				previewError = 'Allow pop-ups for this site to open the preview.';
+			}
+		} catch {
+			previewError = 'Preview failed — check your connection and try again.';
+		} finally {
+			previewing = false;
+		}
+	}
+
 	/** Consultant and contract share the Consultant Agreement, so they take its
 	 *  clause-3/4/5 inputs and its monthly compensation reading — and skip the
 	 *  appointment letter's probation/confirmation notice fields. */
@@ -1095,7 +1135,14 @@
 			{#if (form as { offerLetterError?: true; message?: string } | undefined)?.offerLetterError}
 				<p class="error">{(form as { message: string }).message}</p>
 			{/if}
-			<form method="POST" action="?/saveOfferLetter" use:enhance class="offer-form" enctype="multipart/form-data">
+			<form
+				bind:this={offerForm}
+				method="POST"
+				action="?/saveOfferLetter"
+				use:enhance
+				class="offer-form"
+				enctype="multipart/form-data"
+			>
 				<fieldset class="rbac" disabled={!data.isApprover}>
 				<label class="offer-field">
 					<span>Job title</span>
@@ -1361,9 +1408,22 @@
 						</div>
 					{/if}
 
-				<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+				<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
 					<button class="btn small">Save</button>
+					<button
+						type="button"
+						class="btn ghost small"
+						onclick={previewOfferLetter}
+						disabled={previewing}
+					>
+						{previewing ? 'Building preview…' : 'Preview'}
+					</button>
 					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download PDF</a>
+					{#if previewError}
+						<span class="error" style="margin:0">{previewError}</span>
+					{:else}
+						<span class="muted" style="font-size:11px">Preview opens the letter as it reads right now, including unsaved edits.</span>
+					{/if}
 				</div>
 				</fieldset>
 			</form>
