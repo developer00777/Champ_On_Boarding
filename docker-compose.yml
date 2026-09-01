@@ -55,7 +55,16 @@ services:
       OFFER_MAIL_FROM: ${OFFER_MAIL_FROM:-}
       BGV_MAIL_FROM: ${BGV_MAIL_FROM:-}
       ADMIN_IP_ALLOWLIST_MODE: ${ADMIN_IP_ALLOWLIST_MODE:-log}
-      ADDRESS_HEADER: x-forwarded-for
+      # ADDRESS_HEADER is deliberately NOT set here. Nothing proxies the app in
+      # this stack, so naming a header the request will not carry makes
+      # getClientAddress() throw — and it is called unguarded on ~84 admin
+      # paths, which 500'd creating a candidate, sending exit links and
+      # downloading an offer letter against localhost. Without it the adapter
+      # falls back to the socket address, which is the right answer here.
+      # Deploy targets set their own: Railway and Vercel inject it, and neither
+      # railway.toml nor .do/app.yaml nor vercel.json references it, so nothing
+      # in production depends on this line. Override it here only if you put a
+      # reverse proxy in front of the app locally.
     depends_on:
       mongo:
         condition: service_healthy
