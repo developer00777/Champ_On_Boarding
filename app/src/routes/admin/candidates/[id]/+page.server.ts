@@ -45,22 +45,31 @@ async function getCandidate(id: string) {
 /** Most mutations on a candidate record are super_admin-only. hr_admin keeps
  *  full read access to this page but cannot change these fields, regardless
  *  of the candidate's status. Approving, sending the offer letter, marking
- *  physical items received, assigning the employee code, and running the OCR
- *  cross-check are carved out via requireApprover below. */
+ *  physical items received, and assigning the employee code are carved out
+ *  via requireApprover below; the OCR cross-check is ungated entirely
+ *  (requireAnyAdmin). */
 function requireSuperAdmin(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Only a super admin can edit candidate records.' });
 	return null;
 }
 
 /** Approving a candidate, sending their offer letter, logging physical
- *  handover items (photos, signed offer letter, NDA) on joining day,
- *  assigning the employee code, and running the OCR cross-check are
- *  HR/recruiter's core job, not an admin-only escalation — both hr_admin and
- *  super_admin can perform these. Every other mutation on this page stays
- *  super_admin-only. */
+ *  handover items (photos, signed offer letter, NDA) on joining day, and
+ *  assigning the employee code are HR/recruiter's core job, not an
+ *  admin-only escalation — both hr_admin and super_admin can perform these.
+ *  Every other mutation on this page stays super_admin-only. */
 function requireApprover(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
 		return fail(403, { message: 'Only HR or a super admin can do this.' });
+	return null;
+}
+
+/** Signed in, whatever the role. Only the OCR cross-check uses this: see the
+ *  note on that action for why it is ungated. hooks.server.ts already redirects
+ *  any /admin request without a session, so this is a backstop against a
+ *  direct POST rather than the primary guard. */
+function requireAnyAdmin(locals: App.Locals) {
+	if (!locals.admin) return fail(401, { message: 'Not authenticated.' });
 	return null;
 }
 
@@ -766,13 +775,17 @@ export const actions: Actions = {
 	},
 
 	/** Runs the OCR cross-check over every parsed document on this candidate.
-	 *  Open to HR/recruiter as well as super admins: it only reads what OCR
-	 *  already extracted at upload time and records the comparison — it edits no
-	 *  candidate field and sends nothing to the candidate — and checking a
-	 *  document against the typed master sheet is the reviewer's own job, which
-	 *  they could otherwise not do without an admin standing over them. */
+	 *  Deliberately ungated — every signed-in role can run it, finance team
+	 *  included. It reads only what OCR already extracted when the candidate
+	 *  uploaded, records the comparison, and audits who ran it: it edits no
+	 *  candidate field, sends the candidate nothing, and calls no external
+	 *  service. Every role already has full read access to the documents and
+	 *  verifications on this page, so this grants no visibility they did not
+	 *  have — only the ability to refresh it — and anyone reviewing a document
+	 *  against the typed master sheet should not need someone else to press the
+	 *  button for them. */
 	crosscheck: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireApprover(locals);
+		const forbidden = requireAnyAdmin(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);

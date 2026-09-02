@@ -460,8 +460,9 @@
 	<div class="readonly-banner">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
 		{data.isApprover
-			? 'HR access — you can approve candidates, run the OCR cross-check and manage the offer letter. Other edits require a super admin login.'
+			? 'HR access — you can approve candidates and manage the offer letter. Other edits require a super admin login.'
 			: 'View-only — editing candidate records requires a super admin login.'}
+		Running the OCR cross-check is open to everyone.
 	</div>
 {/if}
 
@@ -971,12 +972,10 @@
 				<div class="eyebrow">Document verification</div>
 				<div style="flex:1"></div>
 				<form method="POST" action="?/crosscheck" use:enhance>
-					<!-- isApprover, not isSuperAdmin: reviewing a document against the
-					     typed master sheet is HR/recruiter's own job. Matches the
-					     guard on ?/crosscheck. -->
-					<fieldset class="rbac" disabled={!data.isApprover}>
-						<button class="btn ghost small">Run OCR cross-check</button>
-					</fieldset>
+					<!-- No rbac fieldset: the cross-check is ungated for every signed-in
+					     role, so the button is always live. Matches ?/crosscheck, which
+					     asks only for a session. -->
+					<button class="btn ghost small">Run OCR cross-check</button>
 				</form>
 			</div>
 			<p class="muted" style="font-size:11.5px;margin:0 0 12px">
