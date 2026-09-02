@@ -15,7 +15,14 @@ import {
 	isValidPin,
 	isValidMobile
 } from '$lib/shared/validation';
-import { PHYSICAL_ITEM_TYPES, TRACK_LABELS, slotByType, isBgvEligible, type Track } from '$lib/shared/matrix';
+import {
+	PHYSICAL_ITEM_TYPES,
+	TRACK_LABELS,
+	confirmableItemByField,
+	slotByType,
+	isBgvEligible,
+	type Track
+} from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
@@ -28,7 +35,7 @@ import {
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
-import { createLinkToken } from '$lib/server/tokens';
+import { createLinkToken, ensureLiveLinkToken } from '$lib/server/tokens';
 import { isShiftTiming } from '$lib/shared/shifts';
 import { RELIGIONS } from '$lib/shared/demographics';
 import { sendItSetupMail } from '$lib/server/it-setup-mail';
@@ -176,6 +183,25 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.lean()
 	]);
 
+	// Candidates created before an item type existed have no row for it, and the
+	// toggle needs one to write to. Backfilling on read keeps the joining-day
+	// checklist complete for every record without a migration; insertMany with
+	// ordered:false so a concurrent view racing us cannot fail the page.
+	const missingItems = PHYSICAL_ITEM_TYPES.filter(
+		(p) => !physical.some((i) => i.itemType === p.type)
+	);
+	if (missingItems.length) {
+		try {
+			const created = await PhysicalItem.insertMany(
+				missingItems.map((p) => ({ candidateId: candidate._id, itemType: p.type })),
+				{ ordered: false }
+			);
+			physical.push(...created.map((d) => d.toObject()));
+		} catch {
+			/* another request created them first — harmless */
+		}
+	}
+
 	const aadhaarPlain = candidate.aadhaarNoEncrypted ? decrypt(candidate.aadhaarNoEncrypted) : null;
 
 	const base = baseUrl();
@@ -276,12 +302,29 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		})),
 		physical: PHYSICAL_ITEM_TYPES.map((p) => {
 			const item = physical.find((i) => i.itemType === p.type);
+			// Confirmation items carry the field they read back, its current value,
+			// whether HR has an outstanding request with the candidate, and whether
+			// the candidate has answered it — everything the row needs to render
+			// without the page re-deriving it from three separate lists.
+			const confirms = 'confirms' in p ? (p.confirms as string) : null;
+			const request = confirms
+				? (candidate.requestedConfirmations ?? []).find(
+						(r: { field: string }) => r.field === confirms
+					)
+				: null;
 			return {
 				id: item ? String(item._id) : null,
 				type: p.type,
 				label: p.label,
 				received: item?.received ?? false,
-				receivedAt: item?.receivedAt?.toISOString() ?? null
+				receivedAt: item?.receivedAt?.toISOString() ?? null,
+				confirms,
+				confirmLabel: 'confirmLabel' in p ? (p.confirmLabel as string) : null,
+				currentValue: confirms ? ((candidate as Record<string, any>)[confirms] ?? null) : null,
+				requestedAt: request?.requestedAt?.toISOString() ?? null,
+				requestNote: request?.note ?? null,
+				candidateConfirmedAt: item?.candidateConfirmedAt?.toISOString() ?? null,
+				candidateConfirmedValue: item?.candidateConfirmedValue ?? null
 			};
 		}),
 		flags:
@@ -349,7 +392,8 @@ export const actions: Actions = {
 		const stillMissing = missingMandatory(checklist);
 
 		const physical = await PhysicalItem.find({ candidateId: candidate._id }).lean();
-		const allPhysical = physical.length > 0 && physical.every((p) => p.received);
+		const allPhysical =
+			physical.filter((p) => p.received).length === PHYSICAL_ITEM_TYPES.length;
 
 		await Candidate.findByIdAndUpdate(candidate._id, {
 			status: allPhysical ? 'complete' : 'approved',
@@ -629,6 +673,79 @@ export const actions: Actions = {
 		return { uploadRequested: true };
 	},
 
+	/** Ask the candidate to re-confirm a joining-day detail (present address,
+	 *  LinkedIn ID) from their own onboarding link.
+	 *
+	 *  Deliberately independent of the approval flow: it works at any status, and
+	 *  unlike ?/requestUpload it does NOT push a submitted record back to
+	 *  changes_requested. HR checking an address on joining day should not undo an
+	 *  approval, and should not have to wait for one either.
+	 *
+	 *  The link is extended rather than reissued (ensureLiveLinkToken) — joining
+	 *  day is routinely past the 7-day link window, so without this the candidate
+	 *  would be mailed a URL that no longer opens. */
+	requestConfirmation: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const field = String(form.get('field') ?? '');
+		const note = String(form.get('note') ?? '').trim();
+
+		const item = confirmableItemByField(field);
+		if (!item) return fail(400, { message: 'That is not a confirmable detail.' });
+
+		const token = await ensureLiveLinkToken(params.id);
+		if (!token)
+			return fail(409, {
+				message: 'This record is revoked — restore it before asking the candidate to confirm.'
+			});
+
+		// $pull then $push: Mongo cannot do both on one array path in a single
+		// update, and a second request for the same field should replace the
+		// first rather than stack up.
+		await Candidate.findByIdAndUpdate(params.id, {
+			$pull: { requestedConfirmations: { field } }
+		});
+		await Candidate.findByIdAndUpdate(params.id, {
+			$push: { requestedConfirmations: { field, note: note || null, requestedAt: new Date() } }
+		});
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'confirmation_requested',
+			field,
+			newValue: note || null,
+			ip: getClientAddress()
+		});
+
+		const brand = brandBySlug(row.company?.brandSlug ?? undefined);
+		await sendBrandedMail(
+			row.candidate.email,
+			`Please confirm your ${item.confirmLabel}`,
+			`Hello,
+
+Before your joining day we need you to confirm your ${item.confirmLabel} on record` +
+				(note ? `:
+"${note}"` : '.') +
+				`
+
+Open your onboarding link and confirm it there — you can correct it if it has changed:
+` +
+				`${baseUrl()}/c/${token}
+
+${brandSignoff(brand)}`,
+			brand,
+			undefined,
+			'onboarding',
+			params.id
+		);
+
+		return { confirmationRequested: item.confirmLabel };
+	},
+
 	physical: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
@@ -654,8 +771,12 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 
+		// Counted against PHYSICAL_ITEM_TYPES, not just the rows present: a record
+		// that predates an item type would otherwise reach `complete` by having no
+		// row for it at all.
 		const physical = await PhysicalItem.find({ candidateId: params.id }).lean();
-		const allReceived = physical.every((p) => p.received);
+		const allReceived =
+			physical.filter((p) => p.received).length === PHYSICAL_ITEM_TYPES.length;
 		if (row.candidate.status === 'approved' && allReceived) {
 			await Candidate.findByIdAndUpdate(params.id, { status: 'complete' });
 		} else if (row.candidate.status === 'complete' && !allReceived) {

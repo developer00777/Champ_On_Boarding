@@ -175,11 +175,48 @@ export function slotByType(type: string): DocSlot | undefined {
 }
 
 // PRD §3 — physical handover items, tracked in-portal (HR decision).
+// The joining-day checklist. The first three are objects HR physically takes
+// possession of; the last two are details HR reads back to the candidate in
+// person and ticks off. All five live in one list because they are the same
+// joining-day ritual and gate `complete` the same way — but a `confirms` entry
+// marks the ones that are a detail rather than an object, which is what gives
+// them the "ask the candidate" flow and their read-back value in the UI.
 export const PHYSICAL_ITEM_TYPES = [
 	{ type: 'passport_photos_x4', label: '4 passport-size photos (physical)' },
 	{ type: 'offer_letter_signed', label: 'Offer Letter — signed hard copy' },
-	{ type: 'nda_signed_copy', label: 'NDA — signed in person & copy handed over' }
+	{ type: 'nda_signed_copy', label: 'NDA — signed in person & copy handed over' },
+	{
+		type: 'present_address_confirmed',
+		label: 'Present address — confirmed with the candidate',
+		confirms: 'presentAddress',
+		confirmLabel: 'present address'
+	},
+	{
+		type: 'linkedin_id_confirmed',
+		label: 'LinkedIn ID — confirmed with the candidate',
+		confirms: 'linkedinId',
+		confirmLabel: 'LinkedIn ID'
+	}
 ] as const;
+
+export type PhysicalItemType = (typeof PHYSICAL_ITEM_TYPES)[number]['type'];
+
+/** The joining-day items that confirm a detail on the candidate's record rather
+ *  than a physical object, keyed by the Candidate field they read back. */
+export const CONFIRMABLE_ITEMS = PHYSICAL_ITEM_TYPES.filter(
+	(p): p is Extract<(typeof PHYSICAL_ITEM_TYPES)[number], { confirms: string }> => 'confirms' in p
+);
+
+/** Candidate fields HR can ask the candidate to re-confirm. Bounds what
+ *  ?/requestConfirmation and the portal's confirm action will accept, so a
+ *  hand-crafted POST cannot name an arbitrary field. */
+export const CONFIRMABLE_FIELDS: ReadonlySet<string> = new Set(
+	CONFIRMABLE_ITEMS.map((p) => p.confirms)
+);
+
+export function confirmableItemByField(field: string) {
+	return CONFIRMABLE_ITEMS.find((p) => p.confirms === field) ?? null;
+}
 
 // HR decision (18 Jun 2026): uploads restricted to JPG / PNG / PDF only.
 export const ACCEPTED_MIMES = ['image/jpeg', 'image/png', 'application/pdf'];

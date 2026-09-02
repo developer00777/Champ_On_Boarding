@@ -1169,7 +1169,7 @@
 				{#if c.track === 'intern'}
 					<label class="offer-field">
 						<span>Internship end date</span>
-						<input name="endDate" value={ol.endDate} placeholder="DD/MM/YYYY" />
+						<input type="date" name="endDate" value={toIsoDate(ol.endDate) ?? ''} />
 						<small>Clause 1: "scheduled to start effective from &lt;start&gt; to &lt;end&gt;".</small>
 					</label>
 				{/if}
@@ -1233,7 +1233,7 @@
 				{/if}
 				<label class="offer-field">
 					<span>Acceptance due date</span>
-					<input name="acceptanceDueDate" value={ol.acceptanceDueDate} placeholder="DD/MM/YYYY" />
+					<input type="date" name="acceptanceDueDate" value={toIsoDate(ol.acceptanceDueDate) ?? ''} />
 				</label>
 				<label class="offer-field">
 					<span>Authorized signatory name</span>
@@ -1470,9 +1470,53 @@
 						</span>
 					</fieldset>
 				</form>
+				<!-- Confirmation items read back a detail rather than take an object,
+				     so they show the value being confirmed and can ask the candidate
+				     to check it. Independent of approval: this form is outside the
+				     rbac fieldset's status logic and never moves the record. -->
+				{#if item.confirms}
+					<div class="confirm-detail">
+						<div class="cd-value" class:cd-empty={!item.currentValue}>
+							{item.currentValue || 'Nothing on record yet'}
+						</div>
+						{#if item.candidateConfirmedAt}
+							<p class="cd-note cd-ok">
+								Candidate confirmed on {new Date(item.candidateConfirmedAt).toLocaleDateString('en-IN', {
+									day: 'numeric',
+									month: 'short'
+								})}{item.candidateConfirmedValue && item.candidateConfirmedValue !== item.currentValue
+									? ` as "${item.candidateConfirmedValue}"`
+									: ''}
+							</p>
+						{:else if item.requestedAt}
+							<p class="cd-note cd-wait">
+								Asked the candidate on {new Date(item.requestedAt).toLocaleDateString('en-IN', {
+									day: 'numeric',
+									month: 'short'
+								})} — waiting for their reply{item.requestNote ? ` · "${item.requestNote}"` : ''}
+							</p>
+						{/if}
+						<form method="POST" action="?/requestConfirmation" use:enhance class="cd-form">
+							<fieldset class="rbac" disabled={!data.isApprover}>
+								<input type="hidden" name="field" value={item.confirms} />
+								<input name="note" placeholder="Optional note to the candidate" />
+								<button class="btn ghost small">
+									{item.requestedAt ? 'Ask again' : 'Ask candidate to confirm'}
+								</button>
+							</fieldset>
+						</form>
+					</div>
+				{/if}
 			{/each}
+			{#if form?.confirmationRequested}
+				<p class="saved-chip" style="margin-top:8px">
+					Asked the candidate to confirm their {form.confirmationRequested} ✓
+				</p>
+			{/if}
 			<p class="muted" style="font-size:11.5px;margin:10px 0 0">
 				Record reaches <em>complete</em> only when approved and all items are received.
+				Asking the candidate to confirm a detail is independent — it needs no approval
+				and never sends the record back a stage.
 			</p>
 		</section>
 	</div>
@@ -2228,6 +2272,52 @@
 		padding: 2px 7px;
 		border-radius: 999px;
 	}
+	/* Joining-day confirmation rows: the value being read back, its request
+	   state, and the ask-the-candidate control. Indented under its item so it
+	   reads as detail of that row rather than a row of its own. */
+	.confirm-detail {
+		margin: -2px 0 10px 30px;
+		padding: 8px 10px;
+		border-left: 2px solid var(--ae-line, #e4e7ec);
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.cd-value {
+		font-size: 12.5px;
+		line-height: 1.5;
+		color: var(--ae-text-2);
+		word-break: break-word;
+	}
+	.cd-empty {
+		opacity: 0.55;
+		font-style: italic;
+	}
+	.cd-note {
+		margin: 0;
+		font-size: 11.5px;
+		line-height: 1.5;
+	}
+	.cd-ok {
+		color: #0f7b3f;
+	}
+	.cd-wait {
+		opacity: 0.7;
+	}
+	.cd-form fieldset {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		align-items: center;
+		border: 0;
+		margin: 0;
+		padding: 0;
+	}
+	.cd-form input {
+		flex: 1 1 200px;
+		min-width: 0;
+	}
+
 	.physrow {
 		display: flex;
 		align-items: center;

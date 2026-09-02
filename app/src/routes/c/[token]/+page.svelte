@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { brandCssVars, brandFontsHref } from '$lib/shared/brands';
+	import { toIsoDate } from '$lib/shared/dates';
 	import { EXP_LIKE_TRACKS, type Track } from '$lib/shared/matrix';
 	import { RELIGIONS, MOTHER_TONGUES } from '$lib/shared/demographics';
 	import { untrack } from 'svelte';
@@ -13,8 +14,23 @@
 	const brandStyle = $derived(brandCssVars(brand));
 	const fontsHref = $derived(brandFontsHref(brand));
 
+	/** Fields rendered as a native date input. Their stored form is the app's
+	 *  canonical "DD/MM/YYYY" (older records may hold other hand-typed shapes),
+	 *  but a date input only displays ISO — so they are normalised on the way in
+	 *  here and converted back by the server on save. toIsoDate returns null for
+	 *  anything unparseable, which becomes an empty picker rather than a silently
+	 *  mangled date. */
+	const DATE_FIELDS = ['dob', 'fatherDob', 'motherDob', 'spouseDob', 'prevDoj', 'prevDol'];
+	const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+	const toDateInput = (v: string) => toIsoDate(v) ?? '';
+
 	let fields: Record<string, string> = $state(
-		untrack(() => ({ ...data.candidate.fields, aadhaarNo: '' }))
+		untrack(() => {
+			const init: Record<string, string> = { ...data.candidate.fields, aadhaarNo: '' };
+			for (const k of DATE_FIELDS) if (init[k]) init[k] = toDateInput(init[k]);
+			return init;
+		})
 	);
 	let suggestions: Record<string, string> = $state(untrack(() => ({ ...data.candidate.suggestions })));
 	let autofilled: Record<string, boolean> = $state({});
@@ -31,7 +47,12 @@
 					autofilled.aadhaarNo = true;
 				}
 			} else if (k in fields && !fields[k]) {
-				fields[k] = v;
+				// OCR reads a date off the document in the stored format; the picker
+				// needs ISO, and an unreadable one is dropped rather than shown blank
+				// with an "auto-filled" badge it did not earn.
+				const next = DATE_FIELDS.includes(k) ? toDateInput(v) : v;
+				if (!next) continue;
+				fields[k] = next;
 				autofilled[k] = true;
 			}
 		}
@@ -160,6 +181,32 @@
 	{#if fontsHref}<link rel="stylesheet" href={fontsHref} />{/if}
 </svelte:head>
 
+<!-- HR asks for these on or near joining day, by which point the main form is
+     closed and the candidate is looking at the success screen — so it is
+     rendered in both views rather than inside the form. -->
+{#snippet confirmPanel()}
+	{#if data.requestedConfirmations.length}
+		<div class="card confirm-card">
+			<div class="eyebrow red-eyebrow">Please confirm before joining day</div>
+			{#each data.requestedConfirmations as req}
+				<form method="POST" action="?/confirmDetail" use:enhance class="confirm-row">
+					<input type="hidden" name="field" value={req.field} />
+					<label for={`confirm_${req.field}`}>Your {req.label}</label>
+					{#if req.note}<p class="confirm-note">HR added: “{req.note}”</p>{/if}
+					<textarea id={`confirm_${req.field}`} name="value" rows="2">{req.value}</textarea>
+					<p class="confirm-hint">Correct it if it has changed, then confirm.</p>
+					<button class="confirm-btn">Confirm my {req.label}</button>
+				</form>
+			{/each}
+		</div>
+	{/if}
+	{#if form?.detailConfirmed}
+		<div class="card confirm-card confirm-done">
+			Thank you — your {form.detailConfirmed} is confirmed.
+		</div>
+	{/if}
+{/snippet}
+
 {#if isSubmitted}
 	<!-- ============ SUCCESS ============ -->
 	<div class="brand-scope" style={brandStyle}>
@@ -190,6 +237,8 @@
 					Download your offer letter (PDF)
 				</a>
 			{/if}
+
+			{@render confirmPanel()}
 
 			<div class="card bring">
 				<div class="eyebrow red-eyebrow">Bring on your joining day</div>
@@ -330,6 +379,8 @@
 			</div>
 		{/if}
 
+		{@render confirmPanel()}
+
 		<div class="portal-grid">
 			<!-- RAIL -->
 			<aside class="rail">
@@ -464,13 +515,13 @@
 						await update({ reset: false });
 					};
 				}}>
-					{#snippet field(key: string, label: string, opts: { placeholder?: string; full?: boolean; required?: boolean } = {})}
+					{#snippet field(key: string, label: string, opts: { placeholder?: string; full?: boolean; required?: boolean; type?: string; max?: string } = {})}
 						<div style:grid-column={opts.full ? '1 / -1' : 'auto'}>
 							<label for={key}>
 								{label}
 								{#if autofilled[key]}<span class="autotag">✨ auto-filled</span>{/if}
 							</label>
-							<input id={key} name={key} bind:value={fields[key]} placeholder={opts.placeholder ?? ''} required={opts.required ?? false} class:auto={autofilled[key]} />
+							<input id={key} name={key} type={opts.type ?? 'text'} max={opts.max} bind:value={fields[key]} placeholder={opts.placeholder ?? ''} required={opts.required ?? false} class:auto={autofilled[key]} />
 							{#if errors.has(key)}<div class="error">{errors.get(key)}</div>{/if}
 						</div>
 					{/snippet}
@@ -483,7 +534,7 @@
 						<h3>Tell us about you</h3>
 						<div class="form-grid">
 							{@render field('fullName', 'Full name', { required: true })}
-							{@render field('dob', 'Date of birth', { placeholder: 'DD/MM/YYYY', required: true })}
+							{@render field('dob', 'Date of birth', { type: 'date', max: todayIso, required: true })}
 							<div>
 								<label for="gender">Gender</label>
 								<select id="gender" name="gender" bind:value={fields.gender}>
@@ -496,10 +547,10 @@
 							{@render field('mobile', 'Mobile number', { placeholder: '10 digits', required: true })}
 							{@render field('fatherName', "Father's name", { required: true })}
 							{@render field('fatherMobile', "Father's mobile", { required: true })}
-							{@render field('fatherDob', "Father's DOB", { placeholder: 'DD/MM/YYYY', required: true })}
+							{@render field('fatherDob', "Father's DOB", { type: 'date', max: todayIso, required: true })}
 							{@render field('motherName', "Mother's name", { required: true })}
 							{@render field('motherMobile', "Mother's mobile")}
-							{@render field('motherDob', "Mother's DOB", { placeholder: 'DD/MM/YYYY', required: true })}
+							{@render field('motherDob', "Mother's DOB", { type: 'date', max: todayIso, required: true })}
 							<div>
 								<label for="religion">Religion</label>
 								<select id="religion" name="religion" bind:value={fields.religion} required>
@@ -529,7 +580,7 @@
 							{#if fields.maritalStatus === 'married'}
 								{@render field('spouseName', 'Spouse name')}
 								{@render field('spouseContact', 'Spouse contact')}
-								{@render field('spouseDob', 'Spouse DOB', { placeholder: 'DD/MM/YYYY' })}
+								{@render field('spouseDob', 'Spouse DOB', { type: 'date', max: todayIso })}
 							{:else}
 								<input type="hidden" name="spouseName" value="" />
 								<input type="hidden" name="spouseContact" value="" />
@@ -643,8 +694,8 @@
 							<div class="form-grid">
 								{@render field('prevCompanyName', 'Company name', { required: true })}
 								{@render field('prevEmployeeId', 'Your employee ID there', { required: true })}
-								{@render field('prevDoj', 'Date of joining', { placeholder: 'DD-MMM-YYYY', required: true })}
-								{@render field('prevDol', 'Date of leaving', { placeholder: 'DD-MMM-YYYY', required: true })}
+								{@render field('prevDoj', 'Date of joining', { type: 'date', max: todayIso, required: true })}
+								{@render field('prevDol', 'Date of leaving', { type: 'date', max: todayIso, required: true })}
 								{@render field('prevDesignation', 'Designation', { required: true })}
 								{@render field('prevRemuneration', 'Remuneration per annum (₹)', { required: true })}
 								{@render field('prevSupervisor', 'Supervisor name & designation', { placeholder: 'e.g. Kajal & TL', required: true })}
@@ -1302,6 +1353,58 @@
 		transform: translateY(0);
 		opacity: 1;
 	}
+	/* Joining-day confirmations HR has asked for. Deliberately loud and at the
+	   top of both views: it is an action, arriving after the candidate thought
+	   they were finished. */
+	.confirm-card {
+		border: 1px solid var(--brand-primary, #e8033a);
+		padding: 18px 20px;
+		margin: 0 0 18px;
+		text-align: left;
+	}
+	.confirm-row + .confirm-row {
+		margin-top: 16px;
+		padding-top: 16px;
+		border-top: 1px dashed rgba(0, 0, 0, 0.12);
+	}
+	.confirm-row label {
+		display: block;
+		font-size: 13px;
+		font-weight: 700;
+		margin: 8px 0 4px;
+	}
+	.confirm-note {
+		margin: 0 0 6px;
+		font-size: 12.5px;
+		font-style: italic;
+		opacity: 0.8;
+	}
+	.confirm-row textarea {
+		width: 100%;
+		box-sizing: border-box;
+	}
+	.confirm-hint {
+		margin: 6px 0 10px;
+		font-size: 11.5px;
+		opacity: 0.65;
+	}
+	.confirm-btn {
+		background: var(--brand-primary, #e8033a);
+		color: #fff;
+		border: 0;
+		border-radius: 8px;
+		padding: 10px 18px;
+		font-size: 13.5px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.confirm-done {
+		border-color: #0f7b3f;
+		color: #0f7b3f;
+		font-size: 13.5px;
+		font-weight: 600;
+	}
+
 	.bring {
 		text-align: left;
 		margin-bottom: 18px;

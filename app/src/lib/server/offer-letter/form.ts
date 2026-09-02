@@ -42,13 +42,16 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 			reportingManager: text('reportingManager'),
 			officeLocation: text('officeLocation'),
 			joiningDate: isoToDDMMYYYY(text('joiningDate')),
-			endDate: text('endDate'),
+			// Both were free text before the picker landed, so isoToDDMMYYYY does
+			// double duty: it converts what the date input submits and passes an
+			// older hand-typed value through untouched.
+			endDate: isoToDDMMYYYY(text('endDate')),
 			employmentType: text('employmentType') as OfferLetterInput['employmentType'],
 			ctcAmount: text('ctcAmount'),
 			monthlyCompensation: text('monthlyCompensation'),
 			noticePeriod: text('noticePeriod'),
 			confirmedNoticePeriod: text('confirmedNoticePeriod'),
-			acceptanceDueDate: text('acceptanceDueDate'),
+			acceptanceDueDate: isoToDDMMYYYY(text('acceptanceDueDate')),
 			signatoryName: text('signatoryName'),
 			signatoryDesignation: text('signatoryDesignation'),
 			signatoryImageBase64,

@@ -121,6 +121,23 @@ const candidateSchema = new Schema(
 			type: [{ docType: { type: String, required: true }, note: { type: String, default: null } }],
 			default: []
 		},
+		/** Joining-day details HR has asked the candidate to re-confirm from their
+		 *  onboarding link (present address, LinkedIn ID). Separate from
+		 *  requestedDocTypes because these ask for a confirmation of a field the
+		 *  candidate already filled, not an upload — and because they must work
+		 *  independently of the approval flow: a request neither needs the record
+		 *  to be approved nor moves it back to changes_requested. Cleared when the
+		 *  candidate confirms. */
+		requestedConfirmations: {
+			type: [
+				{
+					field: { type: String, required: true },
+					note: { type: String, default: null },
+					requestedAt: { type: Date, default: Date.now }
+				}
+			],
+			default: []
+		},
 		// Removed from the BGV section by HR ("delete BGV candidate"): hides the
 		// row from /admin/bgv and blocks its BGV workspace. The BgvRequest row is
 		// deleted along with setting this; onboarding data is untouched.
@@ -205,13 +222,29 @@ const physicalItemSchema = new Schema(
 		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true },
 		itemType: {
 			type: String,
-			enum: ['passport_photos_x4', 'offer_letter_signed', 'nda_signed_copy'],
+			// Mirrors PHYSICAL_ITEM_TYPES (shared/matrix.ts). The last two are
+			// joining-day confirmations of a detail rather than objects handed over;
+			// they use the same received/receivedAt/receivedBy columns because HR
+			// ticks them the same way and they gate `complete` identically.
+			enum: [
+				'passport_photos_x4',
+				'offer_letter_signed',
+				'nda_signed_copy',
+				'present_address_confirmed',
+				'linkedin_id_confirmed'
+			],
 			required: true
 		},
 		received: { type: Boolean, default: false },
 		receivedAt: { type: Date, default: null },
 		receivedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
-		note: { type: String, default: null }
+		note: { type: String, default: null },
+		/** Confirmation items only: when the candidate themself confirmed the
+		 *  detail from their onboarding link, and the value they confirmed. HR's
+		 *  own tick stays `received` — the two are separate on purpose, so HR can
+		 *  see the candidate has replied before signing it off. */
+		candidateConfirmedAt: { type: Date, default: null },
+		candidateConfirmedValue: { type: String, default: null }
 	},
 	{ timestamps: true }
 );

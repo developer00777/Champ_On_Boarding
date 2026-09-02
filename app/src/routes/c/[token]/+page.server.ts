@@ -1,12 +1,20 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Candidate, Company, Admin, OfferLetter } from '$lib/server/db/schema';
+import { Candidate, Company, Admin, OfferLetter, PhysicalItem } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
 import { checklistFor, missingMandatory } from '$lib/server/checklist';
 import { audit } from '$lib/server/audit';
 import { encrypt } from '$lib/server/crypto';
 import { validateMasterSheet, titleCase, maskAadhaar } from '$lib/shared/validation';
-import { TRACK_LABELS, PHYSICAL_ITEM_TYPES, isBgvEligible, type Track } from '$lib/shared/matrix';
+import { isoToDDMMYYYY } from '$lib/shared/dates';
+import {
+	TRACK_LABELS,
+	PHYSICAL_ITEM_TYPES,
+	CONFIRMABLE_FIELDS,
+	confirmableItemByField,
+	isBgvEligible,
+	type Track
+} from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
 import { env } from '$env/dynamic/private';
@@ -28,6 +36,9 @@ const FIELDS = [
 	'prevRemuneration', 'prevSupervisor', 'prevReasonLeaving', 'prevHrEmail'
 ] as const;
 
+/** Rendered as native date inputs — see the matching list in +page.svelte. */
+const DATE_FIELDS = new Set(['dob', 'fatherDob', 'motherDob', 'spouseDob', 'prevDoj', 'prevDol']);
+
 const TITLE_CASE_FIELDS = new Set([
 	'fullName', 'fatherName', 'motherName', 'spouseName', 'emergencyContactName',
 	'bankAccountName', 'bankName', 'branch', 'motherTongue'
@@ -40,6 +51,11 @@ function formToFields(form: FormData): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const f of FIELDS) {
 		let v = String(form.get(f) ?? '').trim();
+		// The date inputs submit ISO; storage is the canonical "DD/MM/YYYY" every
+		// reader and printed document already expects. isoToDDMMYYYY passes a
+		// non-ISO value through untouched, so a record saved before the pickers
+		// landed round-trips unchanged.
+		if (DATE_FIELDS.has(f) && v) v = isoToDDMMYYYY(v);
 		if (TITLE_CASE_FIELDS.has(f) && v) v = titleCase(v);
 		if (f === 'panNo' || f === 'ifsc') v = v.toUpperCase();
 		if (f === 'prevHrEmail') v = v.toLowerCase();
@@ -96,8 +112,26 @@ export const load: PageServerLoad = async ({ params }) => {
 				standardReasons: null as string[] | null
 			}))
 		})),
-		physicalItems: PHYSICAL_ITEM_TYPES.map((p) => p.label),
-		editable: EDITABLE_STATUSES.includes(candidate.status)
+		// Objects the candidate physically brings. The confirmation items are
+		// excluded: they are a detail HR reads back, not something to carry in,
+		// and their labels are written for HR's checklist rather than for them.
+		physicalItems: PHYSICAL_ITEM_TYPES.filter((p) => !('confirms' in p)).map((p) => p.label),
+		editable: EDITABLE_STATUSES.includes(candidate.status),
+		// Joining-day details HR has asked this candidate to re-confirm. Surfaced
+		// whatever the record's status: the point of the ask is that it happens
+		// after submission, usually after approval, on or near joining day — so
+		// this deliberately does not go through `editable`.
+		requestedConfirmations: (candidate.requestedConfirmations ?? []).map(
+			(r: { field: string; note?: string | null }) => {
+				const item = confirmableItemByField(r.field);
+				return {
+					field: r.field,
+					label: item?.confirmLabel ?? r.field,
+					note: r.note ?? null,
+					value: (candidate as Record<string, any>)[r.field] ?? ''
+				};
+			}
+		)
 	};
 };
 
@@ -113,6 +147,55 @@ export const actions: Actions = {
 			await audit({ candidateId: candidate.id, actor: 'candidate', action: 'consent_given', ip: getClientAddress() });
 		}
 		return { ok: true };
+	},
+
+	/** The candidate confirming a joining-day detail HR asked about.
+	 *
+	 *  Intentionally outside EDITABLE_STATUSES: HR asks for this on or near
+	 *  joining day, by which point the record is submitted or approved and the
+	 *  main form is closed. Only the one field HR actually asked about can be
+	 *  written, and only while a matching request is outstanding — so this cannot
+	 *  become a back door into editing a locked submission. */
+	confirmDetail: async ({ params, request, getClientAddress }) => {
+		const candidate = await resolveCandidateToken(params.token);
+		if (!candidate) return fail(404);
+
+		const form = await request.formData();
+		const field = String(form.get('field') ?? '');
+		const value = String(form.get('value') ?? '').trim();
+
+		if (!CONFIRMABLE_FIELDS.has(field))
+			return fail(400, { message: 'That is not a detail we ask you to confirm.' });
+
+		const outstanding = (candidate.requestedConfirmations ?? []).some(
+			(r: { field: string }) => r.field === field
+		);
+		if (!outstanding) return fail(409, { message: 'That confirmation is no longer outstanding.' });
+		if (!value) return fail(400, { message: 'Please enter a value before confirming.' });
+
+		const item = confirmableItemByField(field);
+		await Candidate.findByIdAndUpdate(candidate.id, {
+			[field]: value,
+			$pull: { requestedConfirmations: { field } }
+		});
+		// Recorded on the joining-day item so HR sees the candidate has answered
+		// before they tick it off. HR's own tick stays theirs to make.
+		if (item) {
+			await PhysicalItem.findOneAndUpdate(
+				{ candidateId: candidate.id, itemType: item.type },
+				{ candidateConfirmedAt: new Date(), candidateConfirmedValue: value },
+				{ upsert: true, setDefaultsOnInsert: true }
+			);
+		}
+		await audit({
+			candidateId: candidate.id,
+			actor: 'candidate',
+			action: 'detail_confirmed',
+			field,
+			newValue: value,
+			ip: getClientAddress()
+		});
+		return { detailConfirmed: item?.confirmLabel ?? field };
 	},
 
 	save: async ({ params, request, getClientAddress }) => {
