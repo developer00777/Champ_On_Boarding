@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import {
 		COMPENSATION_FIELD_BY_TRACK,
@@ -329,6 +330,46 @@
 		workLocationMode: form?.itMailFieldsSaved ? (form.workLocationMode ?? '') : (c.workLocationMode ?? ''),
 		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
 	});
+
+	// ── Department ⇄ Team Name ───────────────────────────────────────────────
+	// The offer letter's Department and the IT mail's Team Name are the same
+	// fact asked for by two different forms, so typing either one fills the
+	// other here and the save mirrors it server-side. They stop tracking each
+	// other the moment HR makes them differ — the IT mail's team is sometimes
+	// narrower than the letter's department — and never overwrite a value that
+	// is already there.
+	// Seeded eagerly rather than from the $effect alone: effects do not run
+	// during SSR, so a lazily-seeded box renders empty and only fills in on
+	// hydration — a visible flash, and wrong entirely without JS.
+	// untrack, not a bare read: the initial value is exactly what is wanted here,
+	// and saying so keeps the compiler from warning that this captures only the
+	// first value — the $effect below is what keeps them current.
+	let teamName = $state(
+		untrack(() => data.candidate.teamName || data.offerLetter.department || '')
+	);
+	let department = $state(
+		untrack(() => data.offerLetter.department || data.candidate.teamName || '')
+	);
+
+	// Re-seeds when the persisted values change (a save round-trip); typing
+	// writes to these same signals, which does not re-trigger it.
+	$effect(() => {
+		const savedTeam = itFields.teamName;
+		const savedDept = data.offerLetter.department ?? '';
+		teamName = savedTeam || savedDept;
+		department = savedDept || savedTeam;
+	});
+
+	const linked = () => teamName === department || !teamName || !department;
+
+	function onTeamNameInput(value: string) {
+		if (linked()) department = value;
+		teamName = value;
+	}
+	function onDepartmentInput(value: string) {
+		if (linked()) teamName = value;
+		department = value;
+	}
 
 	// ── IT setup mail preview ────────────────────────────────────────────────
 	// Sending to IT is a one-way door — a blank Shift Timing column is a phone
@@ -773,11 +814,13 @@
 						<input
 							id="it-team"
 							name="teamName"
-							value={itFields.teamName}
-							placeholder={data.offerLetter.department || 'e.g. Inside Sales'}
+							value={teamName}
+							oninput={(e) => onTeamNameInput(e.currentTarget.value)}
+							placeholder="e.g. Inside Sales"
 							class="emp-input"
 							maxlength="120"
 						/>
+						<p class="it-link-note">Shared with the offer letter's Department.</p>
 						<label class="it-label" for="it-wfh">WFH/WFO</label>
 						<input
 							id="it-wfh"
@@ -1152,7 +1195,12 @@
 				</label>
 				<label class="offer-field">
 					<span>Department</span>
-					<input name="department" value={ol.department} />
+					<input
+						name="department"
+						value={department}
+						oninput={(e) => onDepartmentInput(e.currentTarget.value)}
+					/>
+					<small class="field-hint">Shared with the IT mail's Team name.</small>
 				</label>
 				<label class="offer-field">
 					<span>Reporting manager (name/designation)</span>
@@ -1896,6 +1944,15 @@
 		width: 100%;
 		margin-bottom: 8px;
 	}
+	.it-link-note,
+	.field-hint {
+		margin: 3px 0 8px;
+		font-size: 10.5px;
+		line-height: 1.4;
+		opacity: 0.55;
+		display: block;
+	}
+
 	.it-label {
 		display: block;
 		font-size: 10.5px;

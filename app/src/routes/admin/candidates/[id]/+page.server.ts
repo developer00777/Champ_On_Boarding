@@ -521,6 +521,30 @@ export const actions: Actions = {
 			joiningMode: clean('joiningMode')
 		};
 		await Candidate.findByIdAndUpdate(params.id, patch);
+
+		// The other half of the Department/Team Name mapping (see saveOfferLetter).
+		// Fills the offer letter's department when it is still blank, so HR types
+		// the team once and the letter carries it.
+		if (patch.teamName) {
+			const draft = await OfferLetter.findOne({ candidateId: params.id }).lean();
+			if (!draft?.department) {
+				await OfferLetter.findOneAndUpdate(
+					{ candidateId: params.id },
+					{ $set: { department: patch.teamName } },
+					{ upsert: true }
+				);
+				await audit({
+					candidateId: params.id,
+					actor: locals.admin!.email,
+					action: 'offer_letter_field_set',
+					field: 'department',
+					oldValue: null,
+					newValue: patch.teamName,
+					ip: getClientAddress()
+				});
+			}
+		}
+
 		for (const [field, newValue] of Object.entries(patch)) {
 			const oldValue = (row.candidate as unknown as Record<string, string | null>)[field] ?? null;
 			if (oldValue === newValue) continue;
@@ -977,6 +1001,24 @@ ${brandSignoff(brand)}`,
 		const input: OfferLetterInput = parsed.input;
 
 		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });
+
+		// Department and the IT mail's Team Name are the same fact typed into two
+		// forms, so filling either one fills the other. Only when the target is
+		// still blank: once HR has deliberately made them differ — the IT mail's
+		// team is sometimes narrower than the letter's department — that stands.
+		if (input.department && !row.candidate.teamName) {
+			await Candidate.findByIdAndUpdate(params.id, { teamName: input.department });
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'it_mail_field_set',
+				field: 'teamName',
+				oldValue: null,
+				newValue: input.department,
+				ip: getClientAddress()
+			});
+		}
+
 		await audit({
 			candidateId: params.id,
 			actor: locals.admin!.email,
