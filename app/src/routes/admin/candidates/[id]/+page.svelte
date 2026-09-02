@@ -1391,7 +1391,7 @@
 										<span class="annexure-pa">{money(n(annexure.insurancePm) * 12)}</span>
 									</div>
 									<div class="annexure-row">
-										<span>Food, Recreation & 100X longevity</span>
+										<span>Food, Recreation &amp; Longevity Membership</span>
 										<input name="annexureFoodPm" type="text" inputmode="decimal" bind:value={annexure.foodPm} placeholder="0.00" />
 										<span class="annexure-pa">{money(n(annexure.foodPm) * 12)}</span>
 									</div>

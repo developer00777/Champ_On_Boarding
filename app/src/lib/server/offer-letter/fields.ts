@@ -173,7 +173,7 @@ export function computeAnnexureTotals(a: CompensationAnnexure): AnnexureTotals {
 		line('PF- Employer Contribution', a.pfPm),
 		line('Gratuity', a.gratuityPm),
 		line('Insurance', a.insurancePm),
-		line('Food, Recreation & 100X longevity', a.foodPm)
+		line('Food, Recreation & Longevity Membership', a.foodPm)
 	];
 
 	const sum = (lines: AnnexureLine[], key: 'pm' | 'pa') => lines.reduce((s, l) => s + l[key], 0);

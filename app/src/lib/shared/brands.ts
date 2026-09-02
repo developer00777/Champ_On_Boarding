@@ -337,9 +337,13 @@ export const BRANDS: BrandTheme[] = [
 		logo: { src: '/brands/champion-landzone.png', monogram: 'CLZ', hasWordmark: true }
 	},
 	{
+		// `slug` keeps its original spelling on purpose: it is the key company
+		// rows and the document matrix are stored against, so renaming it would
+		// strand every existing candidate on this entity. Only the printed names
+		// below are the entity's actual name.
 		slug: 'champions-luxury-resorts',
-		name: 'Champions Luxury Resorts',
-		legalName: 'Champions Luxury Resorts Pvt Ltd',
+		name: 'Champion Luxury Resorts',
+		legalName: 'Champion Luxury Resorts Pvt Ltd',
 		tagline: 'Luxury resort stays and hospitality.',
 		colors: {
 			primary: '#E01020',
