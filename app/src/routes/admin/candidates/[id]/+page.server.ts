@@ -45,18 +45,19 @@ async function getCandidate(id: string) {
 /** Most mutations on a candidate record are super_admin-only. hr_admin keeps
  *  full read access to this page but cannot change these fields, regardless
  *  of the candidate's status. Approving, sending the offer letter, marking
- *  physical items received, and assigning the employee code are carved out
- *  via requireApprover below. */
+ *  physical items received, assigning the employee code, and running the OCR
+ *  cross-check are carved out via requireApprover below. */
 function requireSuperAdmin(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Only a super admin can edit candidate records.' });
 	return null;
 }
 
 /** Approving a candidate, sending their offer letter, logging physical
- *  handover items (photos, signed offer letter, NDA) on joining day, and
- *  assigning the employee code are HR/recruiter's core job, not an
- *  admin-only escalation — both hr_admin and super_admin can perform these.
- *  Every other mutation on this page stays super_admin-only. */
+ *  handover items (photos, signed offer letter, NDA) on joining day,
+ *  assigning the employee code, and running the OCR cross-check are
+ *  HR/recruiter's core job, not an admin-only escalation — both hr_admin and
+ *  super_admin can perform these. Every other mutation on this page stays
+ *  super_admin-only. */
 function requireApprover(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
 		return fail(403, { message: 'Only HR or a super admin can do this.' });
@@ -764,8 +765,14 @@ export const actions: Actions = {
 		return { uanSaved: true, uanNo: uanNo ?? '' };
 	},
 
+	/** Runs the OCR cross-check over every parsed document on this candidate.
+	 *  Open to HR/recruiter as well as super admins: it only reads what OCR
+	 *  already extracted at upload time and records the comparison — it edits no
+	 *  candidate field and sends nothing to the candidate — and checking a
+	 *  document against the typed master sheet is the reviewer's own job, which
+	 *  they could otherwise not do without an admin standing over them. */
 	crosscheck: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
