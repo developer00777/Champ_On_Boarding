@@ -107,9 +107,12 @@ export const BRANDS: BrandTheme[] = [
 		logo: { src: '/brands/champion-infratech.png', monogram: 'CI', onDark: true, hasWordmark: true }
 	},
 	{
+		// `slug` keeps the plural spelling: it is the key company rows and the
+		// document matrix are stored against, so renaming it would strand every
+		// candidate on this entity. Only the printed names are the entity's name.
 		slug: 'champions-club',
-		name: 'Champions Club',
-		legalName: 'Champions Club Pvt Ltd',
+		name: 'Champion Club',
+		legalName: 'Champion Club Pvt Ltd',
 		tagline: 'Ultra-premium luxury lifestyle — yachts, air charters, curated experiences.',
 		colors: {
 			primary: '#DAA548',
@@ -221,9 +224,10 @@ export const BRANDS: BrandTheme[] = [
 		logo: { src: '/brands/champion-infometrics.png', monogram: 'CIM', hasWordmark: true }
 	},
 	{
+		// Plural `slug` retained for the same reason as champions-club above.
 		slug: 'champions-yacht-club',
-		name: 'Champions Yacht Club',
-		legalName: 'Champions Yacht Club Pvt Ltd',
+		name: 'Champion Yacht Club',
+		legalName: 'Champion Yacht Club Pvt Ltd',
 		tagline: 'Luxury yacht charter & experiences in Goa — aspirational, nautical.',
 		colors: {
 			primary: '#D69551',

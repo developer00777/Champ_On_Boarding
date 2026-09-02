@@ -5,17 +5,18 @@ let connected = false;
 
 const COMPANIES = [
 	{ name: 'Champion Infratech Pvt Ltd',      brandSlug: 'champion-infratech',  aliases: ['Champion Infratech'] },
-	{ name: 'Champions Club Pvt Ltd',           brandSlug: 'champions-club',       aliases: ['Champions Club'] },
+	{ name: 'Champion Club Pvt Ltd',            brandSlug: 'champions-club',       aliases: ['Champions Club', 'Champions Club Pvt Ltd', 'Champion Club'] },
 	{ name: 'Cirrologix Technologies Pvt Ltd',  brandSlug: 'cirrologix',           aliases: ['Cirrologix'] },
 	{ name: 'IP Momentum Pvt Ltd',              brandSlug: 'ip-momentum',          aliases: ['IP Momentum'] },
 	{ name: 'Champion Products Pvt Ltd',        brandSlug: 'champion-products',    aliases: ['Champion Products'] },
 	{ name: 'Champion Infometrics Pvt Ltd',     brandSlug: 'champion-infometrics', aliases: ['Champion Infometrics'] },
-	{ name: 'Champions Yacht Club Pvt Ltd',     brandSlug: 'champions-yacht-club', aliases: ['Champions Yacht Club', 'Champions Yacht Club Pvt'] },
+	{ name: 'Champion Yacht Club Pvt Ltd',      brandSlug: 'champions-yacht-club', aliases: ['Champions Yacht Club', 'Champions Yacht Club Pvt', 'Champions Yacht Club Pvt Ltd', 'Champion Yacht Club'] },
 	{ name: 'Champion LandZone Pvt Ltd',        brandSlug: 'champion-landzone',    aliases: ['Landzone', 'LandZone', 'Champion LandZone'] },
-	// Renamed from "Champions …" — seedCompanies() matches this row on brandSlug
-	// and renames it to `name` on boot, so existing deployments pick the
-	// correction up without a migration. The old spelling stays in `aliases` so
-	// a row that was hand-edited in /admin/entities is still matched.
+	// Renamed from "Champions …" — as with Champion Club and Champion Yacht Club
+	// above. seedCompanies() matches each row on brandSlug and renames it to
+	// `name` on boot, so existing deployments pick the correction up without a
+	// migration. The old spelling stays in `aliases` so a row that was
+	// hand-edited in /admin/entities is still matched.
 	{ name: 'Champion Luxury Resorts Pvt Ltd',  brandSlug: 'champions-luxury-resorts', aliases: ['Champion Luxury Resorts', 'Champions Luxury Resorts', 'Champions Luxury Resorts Pvt Ltd'] },
 	{ name: 'Iconic Build Studio Pvt Ltd',       brandSlug: 'iconic-build-studio', aliases: ['Iconic Build Studio'] },
 	// No brand entry in brands.ts yet — brandBySlug('cipl') falls back to the

@@ -263,7 +263,7 @@ function drawChrome(ctx: Ctx, page: PDFPage) {
 	// Logo top-right, with the entity name beneath it.
 	//
 	// Sizing is by AREA, not scaleToFit(box): the brand logos range from 1.6:1
-	// (Infometrics) to 6.8:1 (Champions Club), and fitting those to one box makes
+	// (Infometrics) to 6.8:1 (Champion Club), and fitting those to one box makes
 	// the tall ones render at 42% of the width the wide ones get — they read as
 	// different sizes on the page. Matching area instead makes them look like
 	// siblings. The box is still enforced as a ceiling so nothing overruns.
