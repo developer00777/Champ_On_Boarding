@@ -54,7 +54,7 @@
 		reporting head, shift timing, gender, mobile, payroll entity) under the hiring entity's logo.
 	</p>
 
-	<form method="POST" action="?/saveItSetupMail" use:enhance>
+	<form method="POST" action="?/saveItSetupMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
 		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
 			<div class="grid">
 				<label class="field">
@@ -104,7 +104,7 @@
 		HR list is copied on the employee's exit-forms invitation and their final document handover.
 	</p>
 
-	<form method="POST" action="?/saveExitMail" use:enhance>
+	<form method="POST" action="?/saveExitMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
 		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
 			<div class="grid">
 				<label class="field">

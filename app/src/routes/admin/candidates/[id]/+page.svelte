@@ -745,7 +745,7 @@
 			{:else}
 				<p class="muted" style="font-size:11.5px;margin:0 0 10px">Available after approval.</p>
 			{/if}
-			<form method="POST" action="?/setEmployeeId" use:enhance class="emp-form">
+			<form method="POST" action="?/setEmployeeId" use:enhance={() => async ({ update }) => update({ reset: false })} class="emp-form">
 				<fieldset class="rbac" disabled={!data.isApprover}>
 					<input
 						name="employeeId"
@@ -808,7 +808,7 @@
 			     placeholder shows what the mail would carry if left blank. -->
 			<div class="it-fields">
 				<div class="eyebrow" style="margin-bottom:10px">IT mail details</div>
-				<form method="POST" action="?/setItMailFields" use:enhance>
+				<form method="POST" action="?/setItMailFields" use:enhance={() => async ({ update }) => update({ reset: false })}>
 					<fieldset class="rbac" disabled={!data.isApprover}>
 						<label class="it-label" for="it-team">Team name</label>
 						<input
@@ -1138,7 +1138,7 @@
 				{#if EXP_LIKE_TRACKS.includes(c.track as Track)}
 					<span class="fvalue">{c.uanNo || '—'}</span>
 				{:else}
-					<form method="POST" action="?/setUan" use:enhance class="uan-form">
+					<form method="POST" action="?/setUan" use:enhance={() => async ({ update }) => update({ reset: false })} class="uan-form">
 						<fieldset class="rbac" disabled={!data.isSuperAdmin}>
 							<input name="uanNo" value={form?.uanSaved ? form.uanNo : (c.uanNo ?? '')} placeholder="12 digits" class="uan-input" />
 							<button class="btn ghost small">Save</button>
@@ -1184,7 +1184,7 @@
 				bind:this={offerForm}
 				method="POST"
 				action="?/saveOfferLetter"
-				use:enhance
+				use:enhance={() => async ({ update }) => update({ reset: false })}
 				class="offer-form"
 				enctype="multipart/form-data"
 			>
