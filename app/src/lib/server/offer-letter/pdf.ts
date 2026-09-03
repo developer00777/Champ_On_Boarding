@@ -553,12 +553,30 @@ function subHeading(ctx: Ctx, text: string, opts: { size?: number; gapAfter?: nu
  *  blank rule — page 2's "Authorized Signatory" line is for a physical
  *  wet-ink signature; the uploaded signature image is stamped only onto the
  *  later "Employer Representative Signature" column (see signatureColumns). */
-function signatureLine(ctx: Ctx, caption: string, opts: { width?: number; bold?: boolean } = {}) {
+function signatureLine(
+	ctx: Ctx,
+	caption: string,
+	opts: { width?: number; bold?: boolean; employerSignature?: { image: PDFImage; date: string } } = {}
+) {
 	const width = opts.width ?? 200;
 	const above = 14 * ctx.blockGap; // room to actually sign
 	ensure(ctx, above + 18);
 	ctx.y -= above;
-	ctx.page.drawRectangle({ x: ctx.M, y: ctx.y, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	const ruleY = ctx.y;
+	ctx.page.drawRectangle({ x: ctx.M, y: ruleY, width, height: 0.6, color: rgb(0.6, 0.6, 0.6) });
+	// The stamp sits ON the rule, centred over it and capped to the room cleared
+	// above — the same treatment the Employer Representative column gets in
+	// signatureColumns, so the two read as one signature block wherever they
+	// appear. Callers that omit it keep the blank rule for a wet-ink signature.
+	if (opts.employerSignature) {
+		const dims = opts.employerSignature.image.scaleToFit(width - 20, Math.min(38, above - 6));
+		ctx.page.drawImage(opts.employerSignature.image, {
+			x: ctx.M + (width - dims.width) / 2,
+			y: ruleY + 2,
+			width: dims.width,
+			height: dims.height
+		});
+	}
 	ctx.y -= 12;
 	ctx.page.drawText(sanitize(caption), {
 		x: ctx.M, y: ctx.y, font: opts.bold ? ctx.fontB : ctx.fontR, size: ctx.bodySize, color: BLACK
@@ -1154,10 +1172,23 @@ function renderInternship(
 		signatureColumns(ctx, 'Intern Signature', 'Mentor Signature', { dateRow: true });
 		gap(ctx, 6);
 
+		// The company's own sign-off. Captioned "Employer Representative
+		// Signature" like the appointment letter's, rather than the bare
+		// Name/Signature rules it used to carry, so the same block means the same
+		// thing in every letter — and it stamps the uploaded signature and dates
+		// itself when HR has one on file.
 		para(ctx, `For ${company}:`, { font: ctx.fontB, gapAfter: 10 });
-		signatureLine(ctx, 'Name');
-		signatureLine(ctx, 'Signature');
-		para(ctx, `Date: ____________________`, { gapAfter: 0 });
+		signatureLine(ctx, 'Employer Representative Signature', {
+			width: 230,
+			bold: true,
+			employerSignature: ctx.employerSignature ?? undefined
+		});
+		para(ctx, `Name: ${o.signatoryName || '____________________'}`, { gapAfter: 8 });
+		para(
+			ctx,
+			`Date: ${ctx.employerSignature ? ctx.employerSignature.date : '____________________'}`,
+			{ gapAfter: 0 }
+		);
 	});
 }
 
