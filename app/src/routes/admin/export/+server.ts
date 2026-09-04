@@ -4,7 +4,17 @@ import { Candidate, Company } from '$lib/server/db/schema';
 import { decrypt } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 
-const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+/** One CSV cell.
+ *
+ *  Everything is quoted, so a comma, a semicolon or a newline inside an address
+ *  stays inside its cell. The leading apostrophe guards the other half: Excel
+ *  evaluates a cell opening with = + - or @ as a formula, so an address like
+ *  "-12/3, 2nd Cross" arrives as a broken formula rather than an address. */
+const esc = (v: unknown) => {
+	const raw = String(v ?? '');
+	const safe = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
+	return `"${safe.replace(/"/g, '""')}"`;
+};
 
 export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 	if (!locals.admin) error(401, 'Not authenticated');
@@ -56,7 +66,15 @@ export const GET: RequestHandler = async ({ locals, getClientAddress }) => {
 			.join(',')
 	);
 
-	return new Response([header.map(esc).join(','), ...lines].join('\r\n'), {
+	// A UTF-8 BOM and an explicit separator hint, because this file is opened in
+	// Excel, not parsed by a script. Without the BOM Excel guesses the codepage
+	// and mangles anything non-ASCII in a name or address; without "sep=," it uses
+	// the machine's list separator, which on an Indian or European install is a
+	// semicolon — every row then lands in one column, and an address containing a
+	// semicolon looks like it broke the export.
+	const body = '\uFEFF' + ['sep=,', header.map(esc).join(','), ...lines].join('\r\n');
+
+	return new Response(body, {
 		headers: {
 			'Content-Type': 'text/csv; charset=utf-8',
 			'Content-Disposition': 'attachment; filename="master-sheet.csv"'

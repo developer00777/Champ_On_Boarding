@@ -18,12 +18,16 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
 	if (!q) return json({ results: [] });
 
-	const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	// A loose per-character substring prefilter (not a prefix/anchor match) so
 	// the pool still contains typo'd names for the in-memory fuzzy pass to rank —
 	// a plain substring on the first couple characters is usually enough to keep
 	// this a real index-assisted query rather than a full collection scan.
-	const loose = new RegExp(escaped.slice(0, Math.max(2, Math.ceil(escaped.length / 2))), 'i');
+	// Sliced first, escaped second. Cutting the *escaped* string could land
+	// mid-sequence and leave a trailing backslash — searching for "a+b" became
+	// new RegExp('a\'), which throws, and the endpoint 500'd on any query
+	// containing + ( ) [ ] { } | ^ $ . * ? or a backslash.
+	const prefix = q.slice(0, Math.max(2, Math.ceil(q.length / 2)));
+	const loose = new RegExp(prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 	const pool = await Candidate.find(
 		{ $or: [{ fullName: loose }, { employeeId: loose }, { email: loose }] },
 		'fullName email employeeId track'

@@ -16,11 +16,15 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
 	if (!q) return json({ results: [] });
 
-	const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	// Loose per-character substring prefilter, same reasoning as the candidates
 	// search endpoint: keep typo'd matches in the pool for the in-memory fuzzy
 	// pass, without falling back to a full collection scan.
-	const loose = new RegExp(escaped.slice(0, Math.max(2, Math.ceil(escaped.length / 2))), 'i');
+	// Sliced first, escaped second. Cutting the *escaped* string could land
+	// mid-sequence and leave a trailing backslash — searching for "a+b" became
+	// new RegExp('a\'), which throws, and the endpoint 500'd on any query
+	// containing + ( ) [ ] { } | ^ $ . * ? or a backslash.
+	const prefix = q.slice(0, Math.max(2, Math.ceil(q.length / 2)));
+	const loose = new RegExp(prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 	const hitIds = (await Candidate.find({ $or: [{ fullName: loose }, { employeeId: loose }] }, '_id fullName').lean()).map(
 		(c) => c._id
