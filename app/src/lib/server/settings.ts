@@ -65,6 +65,62 @@ export function renderItSetupSubject(template: string, values: ItSetupSubjectVal
 	);
 }
 
+// ── Fixed dropdown lists ─────────────────────────────────────────────────────
+//
+// Short, admin-editable option lists that back a dropdown somewhere in the app.
+// Kept as a registry rather than one setting per list: adding a future dropdown
+// is a single entry here plus wherever it renders, with no new settings screen,
+// no new AppSetting key and no migration. All of them live in one AppSetting
+// row keyed FIXED_LISTS_KEY.
+
+export interface FixedListDef {
+	/** Stable storage key — renaming one orphans whatever HR has saved. */
+	key: string;
+	label: string;
+	help: string;
+	defaults: string[];
+}
+
+export const FIXED_LIST_DEFS: FixedListDef[] = [
+	{
+		key: 'officeLocations',
+		label: 'Office locations',
+		help: 'Offered in the offer letter’s Office location dropdown.',
+		defaults: ['JS Tower', 'BCS', 'Ranch']
+	}
+];
+
+export const FIXED_LISTS_KEY = 'fixed_lists';
+
+export type FixedLists = Record<string, string[]>;
+
+/** One entry per line, blanks and duplicates dropped, order preserved — the
+ *  order HR types is the order the dropdown offers. */
+export function parseFixedList(raw: string): string[] {
+	return [...new Set(raw.split('\n').map((l) => l.trim()).filter(Boolean))].slice(0, 100);
+}
+
+export async function getFixedLists(): Promise<FixedLists> {
+	const row = await AppSetting.findOne({ key: FIXED_LISTS_KEY }).lean();
+	const saved = (row?.value ?? {}) as Partial<Record<string, unknown>>;
+	const out: FixedLists = {};
+	for (const def of FIXED_LIST_DEFS) {
+		const v = saved[def.key];
+		// A saved-but-empty list would leave the dropdown with nothing to offer,
+		// so it falls back to the defaults exactly as an absent one does.
+		out[def.key] = Array.isArray(v) && v.length ? (v as string[]) : def.defaults;
+	}
+	return out;
+}
+
+export async function saveFixedLists(value: FixedLists, adminId: string) {
+	await AppSetting.findOneAndUpdate(
+		{ key: FIXED_LISTS_KEY },
+		{ key: FIXED_LISTS_KEY, value, updatedBy: adminId },
+		{ upsert: true }
+	);
+}
+
 /** Splits an HR-typed recipient box into addresses. Accepts the shapes people
  *  actually paste out of Outlook — semicolon- or comma-separated, quoted,
  *  wrapped in <>, one per line — and drops anything that isn't an address so a

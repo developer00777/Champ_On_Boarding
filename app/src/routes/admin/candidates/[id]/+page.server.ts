@@ -33,6 +33,7 @@ import {
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
+import { getFixedLists } from '$lib/server/settings';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken, ensureLiveLinkToken } from '$lib/server/tokens';
@@ -170,7 +171,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!row) error(404, 'Candidate not found');
 	const { candidate, company } = row;
 
-	const [checklist, physical, verificationDocs, offerLetter, activeLinkToken] = await Promise.all([
+	const [checklist, physical, verificationDocs, offerLetter, activeLinkToken, fixedLists] =
+		await Promise.all([
 		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
 		Verification.find({ candidateId: candidate._id }).lean(),
@@ -180,7 +182,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		// audit trail; only this one is ever surfaced for display/testing.
 		LinkToken.findOne({ candidateId: candidate._id, revoked: false, expiresAt: { $gt: new Date() } })
 			.sort({ createdAt: -1 })
-			.lean()
+			.lean(),
+		getFixedLists()
 	]);
 
 	// Candidates created before an item type existed have no row for it, and the
@@ -352,6 +355,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			sentAt: offerLetter?.sentAt?.toISOString() ?? null
 		},
 		onboardingLink,
+		/** Admin-editable option lists (settings → Dropdown options). */
+		officeLocations: fixedLists.officeLocations ?? [],
 		isSuperAdmin: locals.admin?.role === 'super_admin',
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
 	};

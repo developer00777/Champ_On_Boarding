@@ -6,7 +6,12 @@ import {
 	saveItSetupMailSettings,
 	parseRecipients,
 	IT_SETUP_MAIL_DEFAULTS,
-	IT_SETUP_SUBJECT_TOKENS
+	IT_SETUP_SUBJECT_TOKENS,
+	FIXED_LIST_DEFS,
+	getFixedLists,
+	saveFixedLists,
+	parseFixedList,
+	type FixedLists
 } from '$lib/server/settings';
 import {
 	EXIT_MAIL_DEFAULTS,
@@ -15,9 +20,10 @@ import {
 } from '$lib/server/offboarding/mail';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const [itSetupMail, exitMail] = await Promise.all([
+	const [itSetupMail, exitMail, fixedLists] = await Promise.all([
 		getItSetupMailSettings(),
-		getExitMailSettings()
+		getExitMailSettings(),
+		getFixedLists()
 	]);
 	return {
 		itSetupMail,
@@ -25,6 +31,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		// Passed as data rather than imported by the component: settings.ts is a
 		// $lib/server module and must never reach the client bundle.
 		subjectTokens: IT_SETUP_SUBJECT_TOKENS,
+		fixedLists,
+		fixedListDefs: FIXED_LIST_DEFS,
 		exitMail,
 		exitDefaults: EXIT_MAIL_DEFAULTS,
 		isSuperAdmin: locals.admin?.role === 'super_admin'
@@ -36,6 +44,36 @@ export const actions: Actions = {
 	// these is an operational call HR makes, not a redeploy — but it changes what
 	// leaves the building, so it stays super-admin only like every other
 	// org-wide setting.
+	/** The fixed dropdown lists. One action for all of them — a future list is an
+	 *  entry in FIXED_LIST_DEFS and a textarea, not another action. */
+	saveFixedLists: async ({ request, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { error: 'Only a super admin can change these settings.' });
+
+		const form = await request.formData();
+		const next: FixedLists = {};
+		const empty: string[] = [];
+		for (const def of FIXED_LIST_DEFS) {
+			const items = parseFixedList(String(form.get(def.key) ?? ''));
+			// An empty list leaves its dropdown with nothing to pick, so it is
+			// rejected rather than saved — clearing one is almost always a slip.
+			if (!items.length) empty.push(def.label);
+			next[def.key] = items;
+		}
+		if (empty.length)
+			return fail(400, { error: `${empty.join(' and ')} cannot be empty — add at least one option.` });
+
+		await saveFixedLists(next, locals.admin.id);
+		await audit({
+			actor: locals.admin.email,
+			action: 'settings_updated',
+			field: 'fixed_lists',
+			newValue: FIXED_LIST_DEFS.map((d) => `${d.key}: ${next[d.key].join(', ')}`).join(' | '),
+			ip: getClientAddress()
+		});
+		return { fixedListsSaved: true };
+	},
+
 	saveItSetupMail: async ({ request, locals, getClientAddress }) => {
 		if (locals.admin?.role !== 'super_admin')
 			return fail(403, { error: 'Only a super admin can change these settings.' });

@@ -337,6 +337,21 @@
 		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
 	});
 
+	// Office location comes from the admin-editable list (settings → Dropdown
+	// options). A letter saved before the list existed — or under an option since
+	// removed — keeps its value as an extra entry, so opening the form never
+	// quietly rewrites an address that is already on a sent letter.
+	let officeLocation = $state(untrack(() => data.offerLetter.officeLocation ?? ''));
+	$effect(() => {
+		officeLocation = ol.officeLocation ?? '';
+	});
+	const officeLocationOptions = $derived([
+		...data.officeLocations.map((o: string) => ({ value: o, label: o })),
+		...(officeLocation && !data.officeLocations.includes(officeLocation)
+			? [{ value: officeLocation, label: `${officeLocation} (not in list)` }]
+			: [])
+	]);
+
 	// Mode is a closed dropdown now (IT asked for four engagement types), but a
 	// record saved while it was free text may hold something else. That value is
 	// appended as its own option so opening the page never silently rewrites it —
@@ -1221,10 +1236,15 @@
 					<span>Reporting manager (name/designation)</span>
 					<input name="reportingManager" value={ol.reportingManager} />
 				</label>
-				<label class="offer-field">
+				<div class="offer-field">
 					<span>Office location</span>
-					<input name="officeLocation" value={ol.officeLocation} />
-				</label>
+					<GlassSelect
+						name="officeLocation"
+						ariaLabel="Office location"
+						bind:value={officeLocation}
+						options={officeLocationOptions}
+					/>
+				</div>
 				<label class="offer-field">
 					<span>{c.track === 'intern' ? 'Internship start date' : 'Joining date'}</span>
 					<input type="date" name="joiningDate" value={toIsoDate(ol.joiningDate) ?? ''} />

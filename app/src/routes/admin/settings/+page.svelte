@@ -23,6 +23,19 @@
 	// svelte-ignore state_referenced_locally
 	let hrCc = $state(data.exitMail.hrCc.join('\n'));
 
+	/** One textarea per fixed list, edited as one option per line. Seeded once for
+	 *  the same reason the recipient boxes are: a server round-trip must not
+	 *  clobber what HR is part-way through typing. */
+	// svelte-ignore state_referenced_locally
+	let listText: Record<string, string> = $state(
+		Object.fromEntries(
+			data.fixedListDefs.map((d: { key: string }) => [
+				d.key,
+				(data.fixedLists[d.key] ?? []).join('\n')
+			])
+		)
+	);
+
 	const exitIsDefault = $derived(
 		itTo.trim() === data.exitDefaults.itTo.join('\n') &&
 			itCc.trim() === data.exitDefaults.itCc.join('\n') &&
@@ -157,6 +170,39 @@
 					<button class="btn ghost small" formaction="?/resetExitMail">Reset to defaults</button>
 				{/if}
 			</div>
+		</fieldset>
+	</form>
+
+	{#if !data.isSuperAdmin}
+		<p class="muted" style="font-size:12px;margin:12px 0 0">
+			View-only — changing these requires a super admin login.
+		</p>
+	{/if}
+</section>
+
+<!-- Fixed dropdown lists. Deliberately generic: each entry in FIXED_LIST_DEFS
+     renders its own box here, so adding a future dropdown needs no new UI. -->
+<section class="card" style="margin-top:18px">
+	<h2 class="card-title">Dropdown options</h2>
+	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
+		Short fixed lists the forms offer as dropdowns. Editing one changes what everyone can pick
+		from next time they open the form; a value already saved on a record is never rewritten.
+	</p>
+
+	<form method="POST" action="?/saveFixedLists" use:enhance={() => async ({ update }) => update({ reset: false })}>
+		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+			{#each data.fixedListDefs as def (def.key)}
+				<label class="field">
+					<span>{def.label}</span>
+					<textarea name={def.key} bind:value={listText[def.key]} rows="4"></textarea>
+					<small>
+						{def.help} One per line, in the order they should appear. Default:
+						<code>{def.defaults.join(', ')}</code>
+					</small>
+				</label>
+			{/each}
+			<button class="btn">Save dropdown options</button>
+			{#if form?.fixedListsSaved}<span class="saved">Saved ✓</span>{/if}
 		</fieldset>
 	</form>
 
