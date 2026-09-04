@@ -10,7 +10,13 @@
 	} from '$lib/shared/matrix';
 	import { toIsoDate } from '$lib/shared/dates';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
-	import { SHIFT_TIMINGS, isShiftTiming, TRACK_MODE, MODE_OPTIONS } from '$lib/shared/shifts';
+	import {
+		SHIFT_TIMINGS,
+		isShiftTiming,
+		TRACK_MODE,
+		MODE_OPTIONS,
+		normaliseMode
+	} from '$lib/shared/shifts';
 	import { RELIGIONS, MOTHER_TONGUES } from '$lib/shared/demographics';
 
 	let { data, form } = $props();
@@ -330,6 +336,21 @@
 		workLocationMode: form?.itMailFieldsSaved ? (form.workLocationMode ?? '') : (c.workLocationMode ?? ''),
 		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
 	});
+
+	// Mode is a closed dropdown now (IT asked for four engagement types), but a
+	// record saved while it was free text may hold something else. That value is
+	// appended as its own option so opening the page never silently rewrites it —
+	// HR changes it deliberately or not at all.
+	let joiningMode = $state(untrack(() => normaliseMode(data.candidate.joiningMode)));
+	$effect(() => {
+		joiningMode = normaliseMode(itFields.joiningMode);
+	});
+	const modeOptions = $derived([
+		...MODE_OPTIONS.map((m) => ({ value: m, label: m })),
+		...(joiningMode && !(MODE_OPTIONS as readonly string[]).includes(joiningMode)
+			? [{ value: joiningMode, label: `${joiningMode} (retired)` }]
+			: [])
+	]);
 
 	// ── Department ⇄ Team Name ───────────────────────────────────────────────
 	// The offer letter's Department and the IT mail's Team Name are the same
@@ -846,20 +867,14 @@
 							maxlength="120"
 						/>
 						<label class="it-label" for="it-mode">Mode</label>
-						<input
+						<GlassSelect
 							id="it-mode"
 							name="joiningMode"
-							value={itFields.joiningMode}
-							placeholder={TRACK_MODE[c.track] ?? 'e.g. New Joinee'}
-							class="emp-input"
-							list="mode-options"
-							maxlength="120"
+							ariaLabel="Mode"
+							bind:value={joiningMode}
+							placeholder={TRACK_MODE[c.track] ?? 'Select…'}
+							options={modeOptions}
 						/>
-						<datalist id="mode-options">
-							{#each MODE_OPTIONS as m}
-								<option value={m}></option>
-							{/each}
-						</datalist>
 						<button class="btn small teal" style="width:100%;margin-top:9px">Save IT mail details</button>
 					</fieldset>
 				</form>
