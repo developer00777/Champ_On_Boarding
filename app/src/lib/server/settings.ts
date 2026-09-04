@@ -20,17 +20,27 @@ export interface ItSetupMailSettings {
 /** What HR can put in the subject template, and what each stands for. Shared
  *  with the settings form so the help text and the substitution cannot drift. */
 export const IT_SETUP_SUBJECT_TOKENS = [
+	{ token: '{joiningDate}', means: 'the joining date, as 2-Sep-2026' },
+	{ token: '{team}', means: 'the team name' },
 	{ token: '{name}', means: "the candidate's name" },
 	{ token: '{company}', means: 'the hiring entity' }
 ] as const;
+
+export interface ItSetupSubjectValues {
+	name: string;
+	company: string;
+	joiningDate: string;
+	team: string;
+}
 
 export const IT_SETUP_MAIL_KEY = 'it_setup_mail';
 
 export const IT_SETUP_MAIL_DEFAULTS: ItSetupMailSettings = {
 	to: ['ithelpdesk@championsmail.com', 'workforce@championsmail.com', 'learning@championsmail.com'],
 	cc: ['hrd.jst@championsmail.com'],
-	// The subject this mail has always carried, now as an editable template.
-	subject: 'System & VPN setup - {name} ({company})',
+	// What IT asked for: "New Joinee 2-Sep-2026 (Creative Team)". Both parts are
+	// filled from the record, so HR never retypes a date or a team.
+	subject: 'New Joinee {joiningDate} ({team})',
 	signoffName: 'Bhavana setty',
 	signoffDesignation: 'HR Coordinator'
 };
@@ -38,15 +48,21 @@ export const IT_SETUP_MAIL_DEFAULTS: ItSetupMailSettings = {
 /** Substitutes the subject tokens. Also collapses newlines: a subject is a
  *  single header, and a stray line break pasted into the box would otherwise
  *  be a header-injection vector. */
-export function renderItSetupSubject(
-	template: string,
-	values: { name: string; company: string }
-): string {
-	return (template || IT_SETUP_MAIL_DEFAULTS.subject)
-		.replace(/\{name\}/g, values.name)
-		.replace(/\{company\}/g, values.company)
-		.replace(/[\r\n]+/g, ' ')
-		.trim();
+export function renderItSetupSubject(template: string, values: ItSetupSubjectValues): string {
+	return (
+		(template || IT_SETUP_MAIL_DEFAULTS.subject)
+			.replace(/\{joiningDate\}/g, values.joiningDate)
+			.replace(/\{team\}/g, values.team)
+			.replace(/\{name\}/g, values.name)
+			.replace(/\{company\}/g, values.company)
+			.replace(/[\r\n]+/g, ' ')
+			// A record with no joining date or team yet would otherwise leave
+			// "New Joinee  ()" in the subject; drop the empty bracket and close
+			// up the gap instead of shipping the gap.
+			.replace(/\(\s*\)/g, '')
+			.replace(/\s{2,}/g, ' ')
+			.trim()
+	);
 }
 
 /** Splits an HR-typed recipient box into addresses. Accepts the shapes people

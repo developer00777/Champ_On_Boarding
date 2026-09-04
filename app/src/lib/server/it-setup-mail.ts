@@ -13,6 +13,7 @@ import { brandBySlug } from '$lib/shared/brands';
 import type { BrandTheme } from '$lib/shared/brands';
 import { sendBrandedMail, escapeHtml, brandLogoUrl } from './mailer';
 import { getItSetupMailSettings, renderItSetupSubject } from './settings';
+import { toDayMonYear } from '$lib/shared/dates';
 import { TRACK_MODE } from '$lib/shared/shifts';
 
 /** Column order is IT's, not ours — do not reorder without asking them. */
@@ -149,7 +150,15 @@ export async function buildItSetupMail(candidateId: string): Promise<ItSetupMail
 		// primary recipients of this request, not observers — with HRD on Cc.
 		to: settings.to,
 		cc: settings.cc,
-		subject: renderItSetupSubject(settings.subject, { name, company: companyName }),
+		// Fed from the same cells the table carries, so the subject can never
+		// disagree with the row beneath it. DOJ is cells[2] and Team Name cells[4]
+		// (see COLUMNS); reusing them keeps the team's HR-override precedence.
+		subject: renderItSetupSubject(settings.subject, {
+			name,
+			company: companyName,
+			joiningDate: toDayMonYear(cells[2]) || cells[2],
+			team: cells[4]
+		}),
 		html: bodyHtml(brand, cells, settings.signoffName, settings.signoffDesignation),
 		text: bodyText(cells, settings.signoffName, settings.signoffDesignation),
 		fields: COLUMNS.map((label, i) => ({ label, value: cells[i] ?? '' })),

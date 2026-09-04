@@ -18,8 +18,11 @@ const DEMO_SIGNATURE = `data:image/png;base64,${readFileSync(
 	new URL('./_demo-signature.png', import.meta.url)
 ).toString('base64')}`;
 
-const brand = brandBySlug('champion-infometrics');
-const COMPANY = 'Champion InfoMetrics Private Limited';
+// Defaults to Infometrics; set OFFER_SAMPLES_BRAND to any brand slug to render
+// the same five letters for another entity — the quickest way to eyeball how a
+// particular logo sits in the letterhead.
+const brand = brandBySlug(process.env.OFFER_SAMPLES_BRAND || 'champion-infometrics');
+const COMPANY = brand.legalName;
 const ADDRESS =
 	'J S Tower, L32, 2nd A Main Road, Outer Ring Road, HSR Layout, 6th Sector, Bengaluru, Karnataka 560102';
 

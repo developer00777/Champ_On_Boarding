@@ -78,6 +78,18 @@ export function isoToDDMMYYYY(iso: string | null | undefined): string {
 	return `${day}/${month}/${year}`;
 }
 
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/** A stored date as "2-Sep-2026" — day unpadded, month abbreviated. The shape
+ *  HR writes in mail subjects and IT reads at a glance. Returns '' when the
+ *  stored value cannot be parsed, so a caller can decide what to do about it
+ *  rather than printing something misleading. */
+export function toDayMonYear(value: string | null | undefined): string {
+	const p = parseStoredDate(value);
+	if (!p) return '';
+	return `${p.day}-${MONTH_SHORT[p.month - 1] ?? p.month}-${p.year}`;
+}
+
 /** Today's date as "DD/MM/YYYY", computed explicitly in IST rather than
  *  relying on the server process's local TZ (unset in Dockerfile/
  *  docker-compose.yml, defaults to UTC — a real day-boundary bug otherwise,

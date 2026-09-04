@@ -31,6 +31,10 @@
 		reader.readAsDataURL(file);
 	}
 
+	/** The entity whose logo is open in the preview, or null. Holds the resolved
+	 *  art rather than the row, so the modal does not have to re-run logoFor. */
+	let previewing: { name: string; logo: string | null; ink: string } | null = $state(null);
+
 	/** A company's own uploaded logo wins; otherwise fall back to its brand's art. */
 	function logoFor(c: { logoBase64: string | null; brandSlug: string | null }): string | null {
 		if (c.logoBase64) return c.logoBase64;
@@ -147,6 +151,18 @@
 				<div class="ent-sub">
 					{c.candidateCount}
 					{c.candidateCount === 1 ? 'candidate' : 'candidates'}
+					<button
+						type="button"
+						class="logo-preview-btn"
+						onclick={() =>
+							(previewing = {
+								name: c.name,
+								logo,
+								ink: data.brandOptions.find((b) => b.slug === c.brandSlug)?.primary ?? '#1a1a1a'
+							})}
+					>
+						Preview logo
+					</button>
 				</div>
 			</div>
 
@@ -238,6 +254,57 @@
 			{/each}
 		</div>
 	</details>
+{/if}
+
+<!-- Logo preview. Three grounds on purpose: white is how the offer letter and
+     the portal show it, the brand colour exposes a white halo or a grey fringe
+     left by a bad background removal, and the checkerboard shows exactly which
+     pixels are actually transparent. A logo that looks fine on white and wrong
+     on the other two has not really been cut out. -->
+{#if previewing}
+	<div
+		class="lp-backdrop"
+		role="button"
+		tabindex="0"
+		onclick={() => (previewing = null)}
+		onkeydown={(e) => e.key === 'Escape' && (previewing = null)}
+	>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div
+			class="lp-panel"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			aria-label="Logo preview"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+		>
+			<div class="lp-head">
+				<strong>{previewing.name}</strong>
+				<button type="button" class="lp-close" onclick={() => (previewing = null)}>Close</button>
+			</div>
+			{#if previewing.logo}
+				<div class="lp-grid">
+					<figure>
+						<div class="lp-ground lp-white"><img src={previewing.logo} alt="" /></div>
+						<figcaption>On white — offer letter &amp; portal</figcaption>
+					</figure>
+					<figure>
+						<div class="lp-ground" style="background:{previewing.ink}">
+							<img src={previewing.logo} alt="" />
+						</div>
+						<figcaption>On brand colour — shows any halo or fringe</figcaption>
+					</figure>
+					<figure>
+						<div class="lp-ground lp-checker"><img src={previewing.logo} alt="" /></div>
+						<figcaption>Transparency — chequers must show through</figcaption>
+					</figure>
+				</div>
+			{:else}
+				<p class="lp-none">No logo set for this entity — letters fall back to a text monogram.</p>
+			{/if}
+		</div>
+	</div>
 {/if}
 
 <style>
@@ -495,5 +562,105 @@
 		.add-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	.logo-preview-btn {
+		margin-left: 10px;
+		background: none;
+		border: 0;
+		padding: 0;
+		font: inherit;
+		font-size: 11.5px;
+		color: var(--ae-accent, #0b63ce);
+		text-decoration: underline;
+		cursor: pointer;
+	}
+	.lp-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.55);
+		display: grid;
+		place-items: center;
+		padding: 24px;
+		z-index: 60;
+	}
+	/* Uses the app's own card variables, and sets colour explicitly: a hardcoded
+	   white panel inherits the dark theme's light text and the headings vanish. */
+	.lp-panel {
+		background: var(--ae-card-bg, #fff);
+		color: var(--ae-text, #101828);
+		border: 1px solid var(--ae-card-border, #e4e7ec);
+		border-radius: var(--ae-card-radius, 12px);
+		box-shadow: var(--ae-card-shadow, 0 18px 50px rgba(0, 0, 0, 0.35));
+		backdrop-filter: blur(var(--ae-card-blur, 0));
+		padding: 20px 22px;
+		width: min(880px, 100%);
+		max-height: 90vh;
+		overflow: auto;
+	}
+	.lp-head {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 16px;
+	}
+	.lp-head strong {
+		flex: 1;
+		font-size: 15px;
+	}
+	.lp-close {
+		border: 1px solid var(--ae-line-strong, #ccc);
+		background: none;
+		color: inherit;
+		border-radius: 6px;
+		padding: 5px 12px;
+		font: inherit;
+		font-size: 12.5px;
+		cursor: pointer;
+	}
+	.lp-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+		gap: 14px;
+	}
+	.lp-ground {
+		height: 150px;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--ae-line-strong, #ccc);
+		border-radius: 8px;
+		padding: 14px;
+	}
+	.lp-ground img {
+		max-width: 100%;
+		max-height: 122px;
+		object-fit: contain;
+	}
+	.lp-white {
+		background: #ffffff;
+	}
+	/* 10px chequers — anything the cutout missed reads as a solid patch. */
+	.lp-checker {
+		background-image:
+			linear-gradient(45deg, #c9c9c9 25%, transparent 25%),
+			linear-gradient(-45deg, #c9c9c9 25%, transparent 25%),
+			linear-gradient(45deg, transparent 75%, #c9c9c9 75%),
+			linear-gradient(-45deg, transparent 75%, #c9c9c9 75%);
+		background-size: 20px 20px;
+		background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+		background-color: #ffffff;
+	}
+	.lp-grid figcaption {
+		margin-top: 6px;
+		font-size: 11px;
+		color: var(--ae-text-2, #475467);
+		text-align: center;
+	}
+	.lp-grid figure {
+		margin: 0;
+	}
+	.lp-none {
+		font-size: 13px;
+		opacity: 0.75;
 	}
 </style>
