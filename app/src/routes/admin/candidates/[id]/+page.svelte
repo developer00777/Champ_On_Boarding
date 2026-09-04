@@ -93,23 +93,12 @@
 	// The annexure's PM inputs are bound to local state (not just `value=`) so the
 	// P.A./total columns can recompute live as HR types, mirroring exactly what
 	// computeAnnexureTotals() will derive server-side at PDF-render time.
-	let annexure = $state({
-		enabled: false,
-		basicPm: '',
-		hraPm: '',
-		bonusLabel: 'Performance Bonus in Advance',
-		bonusPm: '',
-		ltaPm: '',
-		shiftLabel: 'Shift Allowances',
-		shiftPm: '',
-		specialPm: '',
-		pfPm: '',
-		gratuityPm: '',
-		insurancePm: '',
-		foodPm: '',
-		variablePayEnabled: false,
-		variablePayPm: ''
-	});
+	//
+	// Seeded from the draft here rather than by the $effect below alone: effects
+	// do not run during SSR, so a lazily-seeded `enabled` is false on the server
+	// and anything keyed off it renders for the wrong branch until hydration —
+	// which is what put the CTC field back on the page for a beat.
+	let annexure = $state(untrack(() => ({ ...data.offerLetter.compensationAnnexure })));
 	$effect(() => {
 		annexure = { ...ol.compensationAnnexure };
 	});
@@ -1285,21 +1274,12 @@
 				</div>
 				<!-- The same stored figure is rendered as a monthly stipend, annual CTC
 				     or a monthly fee depending on the track — ask for the one this
-				     candidate's letter will actually quote. With the annexure on it is
-				     not asked for at all: its Total Yearly Cost to Company is the CTC,
-				     and two boxes for one number is how clause 1 ends up disagreeing
-				     with page 4. Shown read-only so the recruiter still sees exactly
-				     what clause 1 will quote. -->
-				{#if showAnnexure && annexure.enabled}
-					<div class="offer-field">
-						<span>{compField.label}</span>
-						<output class="derived-ctc">{money(annexureTotalPa)}</output>
-						<small>
-							Taken from the annexure's Total Yearly Cost to Company below, so clause 1 and
-							page&nbsp;4 always agree. Turn the annexure off to enter it by hand.
-						</small>
-					</div>
-				{:else}
+				     candidate's letter will actually quote. Not shown at all with the
+				     annexure on: the annexure's Total Yearly Cost to Company already
+				     states it, and the form parse derives ctcAmount from those rows
+				     (offer-letter/form.ts), so clause 1 still quotes the right figure
+				     without anyone entering it twice. -->
+				{#if !(showAnnexure && annexure.enabled)}
 					<label class="offer-field">
 						<span>{compField.label}</span>
 						<input name="ctcAmount" value={ol.ctcAmount} placeholder={compField.placeholder} />
@@ -2142,18 +2122,6 @@
 		grid-template-columns: 1fr 1fr;
 		gap: 10px 12px;
 	}
-	/* The CTC when it is derived from the annexure: reads as a value, not as a
-	   box someone forgot to fill in. */
-	.derived-ctc {
-		display: block;
-		padding: 9px 11px;
-		border: 1px dashed var(--ae-line-strong, #ccc);
-		border-radius: 8px;
-		background: transparent;
-		font-variant-numeric: tabular-nums;
-		font-weight: 700;
-	}
-
 	.offer-field {
 		display: flex;
 		flex-direction: column;
