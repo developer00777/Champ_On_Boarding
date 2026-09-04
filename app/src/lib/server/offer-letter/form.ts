@@ -6,7 +6,7 @@
 // parsed the form separately, a preview could show something the letter that
 // eventually goes out does not say — which is the one thing a preview must
 // never do.
-import type { OfferLetterInput } from './fields';
+import { computeAnnexureTotals, type OfferLetterInput } from './fields';
 import { isoToDDMMYYYY } from '$lib/shared/dates';
 
 const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
@@ -34,6 +34,33 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 
 	const text = (key: string) => String(form.get(key) ?? '').trim();
 
+	const compensationAnnexure = {
+		enabled: form.get('annexureEnabled') === 'on',
+		basicPm: text('annexureBasicPm'),
+		hraPm: text('annexureHraPm'),
+		bonusLabel: text('annexureBonusLabel'),
+		bonusPm: text('annexureBonusPm'),
+		ltaPm: text('annexureLtaPm'),
+		shiftLabel: text('annexureShiftLabel'),
+		shiftPm: text('annexureShiftPm'),
+		specialPm: text('annexureSpecialPm'),
+		pfPm: text('annexurePfPm'),
+		gratuityPm: text('annexureGratuityPm'),
+		insurancePm: text('annexureInsurancePm'),
+		foodPm: text('annexureFoodPm'),
+		variablePayEnabled: form.get('annexureVariablePayEnabled') === 'on',
+		variablePayPm: text('annexureVariablePayPm')
+	};
+
+	// With the annexure on, its Total Yearly Cost to Company IS the CTC — the two
+	// were separate boxes and could disagree, which meant clause 1 quoting one
+	// figure and the annexure on page 4 totalling to another. Derived rather than
+	// typed, so they cannot drift. The annexure only exists on the appointment
+	// tracks, so every other letter still uses whatever was entered.
+	const ctcAmount = compensationAnnexure.enabled
+		? String(computeAnnexureTotals(compensationAnnexure).grandTotalPa)
+		: text('ctcAmount');
+
 	return {
 		ok: true,
 		input: {
@@ -47,7 +74,7 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 			// older hand-typed value through untouched.
 			endDate: isoToDDMMYYYY(text('endDate')),
 			employmentType: text('employmentType') as OfferLetterInput['employmentType'],
-			ctcAmount: text('ctcAmount'),
+			ctcAmount,
 			monthlyCompensation: text('monthlyCompensation'),
 			noticePeriod: text('noticePeriod'),
 			confirmedNoticePeriod: text('confirmedNoticePeriod'),
@@ -59,23 +86,7 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 			keyResponsibilities: text('keyResponsibilities'),
 			internCriteria: text('internCriteria'),
 			paymentClause: text('paymentClause'),
-			compensationAnnexure: {
-				enabled: form.get('annexureEnabled') === 'on',
-				basicPm: text('annexureBasicPm'),
-				hraPm: text('annexureHraPm'),
-				bonusLabel: text('annexureBonusLabel'),
-				bonusPm: text('annexureBonusPm'),
-				ltaPm: text('annexureLtaPm'),
-				shiftLabel: text('annexureShiftLabel'),
-				shiftPm: text('annexureShiftPm'),
-				specialPm: text('annexureSpecialPm'),
-				pfPm: text('annexurePfPm'),
-				gratuityPm: text('annexureGratuityPm'),
-				insurancePm: text('annexureInsurancePm'),
-				foodPm: text('annexureFoodPm'),
-				variablePayEnabled: form.get('annexureVariablePayEnabled') === 'on',
-				variablePayPm: text('annexureVariablePayPm')
-			}
+			compensationAnnexure
 		}
 	};
 }
