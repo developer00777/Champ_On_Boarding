@@ -8,19 +8,46 @@ export interface ItSetupMailSettings {
 	/** Primary recipients of the "enable the system & configure the VPN" mail. */
 	to: string[];
 	cc: string[];
+	/** Subject line template. `{name}` and `{company}` are substituted at send
+	 *  time (see IT_SETUP_SUBJECT_TOKENS); any other text is used verbatim, and
+	 *  a template with no tokens is a perfectly valid fixed subject. */
+	subject: string;
 	/** Sign-off block under "Regards," in the mail body. */
 	signoffName: string;
 	signoffDesignation: string;
 }
+
+/** What HR can put in the subject template, and what each stands for. Shared
+ *  with the settings form so the help text and the substitution cannot drift. */
+export const IT_SETUP_SUBJECT_TOKENS = [
+	{ token: '{name}', means: "the candidate's name" },
+	{ token: '{company}', means: 'the hiring entity' }
+] as const;
 
 export const IT_SETUP_MAIL_KEY = 'it_setup_mail';
 
 export const IT_SETUP_MAIL_DEFAULTS: ItSetupMailSettings = {
 	to: ['ithelpdesk@championsmail.com', 'workforce@championsmail.com', 'learning@championsmail.com'],
 	cc: ['hrd.jst@championsmail.com'],
+	// The subject this mail has always carried, now as an editable template.
+	subject: 'System & VPN setup - {name} ({company})',
 	signoffName: 'Bhavana setty',
 	signoffDesignation: 'HR Coordinator'
 };
+
+/** Substitutes the subject tokens. Also collapses newlines: a subject is a
+ *  single header, and a stray line break pasted into the box would otherwise
+ *  be a header-injection vector. */
+export function renderItSetupSubject(
+	template: string,
+	values: { name: string; company: string }
+): string {
+	return (template || IT_SETUP_MAIL_DEFAULTS.subject)
+		.replace(/\{name\}/g, values.name)
+		.replace(/\{company\}/g, values.company)
+		.replace(/[\r\n]+/g, ' ')
+		.trim();
+}
 
 /** Splits an HR-typed recipient box into addresses. Accepts the shapes people
  *  actually paste out of Outlook — semicolon- or comma-separated, quoted,
@@ -50,6 +77,9 @@ export async function getItSetupMailSettings(): Promise<ItSetupMailSettings> {
 		to: v.to?.length ? v.to : IT_SETUP_MAIL_DEFAULTS.to,
 		// Cc is legitimately clearable — HR may want no one copied.
 		cc: Array.isArray(v.cc) ? v.cc : IT_SETUP_MAIL_DEFAULTS.cc,
+		// A blank subject would send a subjectless mail, so it falls back the same
+		// way the To list does.
+		subject: v.subject?.trim() || IT_SETUP_MAIL_DEFAULTS.subject,
 		signoffName: v.signoffName?.trim() || IT_SETUP_MAIL_DEFAULTS.signoffName,
 		signoffDesignation: v.signoffDesignation?.trim() || IT_SETUP_MAIL_DEFAULTS.signoffDesignation
 	};

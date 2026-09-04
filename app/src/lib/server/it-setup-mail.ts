@@ -12,7 +12,7 @@ import { Candidate, Company, OfferLetter } from './db/schema';
 import { brandBySlug } from '$lib/shared/brands';
 import type { BrandTheme } from '$lib/shared/brands';
 import { sendBrandedMail, escapeHtml, brandLogoUrl } from './mailer';
-import { getItSetupMailSettings } from './settings';
+import { getItSetupMailSettings, renderItSetupSubject } from './settings';
 import { TRACK_MODE } from '$lib/shared/shifts';
 
 /** Column order is IT's, not ours — do not reorder without asking them. */
@@ -149,7 +149,7 @@ export async function buildItSetupMail(candidateId: string): Promise<ItSetupMail
 		// primary recipients of this request, not observers — with HRD on Cc.
 		to: settings.to,
 		cc: settings.cc,
-		subject: `System & VPN setup — ${name} (${companyName})`,
+		subject: renderItSetupSubject(settings.subject, { name, company: companyName }),
 		html: bodyHtml(brand, cells, settings.signoffName, settings.signoffDesignation),
 		text: bodyText(cells, settings.signoffName, settings.signoffDesignation),
 		fields: COLUMNS.map((label, i) => ({ label, value: cells[i] ?? '' })),

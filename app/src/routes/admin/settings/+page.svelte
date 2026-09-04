@@ -68,6 +68,22 @@
 					<small>Leave empty to copy no one.</small>
 				</label>
 				<label class="field">
+					<span>Subject line</span>
+					<input
+						name="subject"
+						value={data.itSetupMail.subject}
+						maxlength="200"
+						placeholder={data.defaults.subject}
+					/>
+					<small>
+						Used for every IT setup mail.
+						{#each data.subjectTokens as t, i}<code>{t.token}</code> becomes {t.means}{i < data.subjectTokens.length - 1
+							? ', '
+							: '. '}{/each}Leave blank to use the default:
+						<code>{data.defaults.subject}</code>
+					</small>
+				</label>
+				<label class="field">
 					<span>Sign-off name</span>
 					<input name="signoffName" value={data.itSetupMail.signoffName} maxlength="80" />
 				</label>

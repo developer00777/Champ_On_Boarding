@@ -5,7 +5,8 @@ import {
 	getItSetupMailSettings,
 	saveItSetupMailSettings,
 	parseRecipients,
-	IT_SETUP_MAIL_DEFAULTS
+	IT_SETUP_MAIL_DEFAULTS,
+	IT_SETUP_SUBJECT_TOKENS
 } from '$lib/server/settings';
 import {
 	EXIT_MAIL_DEFAULTS,
@@ -21,6 +22,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		itSetupMail,
 		defaults: IT_SETUP_MAIL_DEFAULTS,
+		// Passed as data rather than imported by the component: settings.ts is a
+		// $lib/server module and must never reach the client bundle.
+		subjectTokens: IT_SETUP_SUBJECT_TOKENS,
 		exitMail,
 		exitDefaults: EXIT_MAIL_DEFAULTS,
 		isSuperAdmin: locals.admin?.role === 'super_admin'
@@ -41,18 +45,27 @@ export const actions: Actions = {
 		const cc = parseRecipients(String(form.get('cc') ?? ''));
 		const signoffName = String(form.get('signoffName') ?? '').trim().slice(0, 80);
 		const signoffDesignation = String(form.get('signoffDesignation') ?? '').trim().slice(0, 80);
+		// Newlines stripped here as well as at render time: a subject is one
+		// header, and it should not be possible to store a multi-line one.
+		const subject = String(form.get('subject') ?? '')
+			.replace(/[\r\n]+/g, ' ')
+			.trim()
+			.slice(0, 200);
 
 		// An empty To would silently send nowhere, so it is the one field that
 		// cannot be cleared. Cc legitimately can be.
 		if (!to.length)
 			return fail(400, { error: 'Enter at least one valid "To" address.' });
 
-		await saveItSetupMailSettings({ to, cc, signoffName, signoffDesignation }, locals.admin.id);
+		await saveItSetupMailSettings(
+			{ to, cc, subject, signoffName, signoffDesignation },
+			locals.admin.id
+		);
 		await audit({
 			actor: locals.admin.email,
 			action: 'settings_updated',
 			field: 'it_setup_mail',
-			newValue: `to: ${to.join(', ')} | cc: ${cc.join(', ') || '—'} | signoff: ${signoffName}`,
+			newValue: `to: ${to.join(', ')} | cc: ${cc.join(', ') || '—'} | subject: ${subject || '(default)'} | signoff: ${signoffName}`,
 			ip: getClientAddress()
 		});
 		return { saved: true };
