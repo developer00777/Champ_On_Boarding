@@ -357,6 +357,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		onboardingLink,
 		/** Admin-editable option lists (settings → Dropdown options). */
 		officeLocations: fixedLists.officeLocations ?? [],
+		noticePeriods: fixedLists.noticePeriods ?? [],
 		isSuperAdmin: locals.admin?.role === 'super_admin',
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
 	};

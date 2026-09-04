@@ -337,6 +337,24 @@
 		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
 	});
 
+	// Both notice periods come from the same admin-editable list. They go into the
+	// letter verbatim, so a value a letter already carries is kept rather than
+	// snapped to the nearest option — same rule as office location.
+	let noticePeriod = $state(untrack(() => data.offerLetter.noticePeriod ?? ''));
+	let confirmedNoticePeriod = $state(
+		untrack(() => data.offerLetter.confirmedNoticePeriod ?? '')
+	);
+	$effect(() => {
+		noticePeriod = ol.noticePeriod ?? '';
+		confirmedNoticePeriod = ol.confirmedNoticePeriod ?? '';
+	});
+	const noticePeriodOptions = (current: string) => [
+		...data.noticePeriods.map((n: string) => ({ value: n, label: n })),
+		...(current && !data.noticePeriods.includes(current)
+			? [{ value: current, label: `${current} (not in list)` }]
+			: [])
+	];
+
 	// Office location comes from the admin-editable list (settings → Dropdown
 	// options). A letter saved before the list existed — or under an option since
 	// removed — keeps its value as an extra entry, so opening the form never
@@ -1287,12 +1305,14 @@
 				<!-- The internship agreement terminates "without any notice" and never
 				     quotes a notice period, so the field is not shown for interns. -->
 				{#if c.track !== 'intern'}
-					<label class="offer-field">
+					<div class="offer-field">
 						<span>Notice period {#if !isConsultantLetter}<em>(during probation)</em>{/if}</span>
-						<input
+						<GlassSelect
 							name="noticePeriod"
-							value={ol.noticePeriod}
-							placeholder={isConsultantLetter ? 'e.g. 15 days' : 'e.g. 30 days'}
+							ariaLabel="Notice period"
+							bind:value={noticePeriod}
+							placeholder={isConsultantLetter ? '15 days' : '30 days'}
+							options={noticePeriodOptions(noticePeriod)}
 						/>
 						<small>
 							{#if isConsultantLetter}
@@ -1301,18 +1321,20 @@
 								Clause 5, during probation. Defaults to 30 days if left blank.
 							{/if}
 						</small>
-					</label>
+					</div>
 				{/if}
 				{#if c.track !== 'intern' && !isConsultantLetter}
-					<label class="offer-field">
+					<div class="offer-field">
 						<span>Notice period <em>(after confirmation)</em></span>
-						<input
+						<GlassSelect
 							name="confirmedNoticePeriod"
-							value={ol.confirmedNoticePeriod}
-							placeholder="e.g. 60 days"
+							ariaLabel="Notice period after confirmation"
+							bind:value={confirmedNoticePeriod}
+							placeholder="60 days"
+							options={noticePeriodOptions(confirmedNoticePeriod)}
 						/>
 						<small>Clause 5. Defaults to 60 days if left blank.</small>
-					</label>
+					</div>
 				{/if}
 				<label class="offer-field">
 					<span>Acceptance due date</span>

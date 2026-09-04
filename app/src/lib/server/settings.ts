@@ -87,6 +87,15 @@ export const FIXED_LIST_DEFS: FixedListDef[] = [
 		label: 'Office locations',
 		help: 'Offered in the offer letter’s Office location dropdown.',
 		defaults: ['JS Tower', 'BCS', 'Ranch']
+	},
+	{
+		key: 'noticePeriods',
+		label: 'Notice periods',
+		help: 'Offered in both of the offer letter’s notice period dropdowns. Written into the letter verbatim, so phrase them as they should read in a clause.',
+		// 15 days is here because the consultant agreement has always defaulted to
+		// it; dropping it would leave no way to set a consultant's notice without
+		// editing this list first.
+		defaults: ['15 days', '30 days', '60 days', '90 days']
 	}
 ];
 
