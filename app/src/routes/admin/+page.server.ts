@@ -28,6 +28,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		inProgress,
 		approved,
 		completed,
+		offerSent,
+		offerPendingAgg,
 		recentDocs,
 		companies,
 		pendingOfferDocs,
@@ -38,6 +40,27 @@ export const load: PageServerLoad = async ({ locals }) => {
 		Candidate.countDocuments({ status: { $in: IN_PROGRESS } }),
 		Candidate.countDocuments({ status: { $in: DONE } }),
 		Candidate.countDocuments({ status: { $in: COMPLETE } }),
+		// Offer sent — counted off the letter, not the candidate's status, because
+		// "sent" is a fact about the letter and a candidate keeps moving through
+		// their own stages afterwards. Counted on OfferLetter and then reduced to
+		// distinct candidates, so a record that somehow has two rows counts once.
+		OfferLetter.distinct('candidateId', { status: 'sent' }).then((ids) => ids.length),
+		// Offer yet to be released — the same set the "Offers to send" list below
+		// shows, minus its display limit. Approved, but with no letter row at all
+		// or one still in draft.
+		Candidate.aggregate([
+			{ $match: { status: { $in: DONE } } },
+			{
+				$lookup: {
+					from: 'offerletters',
+					localField: '_id',
+					foreignField: 'candidateId',
+					as: 'offerLetter'
+				}
+			},
+			{ $match: { $or: [{ offerLetter: { $size: 0 } }, { 'offerLetter.status': 'draft' }] } },
+			{ $count: 'n' }
+		]),
 		Candidate.find().populate('companyId').sort({ createdAt: -1 }).limit(5).lean(),
 		Company.find({ active: true }).sort({ name: 1 }).lean(),
 		// Candidates HR has already approved but who don't yet have a sent offer
@@ -103,7 +126,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 	);
 
 	return {
-		stats: { total, awaitingReview, inProgress, approved, completed },
+		stats: {
+			total,
+			awaitingReview,
+			inProgress,
+			approved,
+			completed,
+			offerSent,
+			offerPending: offerPendingAgg[0]?.n ?? 0
+		},
 		total,
 		recent: recentDocs.map((c) => {
 			const company = c.companyId as unknown as { name: string };

@@ -32,6 +32,15 @@
 		{ label: 'In progress', value: data.stats.inProgress, color: 'var(--ae-azure)' },
 		{ label: 'Approved', value: data.stats.approved, color: 'var(--ae-verdant)' },
 		{ label: 'Completed', value: data.stats.completed, color: 'var(--ae-verdant)' },
+		// Both read off the offer letter rather than the candidate's own status:
+		// "sent" is a fact about the letter, and a candidate carries on through
+		// their stages after it goes out.
+		{ label: 'Offer sent', value: data.stats.offerSent, color: 'var(--ae-azure)' },
+		{
+			label: 'Offer yet to be released',
+			value: data.stats.offerPending,
+			color: 'var(--ae-ember-glow)'
+		},
 		{ label: 'Joining today', value: data.joiningToday.length, color: 'var(--ae-verdant)' }
 	]);
 
