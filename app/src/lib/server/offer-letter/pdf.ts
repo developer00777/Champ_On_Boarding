@@ -1064,8 +1064,12 @@ function renderCompensationAnnexure(
 		['Total Cash Compensation (Before PF).', formatTableAmount(totals.cashTotalPm), formatTableAmount(totals.cashTotalPa)],
 		{ bold: true, shade: true }
 	);
-	if (totals.variablePay) {
-		t.row([totals.variablePay.label, formatTableAmount(totals.variablePay.pm), formatTableAmount(totals.variablePay.pa)]);
+	// One row per Variable Pay component — the fixed one plus anything HR added —
+	// then the with-VP subtotal beneath them all.
+	if (totals.variablePay.length) {
+		for (const line of totals.variablePay) {
+			t.row([line.label, formatTableAmount(line.pm), formatTableAmount(line.pa)]);
+		}
 		t.row(
 			[
 				'Total Cash Compensation with VP',

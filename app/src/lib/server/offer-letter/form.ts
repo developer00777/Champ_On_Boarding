@@ -6,7 +6,7 @@
 // parsed the form separately, a preview could show something the letter that
 // eventually goes out does not say — which is the one thing a preview must
 // never do.
-import { computeAnnexureTotals, type OfferLetterInput } from './fields';
+import { computeAnnexureTotals, type AnnexureExtra, type OfferLetterInput } from './fields';
 import { isoToDDMMYYYY } from '$lib/shared/dates';
 
 const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
@@ -15,6 +15,19 @@ const SIGNATURE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 export type OfferLetterFormResult =
 	| { ok: true; input: OfferLetterInput }
 	| { ok: false; error: string };
+
+/** The recruiter-added annexure rows. Posted as repeated fields rather than
+ *  indexed names, so getAll pairs label to amount by position and removing a
+ *  row in the middle needs no renumbering. A row with no label is dropped: it
+ *  is a half-typed addition, not a component. */
+function extraRows(form: FormData, name: string): AnnexureExtra[] {
+	const labels = form.getAll(`${name}Label`).map((v) => String(v ?? '').trim());
+	const amounts = form.getAll(`${name}Pm`).map((v) => String(v ?? '').trim());
+	return labels
+		.map((label, i) => ({ label, pm: amounts[i] ?? '' }))
+		.filter((r) => r.label)
+		.slice(0, 30);
+}
 
 export async function offerLetterInputFromForm(form: FormData): Promise<OfferLetterFormResult> {
 	// Signature image upload — converted to a base64 data-URI. With no new file,
@@ -49,7 +62,10 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 		insurancePm: text('annexureInsurancePm'),
 		foodPm: text('annexureFoodPm'),
 		variablePayEnabled: form.get('annexureVariablePayEnabled') === 'on',
-		variablePayPm: text('annexureVariablePayPm')
+		variablePayPm: text('annexureVariablePayPm'),
+		extraCash: extraRows(form, 'extraCash'),
+		extraVariable: extraRows(form, 'extraVariable'),
+		extraNonCash: extraRows(form, 'extraNonCash')
 	};
 
 	// With the annexure on, its Total Yearly Cost to Company IS the CTC — the two

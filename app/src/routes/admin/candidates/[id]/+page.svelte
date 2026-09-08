@@ -9,6 +9,7 @@
 		type Track
 	} from '$lib/shared/matrix';
 	import { toIsoDate } from '$lib/shared/dates';
+	import { computeAnnexureTotals } from '$lib/shared/annexure';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import {
 		SHIFT_TIMINGS,
@@ -110,20 +111,16 @@
 	function money(v: number): string {
 		return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 	}
-	const annexureCashPm = $derived(
-		n(annexure.basicPm) + n(annexure.hraPm) + n(annexure.bonusPm) + n(annexure.ltaPm) + n(annexure.shiftPm) + n(annexure.specialPm)
-	);
-	const annexureNonCashPm = $derived(
-		n(annexure.pfPm) + n(annexure.gratuityPm) + n(annexure.insurancePm) + n(annexure.foodPm)
-	);
-	// Variable Pay is excluded from annexureCashPm on purpose — "Total Cash
-	// Compensation (Before PF)" stays VP-exclusive, and "...with VP" is this
-	// extra row layered on top, not a restatement of the same subtotal.
-	const annexureCashWithVpPm = $derived(annexureCashPm + n(annexure.variablePayPm));
-	const annexureTotalPm = $derived(
-		annexureCashPm + annexureNonCashPm + (annexure.variablePayEnabled ? n(annexure.variablePayPm) : 0)
-	);
-	const annexureTotalPa = $derived(annexureTotalPm * 12);
+	// Every subtotal comes from the same computeAnnexureTotals the PDF renderer
+	// calls. This used to be four hand-written sums here, which is how the live
+	// preview and page 4 could quietly disagree — and with recruiter-added rows
+	// in three sections there is far too much arithmetic to keep in step twice.
+	const annexureTotals = $derived(computeAnnexureTotals(annexure));
+	const annexureCashPm = $derived(annexureTotals.cashTotalPm);
+	const annexureNonCashPm = $derived(annexureTotals.nonCashTotalPm);
+	const annexureCashWithVpPm = $derived(annexureTotals.cashWithVpTotalPm ?? annexureTotals.cashTotalPm);
+	const annexureTotalPm = $derived(annexureTotals.grandTotalPm);
+	const annexureTotalPa = $derived(annexureTotals.grandTotalPa);
 
 	const employmentTypeOptions = [
 		{ value: '', label: 'Select…' },
@@ -1442,6 +1439,43 @@
 										<input name="annexureSpecialPm" type="text" inputmode="decimal" bind:value={annexure.specialPm} placeholder="0.00" />
 										<span class="annexure-pa">{money(n(annexure.specialPm) * 12)}</span>
 									</div>
+									<!-- Recruiter-added rows for this section. Repeated field names
+									     rather than indexed ones, so removing a row in the middle needs
+									     no renumbering (see extraRows in offer-letter/form.ts). -->
+									{#each annexure.extraCash as row, i}
+										<div class="annexure-row annexure-extra">
+											<input
+												name="extraCashLabel"
+												bind:value={row.label}
+												placeholder="e.g. Retention Bonus"
+												maxlength="60"
+											/>
+											<input
+												name="extraCashPm"
+												type="text"
+												inputmode="decimal"
+												bind:value={row.pm}
+												placeholder="0.00"
+											/>
+											<span class="annexure-pa extra-pa">
+												{money(n(row.pm) * 12)}
+												<button
+													type="button"
+													class="row-del"
+													aria-label="Remove this component"
+													onclick={() => (annexure.extraCash = annexure.extraCash.filter((_, j) => j !== i))}
+												>×</button>
+											</span>
+										</div>
+									{/each}
+									<div class="annexure-row annexure-add">
+										<button
+											type="button"
+											class="row-add"
+											onclick={() => (annexure.extraCash = [...annexure.extraCash, { label: '', pm: '' }])}
+										>+ Add component</button>
+										<span></span><span></span>
+									</div>
 									<div class="annexure-row annexure-subtotal">
 										<span>Total Cash Compensation (Before PF)</span>
 										<span class="annexure-pa">{money(annexureCashPm)}</span>
@@ -1464,6 +1498,43 @@
 										<span class="annexure-pa">{annexure.variablePayEnabled ? money(n(annexure.variablePayPm) * 12) : '—'}</span>
 									</div>
 									{#if annexure.variablePayEnabled}
+									<!-- Recruiter-added rows for this section. Repeated field names
+									     rather than indexed ones, so removing a row in the middle needs
+									     no renumbering (see extraRows in offer-letter/form.ts). -->
+									{#each annexure.extraVariable as row, i}
+										<div class="annexure-row annexure-extra">
+											<input
+												name="extraVariableLabel"
+												bind:value={row.label}
+												placeholder="e.g. Quarterly Incentive"
+												maxlength="60"
+											/>
+											<input
+												name="extraVariablePm"
+												type="text"
+												inputmode="decimal"
+												bind:value={row.pm}
+												placeholder="0.00"
+											/>
+											<span class="annexure-pa extra-pa">
+												{money(n(row.pm) * 12)}
+												<button
+													type="button"
+													class="row-del"
+													aria-label="Remove this component"
+													onclick={() => (annexure.extraVariable = annexure.extraVariable.filter((_, j) => j !== i))}
+												>×</button>
+											</span>
+										</div>
+									{/each}
+									<div class="annexure-row annexure-add">
+										<button
+											type="button"
+											class="row-add"
+											onclick={() => (annexure.extraVariable = [...annexure.extraVariable, { label: '', pm: '' }])}
+										>+ Add component</button>
+										<span></span><span></span>
+									</div>
 										<div class="annexure-row annexure-subtotal">
 											<span>Total Cash Compensation with VP</span>
 											<span class="annexure-pa">{money(annexureCashWithVpPm)}</span>
@@ -1493,6 +1564,43 @@
 										<span>Food, Recreation &amp; Longevity Membership</span>
 										<input name="annexureFoodPm" type="text" inputmode="decimal" bind:value={annexure.foodPm} placeholder="0.00" />
 										<span class="annexure-pa">{money(n(annexure.foodPm) * 12)}</span>
+									</div>
+									<!-- Recruiter-added rows for this section. Repeated field names
+									     rather than indexed ones, so removing a row in the middle needs
+									     no renumbering (see extraRows in offer-letter/form.ts). -->
+									{#each annexure.extraNonCash as row, i}
+										<div class="annexure-row annexure-extra">
+											<input
+												name="extraNonCashLabel"
+												bind:value={row.label}
+												placeholder="e.g. Car Allowance"
+												maxlength="60"
+											/>
+											<input
+												name="extraNonCashPm"
+												type="text"
+												inputmode="decimal"
+												bind:value={row.pm}
+												placeholder="0.00"
+											/>
+											<span class="annexure-pa extra-pa">
+												{money(n(row.pm) * 12)}
+												<button
+													type="button"
+													class="row-del"
+													aria-label="Remove this component"
+													onclick={() => (annexure.extraNonCash = annexure.extraNonCash.filter((_, j) => j !== i))}
+												>×</button>
+											</span>
+										</div>
+									{/each}
+									<div class="annexure-row annexure-add">
+										<button
+											type="button"
+											class="row-add"
+											onclick={() => (annexure.extraNonCash = [...annexure.extraNonCash, { label: '', pm: '' }])}
+										>+ Add component</button>
+										<span></span><span></span>
 									</div>
 									<div class="annexure-row annexure-subtotal">
 										<span>Total Non-Cash Components</span>
@@ -2299,6 +2407,47 @@
 		font-weight: 700;
 		background: rgba(255, 255, 255, 0.03);
 	}
+	/* Recruiter-added rows: a name field where a fixed row has a printed label,
+	   and a small remove control tucked against its P.A. figure. */
+	.annexure-extra input:first-child {
+		font-weight: 600;
+	}
+	.extra-pa {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.row-del {
+		border: 0;
+		background: none;
+		color: var(--ae-text-2, #667085);
+		font-size: 15px;
+		line-height: 1;
+		padding: 0 2px;
+		cursor: pointer;
+	}
+	.row-del:hover {
+		color: #b42318;
+	}
+	.annexure-add {
+		padding-top: 2px;
+		padding-bottom: 2px;
+	}
+	.row-add {
+		border: 1px dashed var(--ae-line-strong, #ccc);
+		background: none;
+		color: inherit;
+		border-radius: 6px;
+		padding: 5px 12px;
+		font: inherit;
+		font-size: 11.5px;
+		cursor: pointer;
+	}
+	.row-add:hover {
+		border-style: solid;
+	}
+
 	.annexure-subtotal {
 		font-weight: 700;
 		background: rgba(255, 255, 255, 0.05);

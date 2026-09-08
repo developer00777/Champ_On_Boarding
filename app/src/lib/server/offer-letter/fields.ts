@@ -2,6 +2,27 @@
 // offer letter template expects. Pure mapping — no persistence, no I/O.
 import type { CandidateDoc, OfferLetterDoc } from '$lib/server/db/schema';
 import { COMPENSATION_FIELD_BY_TRACK, TRACKS, type Track } from '$lib/shared/matrix';
+// The annexure's shape and arithmetic live in shared/ so the admin form's live
+// preview computes them the same way the PDF does. Re-exported here because
+// this module has always been the offer letter's front door.
+import {
+	EMPTY_COMPENSATION_ANNEXURE,
+	DEFAULT_BONUS_LABEL,
+	DEFAULT_SHIFT_LABEL,
+	type AnnexureExtra,
+	type CompensationAnnexure
+} from '$lib/shared/annexure';
+
+export {
+	computeAnnexureTotals,
+	EMPTY_COMPENSATION_ANNEXURE,
+	DEFAULT_BONUS_LABEL,
+	DEFAULT_SHIFT_LABEL,
+	type AnnexureExtra,
+	type AnnexureLine,
+	type AnnexureTotals,
+	type CompensationAnnexure
+} from '$lib/shared/annexure';
 
 export const EMPLOYMENT_TYPE_LABELS = {
 	full_time: 'Full-time',
@@ -67,138 +88,6 @@ export interface OfferLetterInput {
 	paymentClause: string;
 	/** Offer-of-appointment tracks only: the page-4 compensation annexure. */
 	compensationAnnexure: CompensationAnnexure;
-}
-
-/** One row of the annexure is "P.M. figure, P.A. is derived" except the two
- *  rows whose component *name* also varies per offer (bonus scheme / shift
- *  pattern differ by role), so those carry an editable label alongside the
- *  editable amount. Every other row's label is fixed boilerplate matching the
- *  signed reference and is not stored. */
-export interface CompensationAnnexure {
-	enabled: boolean;
-	basicPm: string;
-	hraPm: string;
-	bonusLabel: string;
-	bonusPm: string;
-	ltaPm: string;
-	shiftLabel: string;
-	shiftPm: string;
-	specialPm: string;
-	pfPm: string;
-	gratuityPm: string;
-	insurancePm: string;
-	foodPm: string;
-	/** Variable Pay is not every offer's structure, so it carries its own
-	 *  enable flag independent of the annexure's overall `enabled` — HR adds
-	 *  or removes it per offer without affecting the rest of the table. When
-	 *  on, it renders both as its own cash-component row and as an extra
-	 *  "Total Cash Compensation with VP" row (Total Cash Before PF + VP)
-	 *  directly below the existing before-PF subtotal. */
-	variablePayEnabled: boolean;
-	variablePayPm: string;
-}
-
-export const DEFAULT_BONUS_LABEL = 'Performance Bonus in Advance';
-export const DEFAULT_SHIFT_LABEL = 'Shift Allowances';
-
-export const EMPTY_COMPENSATION_ANNEXURE: CompensationAnnexure = {
-	enabled: false,
-	basicPm: '',
-	hraPm: '',
-	bonusLabel: DEFAULT_BONUS_LABEL,
-	bonusPm: '',
-	ltaPm: '',
-	shiftLabel: DEFAULT_SHIFT_LABEL,
-	shiftPm: '',
-	specialPm: '',
-	pfPm: '',
-	gratuityPm: '',
-	insurancePm: '',
-	foodPm: '',
-	variablePayEnabled: false,
-	variablePayPm: ''
-};
-
-/** A single computed annexure line: label, P.M. as typed, P.A. derived as
- *  P.M. x 12. Amounts that don't parse as a number are treated as 0 so a
- *  half-filled draft still renders a table instead of throwing. */
-export interface AnnexureLine {
-	label: string;
-	pm: number;
-	pa: number;
-}
-
-function toNumber(raw: string): number {
-	const n = parseFloat((raw ?? '').replace(/[^0-9.]/g, ''));
-	return isNaN(n) ? 0 : n;
-}
-
-export interface AnnexureTotals {
-	cash: AnnexureLine[];
-	cashTotalPm: number;
-	cashTotalPa: number;
-	/** Only present when variablePayEnabled — the row itself, kept separate
-	 *  from `cash` so "Total Cash Compensation (Before PF)" stays VP-exclusive
-	 *  as its name promises, and "...with VP" is a genuinely additional row
-	 *  rather than restating the same subtotal. */
-	variablePay: AnnexureLine | null;
-	/** cashTotalPm/Pa + variablePay — null when Variable Pay is off. */
-	cashWithVpTotalPm: number | null;
-	cashWithVpTotalPa: number | null;
-	nonCash: AnnexureLine[];
-	nonCashTotalPm: number;
-	nonCashTotalPa: number;
-	grandTotalPm: number;
-	grandTotalPa: number;
-}
-
-/** Derives every P.A. figure and both subtotal/grand-total rows from the P.M.
- *  values HR entered — pure function so the admin form (live preview) and the
- *  PDF renderer compute from one source of truth and can never disagree. */
-export function computeAnnexureTotals(a: CompensationAnnexure): AnnexureTotals {
-	const line = (label: string, pmRaw: string): AnnexureLine => {
-		const pm = toNumber(pmRaw);
-		return { label, pm, pa: pm * 12 };
-	};
-
-	const cash: AnnexureLine[] = [
-		line('Basic Salary', a.basicPm),
-		line('House Rent Allowance', a.hraPm),
-		line(a.bonusLabel?.trim() || DEFAULT_BONUS_LABEL, a.bonusPm),
-		line('LTA', a.ltaPm),
-		line(a.shiftLabel?.trim() || DEFAULT_SHIFT_LABEL, a.shiftPm),
-		line('Special Allowances', a.specialPm)
-	];
-	const nonCash: AnnexureLine[] = [
-		line('PF- Employer Contribution', a.pfPm),
-		line('Gratuity', a.gratuityPm),
-		line('Insurance', a.insurancePm),
-		line('Food, Recreation & Longevity Membership', a.foodPm)
-	];
-
-	const sum = (lines: AnnexureLine[], key: 'pm' | 'pa') => lines.reduce((s, l) => s + l[key], 0);
-	const cashTotalPm = sum(cash, 'pm');
-	const cashTotalPa = sum(cash, 'pa');
-	const nonCashTotalPm = sum(nonCash, 'pm');
-	const nonCashTotalPa = sum(nonCash, 'pa');
-
-	const variablePay = a.variablePayEnabled ? line('Variable Pay', a.variablePayPm) : null;
-	const cashWithVpTotalPm = variablePay ? cashTotalPm + variablePay.pm : null;
-	const cashWithVpTotalPa = variablePay ? cashTotalPa + variablePay.pa : null;
-
-	return {
-		cash,
-		cashTotalPm,
-		cashTotalPa,
-		variablePay,
-		cashWithVpTotalPm,
-		cashWithVpTotalPa,
-		nonCash,
-		nonCashTotalPm,
-		nonCashTotalPa,
-		grandTotalPm: cashTotalPm + nonCashTotalPm + (variablePay?.pm ?? 0),
-		grandTotalPa: cashTotalPa + nonCashTotalPa + (variablePay?.pa ?? 0)
-	};
 }
 
 /** The four criteria the signed internship agreements carry. Used to pre-fill
@@ -288,6 +177,16 @@ export function missingOfferLetterFields(input: OfferLetterInput, track: Track):
 		);
 }
 
+/** Mongoose gives back subdocuments, not plain objects, so each extra row is
+ *  copied down to the two fields the annexure actually uses. */
+function extras(raw: unknown): AnnexureExtra[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.map((r) => {
+		const e = r as { label?: string | null; pm?: string | null };
+		return { label: e.label ?? '', pm: e.pm ?? '' };
+	});
+}
+
 export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLetterInput {
 	return {
 		jobTitle: draft?.jobTitle ?? '',
@@ -326,7 +225,10 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 			insurancePm: draft?.compensationAnnexure?.insurancePm ?? '',
 			foodPm: draft?.compensationAnnexure?.foodPm ?? '',
 			variablePayEnabled: draft?.compensationAnnexure?.variablePayEnabled ?? false,
-			variablePayPm: draft?.compensationAnnexure?.variablePayPm ?? ''
+			variablePayPm: draft?.compensationAnnexure?.variablePayPm ?? '',
+			extraCash: extras(draft?.compensationAnnexure?.extraCash),
+			extraVariable: extras(draft?.compensationAnnexure?.extraVariable),
+			extraNonCash: extras(draft?.compensationAnnexure?.extraNonCash)
 		}
 	};
 }

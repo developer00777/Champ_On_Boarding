@@ -337,7 +337,13 @@ const offerLetterSchema = new Schema(
 			// Variable Pay carries its own enable flag, independent of the
 			// annexure-wide `enabled` above — HR adds/removes it per offer.
 			variablePayEnabled: { type: Boolean, default: false },
-			variablePayPm: { type: String, default: null }
+			variablePayPm: { type: String, default: null },
+			/** Rows HR adds beyond the fixed ones, per section — see
+			 *  CompensationAnnexure in shared/annexure.ts. Stored as
+			 *  label+amount pairs so a new pay component needs no migration. */
+			extraCash: { type: [{ label: String, pm: String }], default: [] },
+			extraVariable: { type: [{ label: String, pm: String }], default: [] },
+			extraNonCash: { type: [{ label: String, pm: String }], default: [] }
 		},
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
