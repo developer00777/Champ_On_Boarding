@@ -34,6 +34,7 @@ import {
 } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { getFixedLists } from '$lib/server/settings';
+import { sendEmployeeCodeMail } from '$lib/server/employee-code-mail';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken, ensureLiveLinkToken } from '$lib/server/tokens';
@@ -278,6 +279,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			hiringDecisionAt: candidate.hiringDecisionAt?.toISOString() ?? null,
 			shiftTiming: candidate.shiftTiming ?? null,
 			teamName: candidate.teamName ?? null,
+			itRequestId: candidate.itRequestId ?? null,
+			employeeCodeMailSentAt: candidate.employeeCodeMailSentAt?.toISOString() ?? null,
 			payrollEntity: candidate.payrollEntity ?? null,
 			workLocationMode: candidate.workLocationMode ?? null,
 			joiningMode: candidate.joiningMode ?? null,
@@ -524,7 +527,8 @@ export const actions: Actions = {
 			teamName: clean('teamName'),
 			payrollEntity: clean('payrollEntity'),
 			workLocationMode: clean('workLocationMode'),
-			joiningMode: clean('joiningMode')
+			joiningMode: clean('joiningMode'),
+			itRequestId: clean('itRequestId')
 		};
 		await Candidate.findByIdAndUpdate(params.id, patch);
 
@@ -595,6 +599,32 @@ export const actions: Actions = {
 
 	// Manual (re)send of the IT/VPN setup mail — the usual case is HR filling in
 	// shift timing or the offer letter after having already accepted.
+	/** The new-joinee employee code mail to the IT helpdesk. Manual only — it
+	 *  announces a code, so it should never fire before HR has looked at the
+	 *  code it is announcing. */
+	sendEmployeeCodeMail: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (!row.candidate.employeeId)
+			return fail(409, { message: 'Assign the employee code before announcing it.' });
+		try {
+			const { to, cc } = await sendEmployeeCodeMail(params.id);
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'employee_code_mail_sent',
+				newValue: `manual -> ${[...to, ...cc].join(', ')}`,
+				ip: getClientAddress()
+			});
+			return { employeeCodeMailSent: true };
+		} catch (e) {
+			console.error(`[employee-code-mail] send failed for candidate=${params.id}:`, e);
+			return fail(502, { message: 'Could not send the employee code mail. Please try again.' });
+		}
+	},
+
 	sendItSetupMail: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;

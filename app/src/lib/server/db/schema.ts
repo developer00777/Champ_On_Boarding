@@ -110,6 +110,10 @@ const candidateSchema = new Schema(
 		// no derivable source at all, so they are HR's entry or nothing.
 		teamName: { type: String, default: null },
 		payrollEntity: { type: String, default: null },
+		/** The IT helpdesk ticket the setup mail opened. The employee-code mail
+		 *  replies into that thread, so its subject carries this when set; blank
+		 *  simply drops the "[Request ID :## ##] :" prefix. */
+		itRequestId: { type: String, default: null },
 		workLocationMode: { type: String, default: null },
 		joiningMode: { type: String, default: null },
 		ocrSuggestions: { type: Map, of: String, default: {} },
@@ -164,7 +168,10 @@ const candidateSchema = new Schema(
 		// candidate. The mail is sent manually from the candidate page, so this is
 		// a record of when the desk was last told — it drives the button's
 		// Send/Resend label rather than gating anything.
-		itSetupMailSentAt: { type: Date, default: null }
+		itSetupMailSentAt: { type: Date, default: null },
+		/** Same idea for the employee-code mail: a record of when the helpdesk
+		 *  was last told, driving the button's Send/Resend label. */
+		employeeCodeMailSentAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
 );

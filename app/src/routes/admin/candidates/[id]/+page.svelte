@@ -320,7 +320,8 @@
 		teamName: form?.itMailFieldsSaved ? (form.teamName ?? '') : (c.teamName ?? ''),
 		payrollEntity: form?.itMailFieldsSaved ? (form.payrollEntity ?? '') : (c.payrollEntity ?? ''),
 		workLocationMode: form?.itMailFieldsSaved ? (form.workLocationMode ?? '') : (c.workLocationMode ?? ''),
-		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? '')
+		joiningMode: form?.itMailFieldsSaved ? (form.joiningMode ?? '') : (c.joiningMode ?? ''),
+		itRequestId: form?.itMailFieldsSaved ? (form.itRequestId ?? '') : (c.itRequestId ?? '')
 	});
 
 	// Both notice periods come from the same admin-editable list. They go into the
@@ -424,21 +425,47 @@
 		fields: { label: string; value: string }[];
 		missing: string[];
 	};
+	/** The two mails that go out through the confirm modal. Both are built by
+	 *  their own server-side builder and rendered by the same modal below —
+	 *  a second near-identical modal would only drift from this one. */
+	const MAIL_KINDS = {
+		it: {
+			title: 'IT setup mail preview',
+			endpoint: 'it-setup-preview',
+			action: '?/sendItSetupMail',
+			send: 'Send to IT',
+			resend: 'Resend to IT'
+		},
+		code: {
+			title: 'Employee code mail preview',
+			endpoint: 'employee-code-preview',
+			action: '?/sendEmployeeCodeMail',
+			send: 'Send to helpdesk',
+			resend: 'Resend to helpdesk'
+		}
+	} as const;
+	type MailKind = keyof typeof MAIL_KINDS;
+
+	let previewKind: MailKind = $state('it');
 	let itPreview: ItMailPreview | null = $state(null);
 	let itPreviewLoading = $state(false);
 	let itPreviewError: string | null = $state(null);
 	let itSending = $state(false);
+	const previewSentAt = $derived(
+		previewKind === 'it' ? c.itSetupMailSentAt : c.employeeCodeMailSentAt
+	);
 	/** The hidden form the modal's Send button submits — keeps the real
 	 *  `use:enhance` POST (and its progressive-enhancement fallback) rather
 	 *  than hand-rolling a fetch that would bypass the action's audit log. */
-	let itSendForm: HTMLFormElement | null = $state(null);
+	let sendForms: Record<MailKind, HTMLFormElement | null> = $state({ it: null, code: null });
 
-	async function openItPreview() {
+	async function openItPreview(kind: MailKind = 'it') {
+		previewKind = kind;
 		itPreviewLoading = true;
 		itPreviewError = null;
 		itPreview = null;
 		try {
-			const res = await fetch(`/admin/candidates/${c.id}/it-setup-preview`);
+			const res = await fetch(`/admin/candidates/${c.id}/${MAIL_KINDS[kind].endpoint}`);
 			if (!res.ok) throw new Error(await res.text());
 			itPreview = await res.json();
 		} catch {
@@ -458,7 +485,7 @@
 	// Close the modal once the send round-trips, so the "sent ✓" chip on the
 	// page is what HR sees next rather than a stale preview.
 	$effect(() => {
-		if (form?.itSetupMailSent) {
+		if (form?.itSetupMailSent || form?.employeeCodeMailSent) {
 			itPreview = null;
 			itSending = false;
 		}
@@ -492,7 +519,7 @@
 			<div class="it-modal-head">
 				<div>
 					<div class="it-modal-eyebrow">Before it goes out</div>
-					<h2 id="it-preview-title">IT setup mail preview</h2>
+					<h2 id="it-preview-title">{MAIL_KINDS[previewKind].title}</h2>
 				</div>
 				<button class="it-modal-x" type="button" onclick={closeItPreview} aria-label="Close preview">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -512,8 +539,8 @@
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0Z"/></svg>
 					<span>
 						{itPreview.missing.length === 1 ? 'This column is blank' : 'These columns are blank'}:
-						<strong>{itPreview.missing.join(', ')}</strong>. IT will have to chase it — fill it in above and
-						reopen this preview, or send as-is.
+						<strong>{itPreview.missing.join(', ')}</strong>. The desk will have to chase it — fill it in
+						above and reopen this preview, or send as-is.
 					</span>
 				</div>
 			{/if}
@@ -528,9 +555,13 @@
 					class="btn small teal"
 					type="button"
 					disabled={itSending || !data.isApprover}
-					onclick={() => itSendForm?.requestSubmit()}
+					onclick={() => sendForms[previewKind]?.requestSubmit()}
 				>
-					{itSending ? 'Sending…' : c.itSetupMailSentAt ? 'Resend to IT' : 'Send to IT'}
+					{itSending
+						? 'Sending…'
+						: previewSentAt
+							? MAIL_KINDS[previewKind].resend
+							: MAIL_KINDS[previewKind].send}
 				</button>
 			</div>
 		</div>
@@ -894,6 +925,19 @@
 							placeholder={TRACK_MODE[c.track] ?? 'Select…'}
 							options={modeOptions}
 						/>
+						<label class="it-label" for="it-reqid">IT helpdesk request ID</label>
+						<input
+							id="it-reqid"
+							name="itRequestId"
+							value={itFields.itRequestId}
+							placeholder="e.g. RE-22464"
+							class="emp-input"
+							maxlength="60"
+						/>
+						<p class="it-link-note">
+							From the helpdesk's reply to the IT setup mail. The employee code mail replies into
+							that thread; leave blank and it goes out without the request-ID prefix.
+						</p>
 						<button class="btn small teal" style="width:100%;margin-top:9px">Save IT mail details</button>
 					</fieldset>
 				</form>
@@ -916,14 +960,14 @@
 							itSending = false;
 						};
 					}}
-					bind:this={itSendForm}
+					bind:this={sendForms.it}
 				>
 					<fieldset class="rbac" disabled={!data.isApprover}>
 						<button
 							class="btn small ghost"
 							style="width:100%"
 							type="button"
-							onclick={openItPreview}
+							onclick={() => openItPreview('it')}
 							disabled={itPreviewLoading}
 						>
 							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
@@ -941,6 +985,51 @@
 				{#if form?.itSetupMailSent}
 					<p class="saved-chip" style="margin-top:6px">IT setup mail sent ✓</p>
 				{/if}
+				<!-- The employee code mail. Same confirm-then-send flow, its own
+				     builder and recipients. Gated on the code existing: a mail
+				     announcing a code that has not been assigned is worse than none. -->
+				<form
+					method="POST"
+					action="?/sendEmployeeCodeMail"
+					use:enhance={() => {
+						itSending = true;
+						return async ({ update }) => {
+							await update();
+							itSending = false;
+						};
+					}}
+					bind:this={sendForms.code}
+					style="margin-top:9px"
+				>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<button
+							class="btn small ghost"
+							style="width:100%"
+							type="button"
+							onclick={() => openItPreview('code')}
+							disabled={itPreviewLoading || !c.employeeId}
+							title={c.employeeId ? '' : 'Assign the employee code first'}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+							{#if itPreviewLoading}
+								Building preview…
+							{:else}
+								{c.employeeCodeMailSentAt
+									? 'Review & resend employee code'
+									: 'Review & send employee code'}
+							{/if}
+						</button>
+					</fieldset>
+				</form>
+				{#if !c.employeeId}
+					<p class="emp-hint" style="margin-top:4px">
+						Assign the employee code above to enable this.
+					</p>
+				{/if}
+				{#if form?.employeeCodeMailSent}
+					<p class="saved-chip" style="margin-top:6px">Employee code mail sent ✓</p>
+				{/if}
+
 				<div class="emp-hint">
 					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
 					{#if c.itSetupMailSentAt}
@@ -1953,9 +2042,12 @@
 		position: fixed;
 		inset: 0;
 		z-index: 200;
-		background: rgba(8, 9, 14, 0.55);
-		backdrop-filter: blur(4px);
-		-webkit-backdrop-filter: blur(4px);
+		/* Deeper and blurrier than a plain scrim: the dialog opens over the
+		   densest part of the page (document list, extracted details), and at
+		   0.55/4px that text stayed legible straight through the panel. */
+		background: rgba(8, 9, 14, 0.72);
+		backdrop-filter: blur(10px) saturate(120%);
+		-webkit-backdrop-filter: blur(10px) saturate(120%);
 		display: grid;
 		place-items: center;
 		padding: 20px;
@@ -1968,7 +2060,12 @@
 		max-height: min(88vh, 900px);
 		display: flex;
 		flex-direction: column;
-		background: var(--ae-card-bg);
+		/* The card wash is 4-10% white — it works for a card sitting on the page
+		   background, but a dialog floats over content and that much
+		   transparency let the page read through it. The wash keeps the frosted
+		   look; the base underneath makes it translucent rather than
+		   see-through. */
+		background: var(--ae-card-bg), var(--ae-modal-base, rgba(13, 16, 26, 0.94));
 		border: 1px solid var(--ae-card-border);
 		border-radius: var(--ae-card-radius);
 		box-shadow: var(--ae-card-shadow);
@@ -1976,6 +2073,10 @@
 		-webkit-backdrop-filter: var(--ae-card-blur);
 		padding: 22px;
 		text-align: left;
+	}
+	/* Light theme needs a light base, or the panel goes near-black. */
+	:global(.aegis[data-theme='light']) .it-modal {
+		--ae-modal-base: rgba(252, 253, 255, 0.95);
 	}
 	.it-modal-head {
 		display: flex;
@@ -2088,6 +2189,19 @@
 		.it-meta-k {
 			width: auto;
 		}
+	}
+
+	/* These labels are long ("Review & resend employee code mail") and the card
+	   column is narrow, so the text has to be allowed to wrap and the button to
+	   grow with it — at a fixed height it spilled past the border. */
+	.it-mail button,
+	.it-mail form button {
+		white-space: normal;
+		height: auto;
+		min-height: 30px;
+		line-height: 1.35;
+		padding-block: 7px;
+		text-align: center;
 	}
 
 	.it-mail {

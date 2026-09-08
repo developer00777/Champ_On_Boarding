@@ -65,6 +65,97 @@ export function renderItSetupSubject(template: string, values: ItSetupSubjectVal
 	);
 }
 
+// ── Employee code mail ───────────────────────────────────────────────────────
+
+export interface EmployeeCodeMailSettings {
+	to: string[];
+	cc: string[];
+	/** Subject template. Tokens below; `{requestId}` is the helpdesk thread this
+	 *  replies into, and the whole "[Request ID :## ##] :" prefix drops out when
+	 *  the candidate has none. */
+	subject: string;
+	signoffName: string;
+	signoffDesignation: string;
+}
+
+export const EMPLOYEE_CODE_SUBJECT_TOKENS = [
+	{ token: '{requestId}', means: 'the IT helpdesk request ID, if one is set' },
+	{ token: '{team}', means: 'the team name' },
+	{ token: '{doj}', means: 'the joining date, as 8-Sep-2026' },
+	{ token: '{name}', means: "the candidate's name" }
+] as const;
+
+export interface EmployeeCodeSubjectValues {
+	requestId: string;
+	team: string;
+	doj: string;
+	name: string;
+}
+
+export const EMPLOYEE_CODE_MAIL_KEY = 'employee_code_mail';
+
+export const EMPLOYEE_CODE_MAIL_DEFAULTS: EmployeeCodeMailSettings = {
+	to: ['ithelpdesk@championsmail.com', 'onboarding@offer.championsmail.com'],
+	cc: [
+		'hrd.jst@championsmail.com',
+		'aleena.j@championsmail.com',
+		'bhavana.setty@championsmail.com',
+		'dongresalomi.s@championsmail.com',
+		'shaik.j@championsmail.com',
+		'renuka.b@championsmail.com',
+		'delwin.a@championsmail.com'
+	],
+	subject: 'RE: [Request ID :##{requestId}##] : New Joinee-{team}({doj})',
+	signoffName: 'Sarang Manoharan',
+	signoffDesignation: ''
+};
+
+/** Substitutes the subject tokens. Newlines collapse (a subject is one header),
+ *  and an absent request ID takes its bracketed prefix with it rather than
+ *  leaving "RE: [Request ID :####] :" in the subject line. */
+export function renderEmployeeCodeSubject(
+	template: string,
+	values: EmployeeCodeSubjectValues
+): string {
+	return (template || EMPLOYEE_CODE_MAIL_DEFAULTS.subject)
+		.replace(/\{requestId\}/g, values.requestId)
+		.replace(/\{team\}/g, values.team)
+		.replace(/\{doj\}/g, values.doj)
+		.replace(/\{name\}/g, values.name)
+		.replace(/[\r\n]+/g, ' ')
+		// Drops "[Request ID :#### ] :" (and any empty bracket) when the id is
+		// blank, then closes up the gap it leaves behind.
+		.replace(/\[[^\]]*:\s*##\s*##[^\]]*\]\s*:\s*/g, '')
+		.replace(/\(\s*\)/g, '')
+		.replace(/\s{2,}/g, ' ')
+		.trim();
+}
+
+export async function getEmployeeCodeMailSettings(): Promise<EmployeeCodeMailSettings> {
+	const row = await AppSetting.findOne({ key: EMPLOYEE_CODE_MAIL_KEY }).lean();
+	const v = (row?.value ?? {}) as Partial<EmployeeCodeMailSettings>;
+	return {
+		// A saved-but-empty To would send the mail nowhere, so it falls back to
+		// the default just as an absent one does. Cc is legitimately clearable.
+		to: v.to?.length ? v.to : EMPLOYEE_CODE_MAIL_DEFAULTS.to,
+		cc: Array.isArray(v.cc) ? v.cc : EMPLOYEE_CODE_MAIL_DEFAULTS.cc,
+		subject: v.subject?.trim() || EMPLOYEE_CODE_MAIL_DEFAULTS.subject,
+		signoffName: v.signoffName?.trim() || EMPLOYEE_CODE_MAIL_DEFAULTS.signoffName,
+		signoffDesignation: v.signoffDesignation?.trim() ?? EMPLOYEE_CODE_MAIL_DEFAULTS.signoffDesignation
+	};
+}
+
+export async function saveEmployeeCodeMailSettings(
+	value: EmployeeCodeMailSettings,
+	adminId: string
+) {
+	await AppSetting.findOneAndUpdate(
+		{ key: EMPLOYEE_CODE_MAIL_KEY },
+		{ key: EMPLOYEE_CODE_MAIL_KEY, value, updatedBy: adminId },
+		{ upsert: true }
+	);
+}
+
 // ── Fixed dropdown lists ─────────────────────────────────────────────────────
 //
 // Short, admin-editable option lists that back a dropdown somewhere in the app.

@@ -11,7 +11,11 @@ import {
 	getFixedLists,
 	saveFixedLists,
 	parseFixedList,
-	type FixedLists
+	type FixedLists,
+	EMPLOYEE_CODE_MAIL_DEFAULTS,
+	EMPLOYEE_CODE_SUBJECT_TOKENS,
+	getEmployeeCodeMailSettings,
+	saveEmployeeCodeMailSettings
 } from '$lib/server/settings';
 import {
 	EXIT_MAIL_DEFAULTS,
@@ -20,10 +24,11 @@ import {
 } from '$lib/server/offboarding/mail';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const [itSetupMail, exitMail, fixedLists] = await Promise.all([
+	const [itSetupMail, exitMail, fixedLists, employeeCodeMail] = await Promise.all([
 		getItSetupMailSettings(),
 		getExitMailSettings(),
-		getFixedLists()
+		getFixedLists(),
+		getEmployeeCodeMailSettings()
 	]);
 	return {
 		itSetupMail,
@@ -33,6 +38,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		subjectTokens: IT_SETUP_SUBJECT_TOKENS,
 		fixedLists,
 		fixedListDefs: FIXED_LIST_DEFS,
+		employeeCodeMail,
+		employeeCodeDefaults: EMPLOYEE_CODE_MAIL_DEFAULTS,
+		employeeCodeTokens: EMPLOYEE_CODE_SUBJECT_TOKENS,
 		exitMail,
 		exitDefaults: EXIT_MAIL_DEFAULTS,
 		isSuperAdmin: locals.admin?.role === 'super_admin'
@@ -72,6 +80,36 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { fixedListsSaved: true };
+	},
+
+	saveEmployeeCodeMail: async ({ request, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { error: 'Only a super admin can change these settings.' });
+
+		const form = await request.formData();
+		const to = parseRecipients(String(form.get('ecTo') ?? ''));
+		const cc = parseRecipients(String(form.get('ecCc') ?? ''));
+		const subject = String(form.get('ecSubject') ?? '')
+			.replace(/[\r\n]+/g, ' ')
+			.trim()
+			.slice(0, 200);
+		const signoffName = String(form.get('ecSignoffName') ?? '').trim().slice(0, 80);
+		const signoffDesignation = String(form.get('ecSignoffDesignation') ?? '').trim().slice(0, 80);
+
+		if (!to.length) return fail(400, { error: 'Enter at least one valid "To" address.' });
+
+		await saveEmployeeCodeMailSettings(
+			{ to, cc, subject, signoffName, signoffDesignation },
+			locals.admin.id
+		);
+		await audit({
+			actor: locals.admin.email,
+			action: 'settings_updated',
+			field: 'employee_code_mail',
+			newValue: `to: ${to.join(', ')} | cc: ${cc.join(', ') || '—'} | subject: ${subject || '(default)'}`,
+			ip: getClientAddress()
+		});
+		return { employeeCodeMailSaved: true };
 	},
 
 	saveItSetupMail: async ({ request, locals, getClientAddress }) => {

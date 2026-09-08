@@ -36,6 +36,11 @@
 		)
 	);
 
+	// svelte-ignore state_referenced_locally
+	let ecTo = $state(data.employeeCodeMail.to.join('\n'));
+	// svelte-ignore state_referenced_locally
+	let ecCc = $state(data.employeeCodeMail.cc.join('\n'));
+
 	const exitIsDefault = $derived(
 		itTo.trim() === data.exitDefaults.itTo.join('\n') &&
 			itCc.trim() === data.exitDefaults.itCc.join('\n') &&
@@ -203,6 +208,71 @@
 			{/each}
 			<button class="btn">Save dropdown options</button>
 			{#if form?.fixedListsSaved}<span class="saved">Saved ✓</span>{/if}
+		</fieldset>
+	</form>
+
+	{#if !data.isSuperAdmin}
+		<p class="muted" style="font-size:12px;margin:12px 0 0">
+			View-only — changing these requires a super admin login.
+		</p>
+	{/if}
+</section>
+
+<!-- Employee code mail. Same shape as the IT & VPN setup mail above: the desk
+     is admin-editable, the subject is a template, and the mail itself is only
+     ever sent by hand from the candidate page. -->
+<section class="card" style="margin-top:18px">
+	<h2 class="card-title">New joinee employee code mail</h2>
+	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
+		Sent by hand from the candidate page once an employee code is assigned. Carries the
+		six-column table the helpdesk works from — Sl, EmpCode, Team, Full Name, DOJ, Designation —
+		and replies into the helpdesk thread when the candidate has a request ID.
+	</p>
+
+	<form method="POST" action="?/saveEmployeeCodeMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
+		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+			<label class="field">
+				<span>To</span>
+				<textarea name="ecTo" bind:value={ecTo} rows="3" placeholder="one address per line"></textarea>
+				<small>One address per line. Semicolons and commas work too.</small>
+			</label>
+			<label class="field">
+				<span>Cc</span>
+				<textarea name="ecCc" bind:value={ecCc} rows="7" placeholder="one address per line"></textarea>
+				<small>Leave empty to copy no one.</small>
+			</label>
+			<label class="field">
+				<span>Subject line</span>
+				<input
+					name="ecSubject"
+					value={data.employeeCodeMail.subject}
+					maxlength="200"
+					placeholder={data.employeeCodeDefaults.subject}
+				/>
+				<small>
+					{#each data.employeeCodeTokens as t, i}<code>{t.token}</code> becomes {t.means}{i <
+					data.employeeCodeTokens.length - 1
+						? ', '
+						: '. '}{/each}With no request ID set, the whole
+					<code>[Request ID :## ##] :</code> prefix drops out. Default:
+					<code>{data.employeeCodeDefaults.subject}</code>
+				</small>
+			</label>
+			<label class="field">
+				<span>Sign-off name</span>
+				<input name="ecSignoffName" value={data.employeeCodeMail.signoffName} maxlength="80" />
+			</label>
+			<label class="field">
+				<span>Sign-off designation</span>
+				<input
+					name="ecSignoffDesignation"
+					value={data.employeeCodeMail.signoffDesignation}
+					maxlength="80"
+					placeholder="optional"
+				/>
+			</label>
+			<button class="btn">Save employee code mail</button>
+			{#if form?.employeeCodeMailSaved}<span class="saved">Saved ✓</span>{/if}
 		</fieldset>
 	</form>
 
