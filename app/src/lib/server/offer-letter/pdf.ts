@@ -779,7 +779,7 @@ function table(ctx: Ctx, cols: TableCol[], rowH: number) {
 
 	/** Full-width row carrying a bold label and its value, with the value pinned
 	 *  to `valueX` points from the table's left edge. A stack of these (Employee
-	 *  Name / Effective Date / Designation Offered) then lines its values up in a
+	 *  Name / Effective Date / Designation) then lines its values up in a
 	 *  column instead of each one starting wherever its own label happened to
 	 *  end — which is what padding the label with spaces used to do. */
 	function labelRow(label: string, value: string, valueX: number, opts: TableRowOpts = {}) {
@@ -999,13 +999,13 @@ function renderCompensationAnnexure(
 	const t = table(ctx, cols, rowH);
 	t.topRule();
 
-	// Header block: Employee Name / Effective Date / Designation Offered — three
+	// Header block: Employee Name / Effective Date / Designation — three
 	// full-width rows above the Components|P.M.|P.A. grid, as in the reference,
 	// with their values aligned to one gutter so they read as a column.
 	const headerRows: Array<[string, string]> = [
 		['Employee Name :', c.name],
 		['Effective Date :', o.joiningDate || today()],
-		['Designation Offered :', o.jobTitle || '____________']
+		['Designation :', o.jobTitle || '____________']
 	];
 	const gutter = t.labelGutter(headerRows.map(([label]) => label));
 	for (const [label, value] of headerRows) t.labelRow(label, value, gutter, { bold: true });
