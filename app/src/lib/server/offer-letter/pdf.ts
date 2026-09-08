@@ -15,7 +15,7 @@ import { PDFDocument, rgb, StandardFonts, PageSizes } from 'pdf-lib';
 import type { PDFFont, PDFPage, PDFImage } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { baseUrl } from '$lib/server/base-url';
-import type { BrandTheme } from '$lib/shared/brands';
+import { CONTACT_DEFAULTS, type BrandTheme } from '$lib/shared/brands';
 import type { OfferLetterInput } from './fields';
 import {
 	EMPLOYMENT_TYPE_LABELS,
@@ -195,7 +195,11 @@ const LIGHT = rgb(0.6, 0.6, 0.6);
 // Clears the tallest header drawChrome() can draw: 14pt top gap + a 46pt logo
 // + 3pt + the 9pt entity name beneath it, plus breathing room before the body.
 const HEADER_H = 84;
-const FOOTER_H = 26;
+// Height of the printed footer band: two lines of ~7pt white type plus
+// breathing room. Chosen so FOOTER_H + the content gap below still comes to the
+// 46pt floor the letters were laid out against — at 34 the band ate 4pt per
+// page and pushed the pinned appointment letter onto a fifth page.
+const FOOTER_H = 32;
 
 /** Default body text size. The offer-of-appointment and consultant letters are
  *  long enough to fill their pages at this size. */
@@ -332,11 +336,52 @@ function drawChrome(ctx: Ctx, page: PDFPage) {
 			color: ctx.inkColor
 		});
 	}
-	// Footer rule + confidential line + company name
-	page.drawRectangle({ x: M, y: FOOTER_H, width: ctx.CW, height: 0.5, color: rgb(0.85, 0.85, 0.85) });
-	const foot = sanitize(`${companyName}  -  Private & Confidential`);
-	const fw = ctx.fontR.widthOfTextAtSize(foot, 7.5);
-	page.drawText(foot, { x: (W - fw) / 2, y: FOOTER_H - 12, font: ctx.fontR, size: 7.5, color: LIGHT });
+	// Footer band — full-bleed, in the entity's own deep colour, carrying its
+	// registered office, the HR desk and its website in white. Modelled on the
+	// printed letterhead: one solid strip to the paper's edge rather than a hair
+	// rule and grey type. Address and email fall back to the shared JS Towers
+	// desk; a brand with no website simply omits that segment.
+	const contact = brand.contact ?? {};
+	const address = sanitize(contact.address ?? CONTACT_DEFAULTS.address);
+	const email = sanitize(contact.email ?? CONTACT_DEFAULTS.email);
+	const website = sanitize(contact.website ?? '');
+
+	page.drawRectangle({ x: 0, y: 0, width: W, height: FOOTER_H, color: ctx.inkColor });
+
+	// Just the two contact details the printed letterhead carries. The entity is
+	// already named by the logo above and throughout the letter body, so it is
+	// not repeated here.
+	const line2 = [`Email: ${email}`, website ? `Website: ${website}` : '']
+		.filter(Boolean)
+		.join('   |   ');
+
+	// Sized to fit the widest of the two lines rather than a fixed point size,
+	// so a long registered office or a long entity name shrinks to fit instead
+	// of running off the page edge.
+	const usable = W - 36 * 2;
+	let bandSize = 7;
+	while (
+		bandSize > 5 &&
+		Math.max(
+			ctx.fontB.widthOfTextAtSize(address, bandSize),
+			ctx.fontR.widthOfTextAtSize(line2, bandSize)
+		) > usable
+	) {
+		bandSize -= 0.25;
+	}
+
+	const white = rgb(1, 1, 1);
+	const centred = (text: string, font: PDFFont, y: number) => {
+		page.drawText(text, {
+			x: (W - font.widthOfTextAtSize(text, bandSize)) / 2,
+			y,
+			font,
+			size: bandSize,
+			color: white
+		});
+	};
+	centred(address, ctx.fontB, FOOTER_H - bandSize - 6);
+	centred(line2, ctx.fontR, FOOTER_H - bandSize * 2 - 11);
 }
 
 function newPage(ctx: Ctx) {
@@ -1389,7 +1434,8 @@ export async function generateOfferLetterPdf(
 		CW: W - M * 2,
 		y: 0,
 		topY: H - HEADER_H,
-		bottomY: FOOTER_H + 20,
+		// Same 46pt floor as before the band existed, so no letter reflows.
+		bottomY: FOOTER_H + 14,
 		logo,
 		inkColor: rgb(ir, ig, ib),
 		primaryColor: rgb(pr, pg, pb),

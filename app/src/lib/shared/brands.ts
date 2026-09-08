@@ -57,6 +57,16 @@ export interface BrandTheme {
 	/** Whether CTA labels are uppercased. */
 	uppercaseCta: boolean;
 
+	/** Contact details printed in the offer letter's footer band. Address and
+	 *  email default to the shared JS Towers desk (see CONTACT_DEFAULTS) — only
+	 *  an entity that genuinely sits elsewhere overrides them. `website` is
+	 *  per-entity and is omitted from the band when a brand has none. */
+	contact?: {
+		address?: string;
+		email?: string;
+		website?: string;
+	};
+
 	logo: {
 		/** Path under static/ to the brand logo. */
 		src: string;
@@ -76,6 +86,15 @@ export interface BrandTheme {
 		hasWordmark?: boolean;
 	};
 }
+
+/** The registered office every entity shares, and the HR desk that fields
+ *  offer-letter replies. Kept in one place so a move is one edit, not twelve. */
+export const CONTACT_DEFAULTS = {
+	address:
+		'JS Towers, L-32, 2nd A Main Road, Outer Ring Road, Agara Village, ' +
+		'Sector 6, HSR Layout, Bengaluru, Karnataka 560102',
+	email: 'hrd.jst@championsmail.com'
+};
 
 export const BRANDS: BrandTheme[] = [
 	{
@@ -104,6 +123,7 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 5,
 		cardRadius: 14,
 		uppercaseCta: true,
+		contact: { website: 'http://www.championinfratech.com/' },
 		logo: { src: '/brands/champion-infratech.png', monogram: 'CI', onDark: true, hasWordmark: true }
 	},
 	{
@@ -135,6 +155,7 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 3,
 		cardRadius: 10,
 		uppercaseCta: true,
+		contact: { website: 'http://champions.club/' },
 		logo: { src: '/brands/champions-club.png', monogram: 'CC', onDark: true, hasWordmark: true }
 	},
 	{
@@ -163,6 +184,7 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 50,
 		cardRadius: 9,
 		uppercaseCta: false,
+		contact: { website: 'https://www.ipmomentum.com/' },
 		logo: { src: '/brands/ip-momentum.png', monogram: 'IP', hasWordmark: true }
 	},
 	{
@@ -193,6 +215,7 @@ export const BRANDS: BrandTheme[] = [
 		uppercaseCta: false,
 		// PNG, not the original WebP: the offer-letter PDF embeds PNG or JPEG only,
 		// so the WebP threw and silently fell back to the "CP" monogram.
+		contact: { website: 'https://www.championmedicalproducts.com/' },
 		logo: { src: '/brands/champion-products.png', monogram: 'CP', onDark: true, hasWordmark: true }
 	},
 	{
@@ -221,6 +244,7 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 4,
 		cardRadius: 10,
 		uppercaseCta: false,
+		contact: { website: 'http://www.championinfometrics.com/' },
 		logo: { src: '/brands/champion-infometrics.png', monogram: 'CIM', hasWordmark: true }
 	},
 	{
@@ -250,6 +274,7 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 4,
 		cardRadius: 5,
 		uppercaseCta: false,
+		contact: { website: 'https://www.championsyachtclub.com/' },
 		logo: { src: '/brands/champions-yacht-club.png', monogram: 'CYC', hasWordmark: true }
 	},
 	{
@@ -280,6 +305,7 @@ export const BRANDS: BrandTheme[] = [
 		uppercaseCta: true,
 		// onDark: the wordmark is white (83% of the art's opaque pixels), so on a
 		// white page only the coloured "CL" mark showed and the name vanished.
+		contact: { website: 'https://www.cirrologix.com/' },
 		logo: { src: '/brands/cirrologix.png', monogram: 'CL', onDark: true, hasWordmark: true }
 	},
 	{
@@ -338,6 +364,7 @@ export const BRANDS: BrandTheme[] = [
 		buttonRadius: 6,
 		cardRadius: 12,
 		uppercaseCta: false,
+		contact: { website: 'http://www.championlandzone.com/' },
 		logo: { src: '/brands/champion-landzone.png', monogram: 'CLZ', hasWordmark: true }
 	},
 	{
@@ -372,6 +399,7 @@ export const BRANDS: BrandTheme[] = [
 		uppercaseCta: false,
 		// The grey plate the art shipped with has been cleared to transparency, so
 		// this no longer needs onDark — the mark is red/orange and reads on white.
+		contact: { website: 'http://championluxuryresorts.com/' },
 		logo: { src: '/brands/champions-luxury-resorts.png', monogram: 'CLR', hasWordmark: true }
 	},
 	{
