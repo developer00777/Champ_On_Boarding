@@ -223,6 +223,27 @@ const documentSchema = new Schema(
 documentSchema.index({ candidateId: 1 });
 export const Document = models.Document ?? model('Document', documentSchema);
 
+// ── HR reference files ────────────────────────────────────────────────────────
+// Documents HR uploads against a candidate for their own reference — a signed
+// scan, an interview note, a background report. Separate from Document, which
+// is the candidate's own upload against a slot in the document matrix and
+// carries OCR and a review verdict. These have neither: they are optional, HR
+// names them, and there can be any number of them.
+const candidateFileSchema = new Schema(
+	{
+		candidateId: { type: Schema.Types.ObjectId, ref: 'Candidate', required: true, index: true },
+		/** HR's own name for the file. Defaults to the uploaded filename. */
+		label: { type: String, required: true },
+		note: { type: String, default: null },
+		gridfsId: { type: Schema.Types.ObjectId, required: true },
+		mime: { type: String, required: true },
+		sizeBytes: { type: Number, required: true },
+		uploadedBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }
+	},
+	{ timestamps: true }
+);
+export const CandidateFile = models.CandidateFile ?? model('CandidateFile', candidateFileSchema);
+
 // ── Physical Items ────────────────────────────────────────────────────────────
 const physicalItemSchema = new Schema(
 	{

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import {
 		COMPENSATION_FIELD_BY_TRACK,
 		CONSULTANT_LETTER_TRACKS,
@@ -34,6 +35,50 @@
 
 	function copyLink(link: string) {
 		navigator.clipboard.writeText(link);
+	}
+
+	// ── HR reference documents ───────────────────────────────────────────────
+	// Optional uploads for HR's own use, distinct from the candidate's documents:
+	// no slot, no OCR, no review verdict, any number of them. Uploaded over
+	// fetch so the card can absorb a 150 MB scan without a page round trip.
+	let refFileInput: HTMLInputElement | null = $state(null);
+	let refLabel = $state('');
+	let refNote = $state('');
+	let refUploading = $state(false);
+	let refError: string | null = $state(null);
+
+	async function uploadReferenceFile() {
+		const file = refFileInput?.files?.[0];
+		if (!file || refUploading) return;
+		refUploading = true;
+		refError = null;
+		try {
+			const body = new FormData();
+			body.set('file', file);
+			if (refLabel.trim()) body.set('label', refLabel.trim());
+			if (refNote.trim()) body.set('note', refNote.trim());
+			const res = await fetch(`/admin/candidates/${c.id}/other-docs`, { method: 'POST', body });
+			if (!res.ok) {
+				refError = (await res.text()) || 'Upload failed.';
+				return;
+			}
+			// Re-reads the list from the server rather than pushing the response
+			// onto it, so the card shows what is actually stored.
+			refLabel = '';
+			refNote = '';
+			if (refFileInput) refFileInput.value = '';
+			await invalidateAll();
+		} catch {
+			refError = 'Upload failed — check your connection and try again.';
+		} finally {
+			refUploading = false;
+		}
+	}
+
+	function prettySize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
 	// ── Offer letter preview ──────────────────────────────────────────────────
@@ -1747,6 +1792,58 @@
 			{/if}
 		</section>
 
+		<!-- HR's own reference uploads. Deliberately not part of the document
+		     matrix above: nothing here is required, nothing is OCR'd, and the
+		     candidate never sees it. -->
+		<section class="card">
+			<div class="eyebrow" style="margin-bottom:6px">Other documents</div>
+			<p class="muted" style="font-size:11.5px;margin:0 0 14px">
+				Optional. Anything HR wants kept against this candidate for reference — an interview
+				note, a signed scan, a background report. Not requested from the candidate and not
+				shown to them.
+			</p>
+
+			{#if data.referenceFiles.length}
+				<div class="ref-list">
+					{#each data.referenceFiles as f (f.id)}
+						<div class="ref-row">
+							<a class="ref-name" href="/admin/candidates/{c.id}/other-docs/{f.id}" target="_blank" rel="noopener">
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+								<span>{f.label}</span>
+							</a>
+							<span class="ref-meta">
+								{prettySize(f.sizeBytes)} ·
+								{new Date(f.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+							</span>
+							<form method="POST" action="?/removeReferenceFile" use:enhance={() => async ({ update }) => update({ reset: false })}>
+								<fieldset class="rbac" disabled={!data.isApprover}>
+									<input type="hidden" name="fileId" value={f.id} />
+									<button class="ref-del" aria-label={`Remove ${f.label}`} title="Remove">×</button>
+								</fieldset>
+							</form>
+							{#if f.note}<p class="ref-note">{f.note}</p>{/if}
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="muted" style="font-size:12.5px;margin:0 0 14px">Nothing uploaded yet.</p>
+			{/if}
+
+			<fieldset class="rbac ref-add" disabled={!data.isApprover}>
+				<input class="emp-input" bind:value={refLabel} placeholder="Name it (optional — defaults to the filename)" maxlength="120" />
+				<input class="emp-input" bind:value={refNote} placeholder="Note (optional)" maxlength="300" />
+				<input bind:this={refFileInput} type="file" accept="image/jpeg,image/png,application/pdf" />
+				<button class="btn small" type="button" onclick={uploadReferenceFile} disabled={refUploading}>
+					{refUploading ? 'Uploading…' : 'Upload document'}
+				</button>
+				<small class="muted" style="font-size:10.5px">JPG, PNG or PDF · max 150 MB</small>
+			</fieldset>
+			{#if refError}<p class="error" style="margin-top:8px">{refError}</p>{/if}
+			{#if form?.referenceFileRemoved}
+				<p class="saved-chip" style="margin-top:8px">Document removed ✓</p>
+			{/if}
+		</section>
+
 		<section class="card">
 			<div class="eyebrow red-eyebrow" style="margin-bottom:14px">Physical items · joining day</div>
 			{#each data.physical as item}
@@ -2202,6 +2299,76 @@
 		line-height: 1.35;
 		padding-block: 7px;
 		text-align: center;
+	}
+
+	/* HR's reference uploads. A grid so the name, size and remove control line
+	   up down the list, with the optional note spanning underneath. */
+	.ref-list {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-bottom: 14px;
+	}
+	.ref-row {
+		display: grid;
+		grid-template-columns: 1fr auto auto;
+		align-items: center;
+		gap: 10px;
+		padding: 7px 0;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.ref-name {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 13px;
+		font-weight: 600;
+		color: inherit;
+		text-decoration: none;
+		min-width: 0;
+	}
+	.ref-name span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ref-name:hover span {
+		text-decoration: underline;
+	}
+	.ref-meta {
+		font-size: 10.5px;
+		color: var(--ae-text-2);
+		white-space: nowrap;
+	}
+	.ref-del {
+		border: 0;
+		background: none;
+		color: var(--ae-text-2);
+		font-size: 16px;
+		line-height: 1;
+		padding: 0 2px;
+		cursor: pointer;
+	}
+	.ref-del:hover {
+		color: #b42318;
+	}
+	.ref-note {
+		grid-column: 1 / -1;
+		margin: 2px 0 0;
+		font-size: 11.5px;
+		color: var(--ae-text-2);
+		line-height: 1.5;
+	}
+	.ref-add {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		border: 0;
+		margin: 0;
+		padding: 0;
+	}
+	.ref-add input[type='file'] {
+		font-size: 11.5px;
 	}
 
 	.it-mail {

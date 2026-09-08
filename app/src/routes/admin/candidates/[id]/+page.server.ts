@@ -1,6 +1,15 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Candidate, Company, Document, PhysicalItem, LinkToken, Verification, OfferLetter } from '$lib/server/db/schema';
+import {
+	Candidate,
+	CandidateFile,
+	Company,
+	Document,
+	PhysicalItem,
+	LinkToken,
+	Verification,
+	OfferLetter
+} from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { decrypt } from '$lib/server/crypto';
 import { deleteFromGridFS } from '$lib/server/storage';
@@ -172,8 +181,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (!row) error(404, 'Candidate not found');
 	const { candidate, company } = row;
 
-	const [checklist, physical, verificationDocs, offerLetter, activeLinkToken, fixedLists] =
-		await Promise.all([
+	const [
+		checklist,
+		physical,
+		verificationDocs,
+		offerLetter,
+		activeLinkToken,
+		fixedLists,
+		referenceFiles
+	] = await Promise.all([
 		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
 		Verification.find({ candidateId: candidate._id }).lean(),
@@ -184,7 +200,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		LinkToken.findOne({ candidateId: candidate._id, revoked: false, expiresAt: { $gt: new Date() } })
 			.sort({ createdAt: -1 })
 			.lean(),
-		getFixedLists()
+		getFixedLists(),
+		CandidateFile.find({ candidateId: candidate._id }).sort({ createdAt: -1 }).lean()
 	]);
 
 	// Candidates created before an item type existed have no row for it, and the
@@ -358,6 +375,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			sentAt: offerLetter?.sentAt?.toISOString() ?? null
 		},
 		onboardingLink,
+		/** HR's own reference uploads — optional, and separate from the candidate's
+		 *  documents, which are matrix slots with OCR and a review verdict. */
+		referenceFiles: referenceFiles.map((f) => ({
+			id: String(f._id),
+			label: f.label,
+			note: f.note ?? null,
+			mime: f.mime,
+			sizeBytes: f.sizeBytes,
+			uploadedAt: (f as unknown as { createdAt: Date }).createdAt.toISOString()
+		})),
 		/** Admin-editable option lists (settings → Dropdown options). */
 		officeLocations: fixedLists.officeLocations ?? [],
 		noticePeriods: fixedLists.noticePeriods ?? [],
@@ -690,6 +717,29 @@ export const actions: Actions = {
 	// (typically an optional document, e.g. degree certificate) — there is no
 	// Document row to key off, so the request is recorded on the candidate and
 	// picked up by checklistFor() until a matching file actually lands.
+	/** Drops one of HR's reference documents. The GridFS object goes with it —
+	 *  an orphaned blob is invisible and never gets cleaned up otherwise. */
+	removeReferenceFile: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const fileId = String((await request.formData()).get('fileId') ?? '');
+		const doc = await CandidateFile.findOne({ _id: fileId, candidateId: params.id }).lean();
+		if (!doc) return fail(404, { message: 'That document is no longer there.' });
+
+		const { deleteFromGridFS } = await import('$lib/server/storage');
+		await deleteFromGridFS(doc.gridfsId as never).catch(() => {});
+		await CandidateFile.deleteOne({ _id: fileId });
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'reference_file_removed',
+			field: doc.label,
+			ip: getClientAddress()
+		});
+		return { referenceFileRemoved: true };
+	},
+
 	requestUpload: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;

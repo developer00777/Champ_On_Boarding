@@ -55,6 +55,11 @@ services:
       OFFER_MAIL_FROM: ${OFFER_MAIL_FROM:-}
       BGV_MAIL_FROM: ${BGV_MAIL_FROM:-}
       ADMIN_IP_ALLOWLIST_MODE: ${ADMIN_IP_ALLOWLIST_MODE:-log}
+      # adapter-node caps request bodies at 512 KB by default, which rejects
+      # every real document upload with a 413 — a phone photo of a payslip
+      # clears that on its own. Matches MAX_FILE_BYTES (shared/matrix.ts) and
+      # the value DEPLOY_VERCEL.md documents for Railway.
+      BODY_SIZE_LIMIT: ${BODY_SIZE_LIMIT:-150M}
       # ADDRESS_HEADER is deliberately NOT set here. Nothing proxies the app in
       # this stack, so naming a header the request will not carry makes
       # getClientAddress() throw — and it is called unguarded on ~84 admin
