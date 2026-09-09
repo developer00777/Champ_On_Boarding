@@ -13,6 +13,24 @@
 		if (!iso) return '';
 		return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 	}
+
+	/** Where the automatic chase has got to on a request still waiting for a
+	 *  reply — the one thing this list cannot show from status alone, and the
+	 *  reason a row is or isn't moving. */
+	function chaseLabel(row: {
+		reminderCount: number;
+		nextReminderAt: string | null;
+		remindersPaused: boolean;
+	}): string {
+		const sent = row.reminderCount
+			? `${row.reminderCount} reminder${row.reminderCount > 1 ? 's' : ''} sent`
+			: 'No reminders yet';
+		if (row.remindersPaused) return `${sent} · paused`;
+		if (!row.nextReminderAt) return `${sent} · chase finished`;
+		const days = Math.round((new Date(row.nextReminderAt).getTime() - Date.now()) / 86_400_000);
+		if (days <= 0) return `${sent} · next due now`;
+		return `${sent} · next ${days === 1 ? 'tomorrow' : `in ${days} days`}`;
+	}
 </script>
 
 <svelte:head><title>BGV verification — Admin</title></svelte:head>
@@ -51,6 +69,9 @@
 					<span class="sub-line">Reply received {fmtDate(row.replyReceivedAt)}</span>
 				{:else if row.bgvStatus === 'sent'}
 					<span class="sub-line">Sent {fmtDate(row.sentAt)}{row.sentCount > 1 ? ` · ×${row.sentCount}` : ''}</span>
+					<span class="sub-line chase" class:quiet={row.remindersPaused || !row.nextReminderAt}>
+						{chaseLabel(row)}
+					</span>
 				{:else if row.bgvStatus === 'completed'}
 					<span class="sub-line">Completed {fmtDate(row.completedAt)}</span>
 				{/if}
@@ -106,6 +127,14 @@
 		font-size: 11px;
 		color: var(--ae-muted);
 		margin-top: 2px;
+	}
+	/* An armed chase is the row still doing work on HR's behalf, so it carries
+	   the ember; a paused or finished one is inert and stays muted. */
+	.chase {
+		color: var(--ae-ember-glow);
+	}
+	.chase.quiet {
+		color: var(--ae-muted);
 	}
 	.muted-cell {
 		color: var(--ae-muted);

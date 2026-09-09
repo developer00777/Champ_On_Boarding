@@ -11,6 +11,17 @@
 	let subject = $state(untrack(() => data.compose.subject));
 	let body = $state(untrack(() => data.compose.body));
 	let sending = $state(false);
+	let reminding = $state(false);
+
+	/** Seeded once, like the compose draft above: these are fields HR is editing,
+	 *  and a re-render must not overwrite a half-typed number. Bound so the
+	 *  "chased 5 times over about 15 days" line reacts as they type. */
+	// svelte-ignore state_referenced_locally
+	let remEnabled = $state(data.reminders.enabled);
+	// svelte-ignore state_referenced_locally
+	let remEveryDays = $state(data.reminders.everyDays);
+	// svelte-ignore state_referenced_locally
+	let remMax = $state(data.reminders.maxReminders);
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
 		pending: { label: 'Not started', cls: '' },
@@ -26,6 +37,51 @@
 	}
 
 	const yesNo: Record<string, string> = { yes: 'Yes', no: 'No' };
+
+	/** "in 2 days" / "tomorrow" / "today" — a cadence is easier to sanity-check
+	 *  as a distance than as a date, so the date follows it rather than leads. */
+	function untilLabel(iso: string): string {
+		const days = Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000);
+		if (days <= 0) return 'due now';
+		if (days === 1) return 'tomorrow';
+		return `in ${days} days`;
+	}
+
+	/** One sentence for whatever the chase is currently doing. Ordered by what
+	 *  overrides what: a reply beats everything, then the org switch, then the
+	 *  per-candidate pause, then a spent run. */
+	const reminderState = $derived.by(() => {
+		const r = data.reminders;
+		if (data.bgv.status === 'completed' || data.bgv.replyReceivedAt)
+			return {
+				tone: 'ok',
+				headline: 'Stopped — the employer replied',
+				detail: 'Nothing further will be sent. Re-send the request above if you need more from them.'
+			};
+		if (!data.bgv.sentAt)
+			return {
+				tone: 'idle',
+				headline: 'Waiting on the first request',
+				detail: `The chase arms itself the moment you send the BGV request — first reminder ${r.everyDays} days later.`
+			};
+		if (!r.enabled)
+			return {
+				tone: 'off',
+				headline: 'Paused for this candidate',
+				detail: `${r.count} of ${r.maxReminders} reminders sent. Tick the box below to put them back on the ${r.everyDays}-day cadence.`
+			};
+		if (r.nextAt)
+			return {
+				tone: 'live',
+				headline: `Next reminder ${untilLabel(r.nextAt)} · ${fmt(r.nextAt)}`,
+				detail: `${r.count} of ${r.maxReminders} sent so far. It cancels itself if they reply first.`
+			};
+		return {
+			tone: 'spent',
+			headline: `All ${r.maxReminders} reminders sent — no reply`,
+			detail: 'Nothing further goes automatically. Send one by hand to restart the cadence, or chase the employer another way.'
+		};
+	});
 </script>
 
 <svelte:head><title>BGV — {data.candidate.name}</title></svelte:head>
@@ -175,6 +231,123 @@
 					{/if}
 				</fieldset>
 			</form>
+		</section>
+
+		<!-- Automatic chase -->
+		<section class="card">
+			<div class="eyebrow">Automatic reminders</div>
+			<p class="hint">
+				Set for <strong>this candidate</strong> only. Once the request is sent, a reminder goes to
+				the previous employer on the cadence below and stops the moment they reply. Each reminder
+				carries the same table and PDF, so they can answer it directly. Sent from
+				<code>{data.reminders.mailbox}</code>.
+			</p>
+
+			<div class="rem-state {reminderState.tone}">
+				<span class="rem-dot"></span>
+				<div>
+					<div class="rem-headline">{reminderState.headline}</div>
+					{#if reminderState.detail}<div class="rem-detail">{reminderState.detail}</div>{/if}
+				</div>
+			</div>
+
+			{#if data.reminders.count > 0}
+				<div class="rem-track" aria-hidden="true">
+					{#each Array(data.reminders.maxReminders) as _, i}
+						<span class="rem-tick" class:done={i < data.reminders.count}></span>
+					{/each}
+				</div>
+				<div class="rem-track-label">
+					{data.reminders.count} of {data.reminders.maxReminders} reminders sent in this run
+					{#if data.reminders.lastAt}· last {fmt(data.reminders.lastAt)}{/if}
+				</div>
+			{/if}
+
+			{#if data.canSend}
+				<form method="POST" action="?/saveReminderPlan" use:enhance={() => async ({ update }) => update({ reset: false })}>
+					<label class="rem-switch">
+						<input type="checkbox" name="enabled" bind:checked={remEnabled} />
+						<span>Chase this employer automatically</span>
+					</label>
+
+					<div class="rem-grid" class:muted-off={!remEnabled}>
+						<label class="rem-field">
+							<span>Remind every</span>
+							<div class="rem-input">
+								<input
+									type="number"
+									name="everyDays"
+									bind:value={remEveryDays}
+									min={data.reminders.bounds.everyDays.min}
+									max={data.reminders.bounds.everyDays.max}
+									required
+								/>
+								<em>days</em>
+							</div>
+						</label>
+						<label class="rem-field">
+							<span>Stop after</span>
+							<div class="rem-input">
+								<input
+									type="number"
+									name="maxReminders"
+									bind:value={remMax}
+									min={data.reminders.bounds.maxReminders.min}
+									max={data.reminders.bounds.maxReminders.max}
+									required
+								/>
+								<em>reminders</em>
+							</div>
+						</label>
+					</div>
+
+					<p class="hint rem-foot">
+						{#if remEnabled}
+							This employer will be chased <strong>{remMax}</strong> times over about
+							<strong>{remEveryDays * remMax} days</strong>, then left alone.
+						{:else}
+							Nothing goes out automatically for this candidate. You can still send one by hand.
+						{/if}
+						{#if data.reminders.isDefault}
+							<span class="rem-default">
+								Currently the default ({data.reminders.defaults.everyDays} days ×
+								{data.reminders.defaults.maxReminders}) — change either number to set it for this
+								candidate.
+							</span>
+						{/if}
+					</p>
+
+					<div class="rem-actions">
+						<button class="btn small" type="submit">Save reminder plan</button>
+					</div>
+				</form>
+
+				<div class="rem-actions rem-manual">
+					<form
+						method="POST"
+						action="?/remindNow"
+						use:enhance={() => {
+							reminding = true;
+							return async ({ update }) => {
+								reminding = false;
+								await update({ reset: false });
+							};
+						}}
+					>
+						<button class="btn ghost small" disabled={reminding || !data.bgv.sentAt}>
+							{reminding ? 'Sending…' : 'Send reminder now'}
+						</button>
+					</form>
+					<span class="hint" style="margin:0">
+						Re-asks straight away and restarts the {remEveryDays}-day cadence from today.
+					</span>
+				</div>
+
+				{#if form?.planSaved}<p class="sent-ok">Reminder plan saved ✓</p>{/if}
+				{#if form?.reminded}<p class="sent-ok">Reminder sent ✓ — it's in the thread below.</p>{/if}
+			{:else}
+				<p class="warn" style="margin-bottom:0">Your role can view BGV but not change reminders.</p>
+			{/if}
 		</section>
 	</div>
 </div>
@@ -376,5 +549,96 @@
 		margin: 8px 0 0;
 		max-height: 260px;
 		overflow: auto;
+	}
+
+	/* ---------- automatic reminders ---------- */
+	.rem-state {
+		display: flex;
+		gap: 10px;
+		align-items: flex-start;
+		border: 1px solid var(--ae-line-strong);
+		background: var(--ae-sub-bg);
+		border-radius: 10px;
+		padding: 11px 13px;
+	}
+	.rem-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex: none;
+		margin-top: 5px;
+		background: var(--ae-muted);
+	}
+	/* The state colours are the same semantics the pills use elsewhere in the
+	   admin: teal settled, ember in flight, amber needs a human, grey inert. */
+	.rem-state.live { border-color: rgba(255, 125, 85, 0.4); background: rgba(255, 125, 85, 0.08); }
+	.rem-state.live .rem-dot { background: var(--ae-ember); box-shadow: 0 0 10px rgba(255, 125, 85, 0.7); }
+	.rem-state.ok { border-color: rgba(62, 207, 154, 0.38); background: rgba(62, 207, 154, 0.08); }
+	.rem-state.ok .rem-dot { background: var(--ae-verdant); }
+	.rem-state.spent { border-color: rgba(242, 177, 92, 0.4); background: rgba(242, 177, 92, 0.09); }
+	.rem-state.spent .rem-dot { background: var(--ae-amber); }
+	.rem-state.off .rem-dot,
+	.rem-state.idle .rem-dot { background: var(--ae-faint); }
+	.rem-headline { font-size: 12.5px; font-weight: 600; color: var(--ae-text); line-height: 1.35; }
+	.rem-detail { font-size: 11.5px; color: var(--ae-muted-2); line-height: 1.5; margin-top: 3px; }
+
+	.rem-track { display: flex; gap: 4px; margin: 12px 0 5px; }
+	.rem-tick {
+		height: 4px;
+		flex: 1;
+		border-radius: 2px;
+		background: var(--ae-line-strong);
+	}
+	.rem-tick.done { background: var(--ae-ember); }
+	.rem-track-label {
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		color: var(--ae-muted);
+		letter-spacing: 0.02em;
+	}
+
+	.rem-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+	.rem-foot { margin: 10px 0 0; }
+
+	.rem-switch {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		margin-top: 14px;
+		font-size: 12.5px;
+		color: var(--ae-text);
+		cursor: pointer;
+	}
+	.rem-switch input { width: 15px; height: 15px; flex: none; }
+	.rem-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+		margin-top: 12px;
+		transition: opacity 0.15s;
+	}
+	/* Switched off, the numbers stay readable and editable — HR often sets the
+	   cadence first and turns the chase on afterwards — but they stop competing
+	   for attention with the state line above. */
+	.rem-grid.muted-off { opacity: 0.5; }
+	.rem-field { display: flex; flex-direction: column; gap: 5px; }
+	.rem-field > span { font-size: 11.5px; font-weight: 500; color: var(--ae-text-2); }
+	.rem-input { display: flex; align-items: center; gap: 7px; }
+	.rem-input input {
+		width: 68px;
+		padding: 6px 8px;
+		font-size: 13px;
+		font-variant-numeric: tabular-nums;
+	}
+	.rem-input em { font-style: normal; font-size: 11.5px; color: var(--ae-muted); }
+	.rem-default { display: block; margin-top: 5px; color: var(--ae-muted); }
+	.rem-manual {
+		align-items: center;
+		border-top: 1px solid var(--ae-line-soft);
+		margin-top: 16px;
+		padding-top: 14px;
+	}
+	@media (max-width: 520px) {
+		.rem-grid { grid-template-columns: 1fr; }
 	}
 </style>

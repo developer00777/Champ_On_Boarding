@@ -401,6 +401,26 @@ const bgvRequestSchema = new Schema(
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
 		sentCount: { type: Number, default: 0 },
 		replyReceivedAt: { type: Date, default: null },
+		// Automated follow-up to the previous employer, on a cadence set per
+		// candidate on the BGV record (lib/shared/bgv-cadence.ts) — every
+		// reminderEveryDays until they reply or reminderMaxCount is spent.
+		//
+		// `nextReminderAt` IS the sweep's work queue: a null means nothing is
+		// due, which covers never-sent, replied, paused and exhausted alike, so
+		// the sweep never has to re-derive why a request is quiet.
+		// `remindersEnabled` is HR's per-candidate pause and survives a re-send;
+		// the run counter resets there.
+		//
+		// The two cadence numbers are nullable rather than defaulted: a null
+		// reads as "whatever the current default is" (resolveCadence), which
+		// keeps rows written before per-candidate cadence existed working, and
+		// keeps a request HR never tuned tracking the default if it changes.
+		remindersEnabled: { type: Boolean, default: true },
+		reminderEveryDays: { type: Number, default: null },
+		reminderMaxCount: { type: Number, default: null },
+		reminderCount: { type: Number, default: 0 },
+		lastReminderAt: { type: Date, default: null },
+		nextReminderAt: { type: Date, default: null, index: true },
 		// The previous employer's "Your Verification Inputs" column.
 		verification: {
 			candidateName: { type: String, default: null },

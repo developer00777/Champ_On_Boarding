@@ -50,7 +50,10 @@ export const load: PageServerLoad = async () => {
 				sentAt: bgv?.sentAt?.toISOString() ?? null,
 				sentCount: bgv?.sentCount ?? 0,
 				replyReceivedAt: bgv?.replyReceivedAt?.toISOString() ?? null,
-				completedAt: bgv?.completedAt?.toISOString() ?? null
+				completedAt: bgv?.completedAt?.toISOString() ?? null,
+				reminderCount: bgv?.reminderCount ?? 0,
+				nextReminderAt: bgv?.nextReminderAt?.toISOString() ?? null,
+				remindersPaused: bgv?.remindersEnabled === false
 			};
 		})
 	};

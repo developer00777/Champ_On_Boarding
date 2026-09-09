@@ -36,19 +36,26 @@ export function brandSignoff(brand: BrandTheme): string {
 
 export type MailPurpose = 'onboarding' | 'offer' | 'bgv' | 'exit';
 
-/** Resolves the configured mailbox for a purpose. `offer`, `bgv` and `exit`
- *  fall back to the onboarding mailbox (MAIL_FROM) when their variable is
- *  unset, so the extra addresses are opt-in — e.g. set
- *  BGV_MAIL_FROM=hr@offer.championsmail.com (a Railway env var) to send BGV
- *  verification requests from the HR desk. `exit` defaults to offboarding@ on
- *  the same verified domain, so a resignation mail does not arrive from the
- *  onboarding mailbox. */
+/** Resolves the configured mailbox for a purpose. `offer` falls back to the
+ *  onboarding mailbox (MAIL_FROM) when its variable is unset, so that address
+ *  is opt-in. `exit` defaults to offboarding@ on the same verified domain, so
+ *  a resignation mail does not arrive from the onboarding mailbox, and `bgv`
+ *  defaults to its own subdomain — see defaultBgvFrom. */
 function fromAddressFor(purpose: MailPurpose): string {
 	const onboarding = env.MAIL_FROM ?? 'onboarding@example.com';
 	if (purpose === 'offer') return env.OFFER_MAIL_FROM ?? onboarding;
-	if (purpose === 'bgv') return env.BGV_MAIL_FROM ?? onboarding;
+	if (purpose === 'bgv') return env.BGV_MAIL_FROM ?? defaultBgvFrom(onboarding);
 	if (purpose === 'exit') return env.EXIT_MAIL_FROM ?? defaultExitFrom(onboarding);
 	return onboarding;
+}
+
+/** Strips a display name and angle brackets down to the bare address:
+ *  "ChampHR <onboarding@x.com>" → "onboarding@x.com". These come from env
+ *  vars, so the result is trimmed — a stray space would otherwise land inside
+ *  the angle brackets of a rebuilt header and Resend rejects that. */
+function bareAddress(value: string): string {
+	const match = value.match(/<([^>]+)>/);
+	return (match ? match[1] : value).trim();
 }
 
 /** offboarding@<same verified domain as MAIL_FROM>. Derived rather than
@@ -57,11 +64,41 @@ function fromAddressFor(purpose: MailPurpose): string {
  *  is dropped — brandFromHeader supplies the brand's name. Falls back to the
  *  onboarding mailbox if MAIL_FROM has no parseable address. */
 function defaultExitFrom(onboarding: string): string {
-	const match = onboarding.match(/<([^>]+)>/);
-	const address = (match ? match[1] : onboarding).trim();
+	const address = bareAddress(onboarding);
 	const at = address.lastIndexOf('@');
 	if (at < 1) return onboarding;
 	return `offboarding@${address.slice(at + 1)}`;
+}
+
+/** bgv@bgv.<registrable domain of MAIL_FROM> — MAIL_FROM on
+ *  onboarding@offer.championsmail.com yields bgv@bgv.championsmail.com.
+ *
+ *  BGV mail is the only thing this platform sends to people who never opted
+ *  in: HR desks at previous employers, addresses typed in by a candidate. A
+ *  spam complaint from one of them must not be able to drag down the sending
+ *  reputation of offer.<domain>, which carries every offer letter and every
+ *  candidate onboarding mail — so BGV gets its own subdomain, with its own
+ *  DKIM/SPF records and its own reputation.
+ *
+ *  Derived rather than hard-coded so a domain change to MAIL_FROM carries
+ *  over; BGV_MAIL_FROM overrides it outright. The subdomain has to be verified
+ *  in Resend (DNS records on bgv.<domain>) before it will actually send. */
+function defaultBgvFrom(onboarding: string): string {
+	const address = bareAddress(onboarding);
+	const at = address.lastIndexOf('@');
+	if (at < 1) return onboarding;
+	const labels = address.slice(at + 1).split('.');
+	// offer.championsmail.com → championsmail.com; an apex domain is left alone.
+	const root = labels.length > 2 ? labels.slice(1).join('.') : labels.join('.');
+	return `bgv@bgv.${root}`;
+}
+
+/** The bare mailbox a purpose sends from, e.g. bgv@bgv.championsmail.com.
+ *  brandFromHeader wraps this in the brand's display name for the From header;
+ *  this is the address itself, for Reply-To and for recognising an inbound
+ *  reply by the address it was sent to (see /webhooks/resend). */
+export function mailboxFor(purpose: MailPurpose): string {
+	return bareAddress(fromAddressFor(purpose));
 }
 
 /** "Brand Legal Name <mailbox@domain>" — keeps a per-purpose sending mailbox

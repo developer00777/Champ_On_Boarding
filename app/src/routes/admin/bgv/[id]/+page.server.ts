@@ -8,8 +8,15 @@ import { Candidate, Company, EmailMessage, BgvRequest } from '$lib/server/db/sch
 import { isBgvEligible, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { isValidEmail } from '$lib/shared/validation';
-import { sendMail, brandFromHeader } from '$lib/server/mailer';
+import { sendMail, brandFromHeader, mailboxFor } from '$lib/server/mailer';
 import { getOrCreateBgv, bgvFormPdf, bgvEmailText, bgvRequestHtml, defaultBgvEmail, BGV_PARTICULARS, BGV_EXTRAS } from '$lib/server/bgv';
+import { addDays, firstReminderAt, sendBgvReminder } from '$lib/server/bgv-reminders';
+import {
+	BGV_CADENCE_BOUNDS,
+	BGV_CADENCE_DEFAULTS,
+	clampCadenceInt,
+	resolveCadence
+} from '$lib/shared/bgv-cadence';
 import { audit } from '$lib/server/audit';
 
 /** Sending a BGV request is recruiter/HR work, same rule as approving a
@@ -40,6 +47,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const { candidate, company } = row;
 	const companyName = company?.name ?? brandBySlug(company?.brandSlug ?? undefined).name;
 	const bgv = await getOrCreateBgv(params.id);
+	const cadence = resolveCadence(bgv);
 
 	// The last-sent copy wins so HR's edits survive across visits; the template
 	// only seeds a never-sent request. The verification table is not part of
@@ -55,7 +63,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// The BGV mail thread: everything sent/tagged for this purpose, plus any
 	// inbound mail from the declared previous-employer address (covers replies
 	// that arrived before purpose tagging could identify them).
-	const or: Record<string, unknown>[] = [{ purpose: { $in: ['bgv_request', 'bgv_reply'] } }];
+	const or: Record<string, unknown>[] = [
+		{ purpose: { $in: ['bgv_request', 'bgv_reminder', 'bgv_reply'] } }
+	];
 	if (candidate.prevHrEmail) {
 		or.push({ direction: 'inbound', from: new RegExp(escapeRegex(candidate.prevHrEmail), 'i') });
 	}
@@ -89,6 +99,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			replyReceivedAt: bgv.replyReceivedAt?.toISOString() ?? null,
 			completedAt: bgv.completedAt?.toISOString() ?? null,
 			verifierName: verification.verifierName ?? null
+		},
+		reminders: {
+			// This candidate's own cadence — the only place it is set.
+			enabled: cadence.enabled,
+			everyDays: cadence.everyDays,
+			maxReminders: cadence.maxReminders,
+			// True while HR has never tuned this request, so the form can say the
+			// numbers are defaults rather than someone's deliberate choice.
+			isDefault: bgv.reminderEveryDays == null && bgv.reminderMaxCount == null,
+			defaults: BGV_CADENCE_DEFAULTS,
+			bounds: BGV_CADENCE_BOUNDS,
+			count: bgv.reminderCount ?? 0,
+			lastAt: bgv.lastReminderAt?.toISOString() ?? null,
+			nextAt: bgv.nextReminderAt?.toISOString() ?? null,
+			mailbox: mailboxFor('bgv')
 		},
 		compose,
 		messages: messages.map((m) => ({
@@ -145,6 +170,9 @@ export const actions: Actions = {
 				html: bgvRequestHtml(brand, body, candidateRec),
 				cc: cc.length ? cc : undefined,
 				attachments: [{ filename: `BGV-Form-${safeName}.pdf`, content: pdf }],
+				// The employer must reply to the BGV mailbox: that is the address
+				// the inbound webhook reads verification answers from.
+				replyTo: mailboxFor('bgv'),
 				tags: { candidate_id: String(candidate._id), purpose: 'bgv_request' }
 			});
 		} catch (e) {
@@ -160,6 +188,16 @@ export const actions: Actions = {
 		bgv.sentAt = new Date();
 		bgv.sentBy = locals.admin!.id;
 		bgv.sentCount = (bgv.sentCount ?? 0) + 1;
+		// Sending the request arms the chase in the same step, so nobody has to
+		// remember to switch it on. A re-send restarts the run from zero: HR has
+		// just re-asked, and the reminders that follow should be counted against
+		// this attempt, not the abandoned one. The cadence itself is left alone —
+		// it is this candidate's setting, not part of the send.
+		bgv.remindersEnabled = true;
+		bgv.reminderCount = 0;
+		bgv.lastReminderAt = null;
+		bgv.nextReminderAt =
+			bgv.status === 'completed' ? null : firstReminderAt(resolveCadence(bgv));
 		await bgv.save();
 
 		// Keep the candidate record's HR address in sync with where HR actually
@@ -178,6 +216,86 @@ export const actions: Actions = {
 		});
 
 		return { sent: true };
+	},
+
+	/** Re-request now: sends the follow-up immediately instead of waiting for
+	 *  the cadence, and restarts the run — the same mail the sweep would send,
+	 *  so a chased employer sees one consistent conversation. */
+	remindNow: async ({ params, locals }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+
+		const row = await getBgvCandidate(params.id);
+		if (!row) return fail(404, { message: 'Candidate not found.' });
+
+		const bgv = await getOrCreateBgv(params.id);
+		const outcome = await sendBgvReminder(String(bgv._id), {
+			trigger: 'manual',
+			actor: locals.admin!.email
+		});
+		if (!outcome.sent) return fail(400, { message: outcome.reason ?? 'Could not send the reminder.' });
+
+		return { reminded: true, reminderNumber: outcome.reminderNumber };
+	},
+
+	/** This candidate's reminder plan: on/off, how often, and how many times.
+	 *  Set here rather than org-wide because the recruiter working the case is
+	 *  the one who knows whether this employer needs chasing every two days or
+	 *  every fortnight. Open to HR, not just super admins — it is casework. */
+	saveReminderPlan: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+
+		const row = await getBgvCandidate(params.id);
+		if (!row) return fail(404, { message: 'Candidate not found.' });
+
+		const form = await request.formData();
+		const enabled = form.get('enabled') === 'on';
+		const everyDaysRaw = Number(form.get('everyDays'));
+		const maxRaw = Number(form.get('maxReminders'));
+
+		// Validated rather than silently clamped, so a typo tells HR what the
+		// allowed range is instead of quietly becoming a different number.
+		const { everyDays: dB, maxReminders: mB } = BGV_CADENCE_BOUNDS;
+		if (!Number.isFinite(everyDaysRaw) || everyDaysRaw < dB.min || everyDaysRaw > dB.max)
+			return fail(400, { message: `Reminder cadence must be between ${dB.min} and ${dB.max} days.` });
+		if (!Number.isFinite(maxRaw) || maxRaw < mB.min || maxRaw > mB.max)
+			return fail(400, { message: `Reminder count must be between ${mB.min} and ${mB.max}.` });
+
+		const bgv = await getOrCreateBgv(params.id);
+		const before = resolveCadence(bgv);
+
+		bgv.remindersEnabled = enabled;
+		bgv.reminderEveryDays = clampCadenceInt(everyDaysRaw, before.everyDays, dB.min, dB.max);
+		bgv.reminderMaxCount = clampCadenceInt(maxRaw, before.maxReminders, mB.min, mB.max);
+		const cadence = resolveCadence(bgv);
+
+		const stopped = !enabled || !bgv.sentAt || !!bgv.replyReceivedAt || bgv.status === 'completed';
+		const spent = (bgv.reminderCount ?? 0) >= cadence.maxReminders;
+		if (stopped || spent) {
+			bgv.nextReminderAt = null;
+		} else {
+			// Re-anchor on the last mail actually sent, so shortening the cadence
+			// counts from that mail rather than from this edit. A due-in-the-past
+			// result simply fires on the next sweep, which is what shortening a
+			// cadence on an overdue chase should do.
+			const anchor = bgv.lastReminderAt ?? bgv.sentAt ?? new Date();
+			const due = addDays(anchor, cadence.everyDays);
+			bgv.nextReminderAt = due.getTime() < Date.now() ? new Date() : due;
+		}
+		await bgv.save();
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'bgv_reminder_plan_updated',
+			field: bgv.to ?? null,
+			oldValue: `${before.enabled ? 'on' : 'off'} · every ${before.everyDays}d · max ${before.maxReminders}`,
+			newValue: `${cadence.enabled ? 'on' : 'off'} · every ${cadence.everyDays}d · max ${cadence.maxReminders}`,
+			ip: getClientAddress()
+		});
+
+		return { planSaved: true };
 	},
 
 	// Same scope as the list-page delete: removes the candidate from the BGV

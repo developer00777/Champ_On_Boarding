@@ -4,6 +4,13 @@ import { connectDb } from '$lib/server/db';
 import { getRedis } from '$lib/server/redis';
 import { resolveSession } from '$lib/server/auth';
 import { isAllowedAdminIp } from '$lib/server/ip-allowlist';
+import { startBgvReminderTicker } from '$lib/server/bgv-reminders';
+
+// Module scope: runs once per server process, not once per request. A
+// long-running deployment chases unanswered BGV requests on its own from here;
+// serverless has no process to hold the interval and calls
+// /api/cron/bgv-reminders instead. Both paths share one Redis lock.
+startBgvReminderTicker();
 
 // Redis-backed rate limiter — fails open so a Redis outage never blocks the app.
 async function rateLimited(key: string, limit: number, windowSec: number): Promise<boolean> {

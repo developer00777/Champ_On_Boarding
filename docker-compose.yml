@@ -53,7 +53,12 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-ChampHR <onboarding@offer.championsmail.com>}
       OFFER_MAIL_FROM: ${OFFER_MAIL_FROM:-}
+      # Unset falls back to bgv@bgv.<root domain of MAIL_FROM> — see mailer.ts.
       BGV_MAIL_FROM: ${BGV_MAIL_FROM:-}
+      # The BGV reminder sweep runs in-process here; "off" disables it, and
+      # CRON_SECRET arms /api/cron/bgv-reminders for an external scheduler.
+      BGV_REMINDER_TICKER: ${BGV_REMINDER_TICKER:-}
+      CRON_SECRET: ${CRON_SECRET:-}
       ADMIN_IP_ALLOWLIST_MODE: ${ADMIN_IP_ALLOWLIST_MODE:-log}
       # adapter-node caps request bodies at 512 KB by default, which rejects
       # every real document upload with a 413 — a phone photo of a payslip

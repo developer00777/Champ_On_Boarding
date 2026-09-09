@@ -22,6 +22,7 @@ import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { AuditLog, BgvRequest, Candidate, EmailMessage } from '$lib/server/db/schema';
 import { parseBgvReply } from '$lib/server/bgv';
+import { mailboxFor } from '$lib/server/mailer';
 
 interface ResendWebhookEvent {
 	type: string;
@@ -144,6 +145,18 @@ export const POST: RequestHandler = async ({ request }) => {
 			if (candidate) purpose = 'bgv_reply';
 		}
 
+		// Anything arriving at the BGV mailbox is a BGV reply even when the
+		// sender does not match — employers routinely answer from a colleague's
+		// address, a shared desk or a ticketing system. Nothing else is
+		// addressed to that subdomain, so the To header is a reliable marker;
+		// without a candidate match it still lands in the Inbox tagged, rather
+		// than looking like unrelated mail.
+		if (!candidate) {
+			const recipients = (event.data.to ?? []).map(bareAddress);
+			const bgvMailbox = mailboxFor('bgv').toLowerCase();
+			if (recipients.some((r) => r === bgvMailbox)) purpose = 'bgv_reply';
+		}
+
 		const text =
 			event.data.text ?? (event.data.email_id ? await fetchReceivedBody(event.data.email_id) : null);
 
@@ -160,7 +173,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		if (purpose === 'bgv_reply' && candidate) {
-			const update: Record<string, unknown> = { replyReceivedAt: new Date() };
+			// Clearing nextReminderAt is what actually stops the chase — the
+			// sweep reads nothing else. Done in the same update as
+			// replyReceivedAt so a reply can never leave a reminder armed.
+			const update: Record<string, unknown> = {
+				replyReceivedAt: new Date(),
+				nextReminderAt: null
+			};
 			let autoVerified = 0;
 
 			// LLM-map the employer's free-form reply onto the "Your Verification

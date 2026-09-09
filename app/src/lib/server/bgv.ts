@@ -97,6 +97,50 @@ export function defaultBgvEmail(
 	};
 }
 
+/** Cover note for a follow-up on an unanswered request — sent automatically on
+ *  the configured cadence, or by HR pressing "Send reminder now".
+ *
+ *  Deliberately a full request rather than a "did you see this?" nudge: the
+ *  same verification table and the same PDF ride along (see sendBgvReminder),
+ *  so the employer can answer the reminder itself without going back through
+ *  their inbox for the original. Reminders reuse the original subject so every
+ *  chase threads under one conversation in the employer's client. */
+export function bgvReminderBody(opts: {
+	candidateName: string;
+	prevEmployeeId?: string | null;
+	hiringCompanyName: string;
+	senderEmail: string;
+	originalSentAt: Date | null;
+	reminderNumber: number;
+	remindersLeft: number;
+}): string {
+	const { candidateName, prevEmployeeId, hiringCompanyName, senderEmail, originalSentAt } = opts;
+	const sentOn = originalSentAt
+		? originalSentAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+		: null;
+
+	return (
+		`Greetings Sir/Madam,\n\n` +
+		`This is a gentle reminder about our background-verification request for ` +
+		`${candidateName}${prevEmployeeId ? ` (Employee ID: ${prevEmployeeId})` : ''}, ` +
+		`a former employee of your organisation` +
+		`${sentOn ? `, which we first wrote to you about on ${sentOn}` : ''}.\n\n` +
+		`We have not yet received your response. The candidate's onboarding with us is held up ` +
+		`pending this verification, so we would be grateful for a reply at your earliest convenience.\n\n` +
+		`There is no need to look up our earlier email — the full BGV form is reproduced as a table ` +
+		`below, and attached again as a printable PDF. Simply hit Reply and fill in your verification ` +
+		`inputs against each item; your reply reaches our HR desk directly.\n\n` +
+		`If this request should go to a different colleague, please do forward it to them or point us ` +
+		`in the right direction. If the employment cannot be verified for any reason, a one-line reply ` +
+		`saying so is equally helpful and will stop these reminders.\n\n` +
+		`Thank you for your time and cooperation.\n\n` +
+		`Warm regards,\n` +
+		`${senderEmail}\n` +
+		`HR Department\n` +
+		`${hiringCompanyName}`
+	);
+}
+
 /** The extra verification-only rows as they should be asked in the email,
  *  with the Yes/No prompts spelled out. */
 const EMAIL_EXTRA_ROWS: { label: string; hint?: string }[] = [
