@@ -7,8 +7,8 @@ import { COMPENSATION_FIELD_BY_TRACK, TRACKS, type Track } from '$lib/shared/mat
 // this module has always been the offer letter's front door.
 import {
 	EMPTY_COMPENSATION_ANNEXURE,
-	DEFAULT_BONUS_LABEL,
-	DEFAULT_SHIFT_LABEL,
+	RETIRED_CASH_ROWS,
+	annexureNumber,
 	type AnnexureExtra,
 	type CompensationAnnexure
 } from '$lib/shared/annexure';
@@ -16,8 +16,6 @@ import {
 export {
 	computeAnnexureTotals,
 	EMPTY_COMPENSATION_ANNEXURE,
-	DEFAULT_BONUS_LABEL,
-	DEFAULT_SHIFT_LABEL,
 	type AnnexureExtra,
 	type AnnexureLine,
 	type AnnexureTotals,
@@ -187,7 +185,40 @@ function extras(raw: unknown): AnnexureExtra[] {
 	});
 }
 
+/** Carries the three retired fixed cash rows (Performance Bonus in Advance,
+ *  Shift Allowances, Special Allowances) forward as recruiter-added rows.
+ *
+ *  A draft saved while they were still fixed rows has its amounts in fields
+ *  nothing reads any more, so dropping them outright would quietly cut those
+ *  figures out of the annexure — and out of the CTC derived from it — on a
+ *  letter that may already have been discussed with the candidate. Rows worth
+ *  nothing are simply forgotten, which is the point of removing them. The next
+ *  save replaces the whole subdocument and the legacy fields go with it, so
+ *  this runs at most once per draft; the label check makes a repeat harmless
+ *  either way. */
+function migrateRetiredCashRows(annexure: unknown, existing: AnnexureExtra[]): AnnexureExtra[] {
+	const legacy = (annexure ?? {}) as Record<string, unknown>;
+	const taken = new Set(existing.map((e) => e.label.trim().toLowerCase()));
+	const carried: AnnexureExtra[] = [];
+
+	for (const row of RETIRED_CASH_ROWS) {
+		const pm = String(legacy[row.amountField] ?? '').trim();
+		if (!pm || annexureNumber(pm) === 0) continue;
+		const label =
+			(row.labelField ? String(legacy[row.labelField] ?? '').trim() : '') || row.label;
+		if (taken.has(label.toLowerCase())) continue;
+		taken.add(label.toLowerCase());
+		carried.push({ label, pm });
+	}
+	return carried;
+}
+
 export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLetterInput {
+	// Migrated rows lead, so a carried-forward component keeps its old position
+	// above anything HR added by hand.
+	const saved = extras(draft?.compensationAnnexure?.extraCash);
+	const cash = [...migrateRetiredCashRows(draft?.compensationAnnexure, saved), ...saved];
+
 	return {
 		jobTitle: draft?.jobTitle ?? '',
 		department: draft?.department ?? '',
@@ -214,19 +245,14 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 			enabled: draft?.compensationAnnexure?.enabled ?? false,
 			basicPm: draft?.compensationAnnexure?.basicPm ?? '',
 			hraPm: draft?.compensationAnnexure?.hraPm ?? '',
-			bonusLabel: draft?.compensationAnnexure?.bonusLabel ?? DEFAULT_BONUS_LABEL,
-			bonusPm: draft?.compensationAnnexure?.bonusPm ?? '',
 			ltaPm: draft?.compensationAnnexure?.ltaPm ?? '',
-			shiftLabel: draft?.compensationAnnexure?.shiftLabel ?? DEFAULT_SHIFT_LABEL,
-			shiftPm: draft?.compensationAnnexure?.shiftPm ?? '',
-			specialPm: draft?.compensationAnnexure?.specialPm ?? '',
 			pfPm: draft?.compensationAnnexure?.pfPm ?? '',
 			gratuityPm: draft?.compensationAnnexure?.gratuityPm ?? '',
 			insurancePm: draft?.compensationAnnexure?.insurancePm ?? '',
 			foodPm: draft?.compensationAnnexure?.foodPm ?? '',
 			variablePayEnabled: draft?.compensationAnnexure?.variablePayEnabled ?? false,
 			variablePayPm: draft?.compensationAnnexure?.variablePayPm ?? '',
-			extraCash: extras(draft?.compensationAnnexure?.extraCash),
+			extraCash: cash,
 			extraVariable: extras(draft?.compensationAnnexure?.extraVariable),
 			extraNonCash: extras(draft?.compensationAnnexure?.extraNonCash)
 		}

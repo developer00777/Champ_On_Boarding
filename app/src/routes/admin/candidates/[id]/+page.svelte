@@ -1553,25 +1553,10 @@
 										<input name="annexureHraPm" type="text" inputmode="decimal" bind:value={annexure.hraPm} placeholder="0.00" />
 										<span class="annexure-pa">{money(n(annexure.hraPm) * 12)}</span>
 									</div>
-									<div class="annexure-row annexure-editable-label">
-										<input name="annexureBonusLabel" type="text" bind:value={annexure.bonusLabel} placeholder="Performance Bonus in Advance" />
-										<input name="annexureBonusPm" type="text" inputmode="decimal" bind:value={annexure.bonusPm} placeholder="0.00" />
-										<span class="annexure-pa">{money(n(annexure.bonusPm) * 12)}</span>
-									</div>
 									<div class="annexure-row">
 										<span>LTA</span>
 										<input name="annexureLtaPm" type="text" inputmode="decimal" bind:value={annexure.ltaPm} placeholder="0.00" />
 										<span class="annexure-pa">{money(n(annexure.ltaPm) * 12)}</span>
-									</div>
-									<div class="annexure-row annexure-editable-label">
-										<input name="annexureShiftLabel" type="text" bind:value={annexure.shiftLabel} placeholder="Shift Allowances" />
-										<input name="annexureShiftPm" type="text" inputmode="decimal" bind:value={annexure.shiftPm} placeholder="0.00" />
-										<span class="annexure-pa">{money(n(annexure.shiftPm) * 12)}</span>
-									</div>
-									<div class="annexure-row">
-										<span>Special Allowances</span>
-										<input name="annexureSpecialPm" type="text" inputmode="decimal" bind:value={annexure.specialPm} placeholder="0.00" />
-										<span class="annexure-pa">{money(n(annexure.specialPm) * 12)}</span>
 									</div>
 									<!-- Recruiter-added rows for this section. Repeated field names
 									     rather than indexed ones, so removing a row in the middle needs
@@ -2666,9 +2651,6 @@
 		width: 100%;
 		box-sizing: border-box;
 		text-align: right;
-	}
-	.annexure-editable-label input:first-child {
-		text-align: left;
 	}
 	.annexure-pa {
 		text-align: right;

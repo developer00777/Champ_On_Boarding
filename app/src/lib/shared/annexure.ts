@@ -14,21 +14,16 @@ export interface AnnexureExtra {
 	pm: string;
 }
 
-/** One row of the annexure is "P.M. figure, P.A. is derived" except the two
- *  rows whose component *name* also varies per offer (bonus scheme / shift
- *  pattern differ by role), so those carry an editable label alongside the
- *  editable amount. Every other fixed row's label is boilerplate matching the
- *  signed reference and is not stored. */
+/** Every fixed row is "P.M. figure, P.A. is derived" — the label is boilerplate
+ *  matching the signed reference and is not stored. Components only some offers
+ *  carry (a shift allowance, a special allowance, an advance performance bonus)
+ *  used to be fixed rows too, and printed as 0.00 on every offer that did not
+ *  use them; they are added per offer as `extraCash` rows instead. */
 export interface CompensationAnnexure {
 	enabled: boolean;
 	basicPm: string;
 	hraPm: string;
-	bonusLabel: string;
-	bonusPm: string;
 	ltaPm: string;
-	shiftLabel: string;
-	shiftPm: string;
-	specialPm: string;
 	pfPm: string;
 	gratuityPm: string;
 	insurancePm: string;
@@ -50,19 +45,21 @@ export interface CompensationAnnexure {
 	extraNonCash: AnnexureExtra[];
 }
 
-export const DEFAULT_BONUS_LABEL = 'Performance Bonus in Advance';
-export const DEFAULT_SHIFT_LABEL = 'Shift Allowances';
+/** The three rows that used to be fixed cash components. Retained only so a
+ *  draft saved before they were removed carries its amounts forward as
+ *  `extraCash` rows, under the names HR already saw — see
+ *  offerLetterInputFromDraft. Nothing writes these fields any more. */
+export const RETIRED_CASH_ROWS = [
+	{ amountField: 'bonusPm', labelField: 'bonusLabel', label: 'Performance Bonus in Advance' },
+	{ amountField: 'shiftPm', labelField: 'shiftLabel', label: 'Shift Allowances' },
+	{ amountField: 'specialPm', labelField: null, label: 'Special Allowances' }
+] as const;
 
 export const EMPTY_COMPENSATION_ANNEXURE: CompensationAnnexure = {
 	enabled: false,
 	basicPm: '',
 	hraPm: '',
-	bonusLabel: DEFAULT_BONUS_LABEL,
-	bonusPm: '',
 	ltaPm: '',
-	shiftLabel: DEFAULT_SHIFT_LABEL,
-	shiftPm: '',
-	specialPm: '',
 	pfPm: '',
 	gratuityPm: '',
 	insurancePm: '',
@@ -126,10 +123,7 @@ export function computeAnnexureTotals(a: CompensationAnnexure): AnnexureTotals {
 	const cash: AnnexureLine[] = [
 		line('Basic Salary', a.basicPm),
 		line('House Rent Allowance', a.hraPm),
-		line(a.bonusLabel?.trim() || DEFAULT_BONUS_LABEL, a.bonusPm),
 		line('LTA', a.ltaPm),
-		line(a.shiftLabel?.trim() || DEFAULT_SHIFT_LABEL, a.shiftPm),
-		line('Special Allowances', a.specialPm),
 		...extraLines(a.extraCash, line)
 	];
 	const nonCash: AnnexureLine[] = [
