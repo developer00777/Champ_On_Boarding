@@ -1,0 +1,1693 @@
+<title>Access &amp; Reporting Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* ============================================================
+   Access & Reporting Studio — prototype for /admin/access
+   Tokens mirror app/src/lib/styles/aegis.css (glass surface).
+   Dark is the product default; the light branch is the same one
+   the admin shell ships behind [data-theme="light"].
+   ============================================================ */
+:root{
+  --ember:#ff7d55; --ember-glow:#ffa184; --ember-deep:#d85a35;
+  --verdant:#3ecf9a; --amber:#f2b15c; --crimson:#f07575; --azure:#7ba7f0;
+  --violet:#9278ff;
+
+  --text:#20243a; --text-2:#3e445c; --muted:#6a7186; --muted-2:#565d72;
+  --faint:#b7bccb;
+  --line:rgba(32,36,58,.09); --line-soft:rgba(32,36,58,.06); --line-strong:rgba(32,36,58,.14);
+
+  --page-bg:
+    radial-gradient(1000px 640px at 82% -8%, rgba(255,125,85,.30), transparent 60%),
+    radial-gradient(880px 660px at -12% 32%, rgba(146,120,255,.32), transparent 58%),
+    radial-gradient(760px 560px at 52% 116%, rgba(62,207,180,.22), transparent 62%),
+    linear-gradient(160deg,#edeffa 0%,#f6f3ee 55%,#eaf0f4 100%);
+  --card-bg:linear-gradient(150deg, rgba(255,255,255,.80), rgba(255,255,255,.50));
+  --card-border:rgba(255,255,255,.85);
+  --card-shadow:0 24px 50px -20px rgba(70,75,120,.35), inset 0 1px 0 rgba(255,255,255,.95);
+  --card-blur:blur(18px) saturate(175%);
+  --input-bg:rgba(255,255,255,.65);
+  --sub-bg:rgba(255,255,255,.50);
+  --rail-bg:rgba(255,255,255,.62);
+  --hover:rgba(32,36,58,.05);
+  --dot:rgba(32,36,58,.16);
+  --node-bg:linear-gradient(150deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
+  --scrim:rgba(20,22,38,.42);
+
+  --font-display:'Space Grotesk', system-ui, sans-serif;
+  --font-body:'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --spring:cubic-bezier(.34,1.56,.64,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --text:#fafaf7; --text-2:#cbd1de; --muted:#8a91a5; --muted-2:#a8afc0; --faint:#4b5160;
+    --line:rgba(255,255,255,.07); --line-soft:rgba(255,255,255,.05); --line-strong:rgba(255,255,255,.10);
+    --page-bg:
+      radial-gradient(1000px 640px at 82% -8%, rgba(255,125,85,.26), transparent 60%),
+      radial-gradient(880px 660px at -12% 32%, rgba(146,120,255,.28), transparent 58%),
+      radial-gradient(760px 560px at 52% 116%, rgba(62,207,180,.18), transparent 62%),
+      linear-gradient(160deg,#171430 0%,#10131f 55%,#121a2a 100%);
+    --card-bg:linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+    --card-border:rgba(255,255,255,.20);
+    --card-shadow:0 24px 55px -18px rgba(6,4,22,.60), inset 0 1px 0 rgba(255,255,255,.16);
+    --input-bg:rgba(255,255,255,.07);
+    --sub-bg:rgba(255,255,255,.05);
+    --rail-bg:rgba(14,17,26,.62);
+    --hover:rgba(255,255,255,.07);
+    --dot:rgba(255,255,255,.10);
+    --node-bg:linear-gradient(150deg, rgba(255,255,255,.13), rgba(255,255,255,.045));
+    --scrim:rgba(6,8,16,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --text:#fafaf7; --text-2:#cbd1de; --muted:#8a91a5; --muted-2:#a8afc0; --faint:#4b5160;
+  --line:rgba(255,255,255,.07); --line-soft:rgba(255,255,255,.05); --line-strong:rgba(255,255,255,.10);
+  --page-bg:
+    radial-gradient(1000px 640px at 82% -8%, rgba(255,125,85,.26), transparent 60%),
+    radial-gradient(880px 660px at -12% 32%, rgba(146,120,255,.28), transparent 58%),
+    radial-gradient(760px 560px at 52% 116%, rgba(62,207,180,.18), transparent 62%),
+    linear-gradient(160deg,#171430 0%,#10131f 55%,#121a2a 100%);
+  --card-bg:linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+  --card-border:rgba(255,255,255,.20);
+  --card-shadow:0 24px 55px -18px rgba(6,4,22,.60), inset 0 1px 0 rgba(255,255,255,.16);
+  --input-bg:rgba(255,255,255,.07);
+  --sub-bg:rgba(255,255,255,.05);
+  --rail-bg:rgba(14,17,26,.62);
+  --hover:rgba(255,255,255,.07);
+  --dot:rgba(255,255,255,.10);
+  --node-bg:linear-gradient(150deg, rgba(255,255,255,.13), rgba(255,255,255,.045));
+  --scrim:rgba(6,8,16,.55);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--page-bg); background-attachment:fixed;
+  color:var(--text); font-family:var(--font-body); font-size:14px;
+  min-height:100vh; -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(255,125,85,.30)}
+h1,h2,h3{font-family:var(--font-display); font-weight:600; letter-spacing:-.02em; margin:0}
+button{font:inherit; color:inherit; cursor:pointer; background:none; border:none}
+:focus-visible{outline:2px solid var(--ember); outline-offset:2px; border-radius:6px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+.eyebrow{font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.15em; text-transform:uppercase; color:var(--ember)}
+.mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+/* ---------- shell ---------- */
+.shell{display:grid; grid-template-columns:216px minmax(0,1fr); height:100vh; overflow:hidden}
+.rail{
+  background:var(--rail-bg); backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur);
+  border-right:1px solid var(--line); display:flex; flex-direction:column; gap:2px; padding:18px 12px;
+}
+.rail-brand{display:flex; align-items:center; gap:10px; padding:4px 6px 18px}
+.rail-mark{
+  width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+  background:linear-gradient(145deg,var(--ember),var(--ember-deep));
+  box-shadow:0 0 18px rgba(255,125,85,.38); color:#fff;
+  font-family:var(--font-display); font-weight:700; font-size:14px;
+}
+.rail-name{font-family:var(--font-display); font-weight:600; font-size:14.5px; line-height:1.1}
+.rail-sub{font-family:var(--font-mono); font-size:9px; letter-spacing:.12em; color:var(--muted); text-transform:uppercase}
+.navitem{
+  position:relative; display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:9px;
+  color:var(--muted-2); font-size:13px; font-weight:500; text-decoration:none; width:100%; text-align:left;
+}
+.navitem svg{width:15px; height:15px; flex:none; opacity:.85}
+.navitem:hover{background:var(--hover); color:var(--text)}
+.navitem.on{background:var(--hover); color:var(--text)}
+.navitem.on::before{content:""; position:absolute; left:-12px; top:9px; width:3px; height:18px; border-radius:0 3px 3px 0; background:var(--ember)}
+.rail-gap{flex:1}
+.rail-user{border-top:1px solid var(--line); padding-top:12px; margin-top:8px; display:flex; align-items:center; gap:9px}
+.rail-user .who{min-width:0}
+.rail-user .em{font-size:12px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.rail-user .rl{font-family:var(--font-mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ember)}
+
+/* ---------- top bar ---------- */
+.main{display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-width:0}
+.topbar{display:flex; align-items:center; gap:16px; padding:13px 20px; border-bottom:1px solid var(--line)}
+.topbar h1{font-size:19px}
+.topbar .sub{font-size:11.5px; color:var(--muted); margin-top:2px}
+.modes{display:flex; gap:2px; padding:3px; border-radius:11px; background:var(--sub-bg); border:1px solid var(--line)}
+.mode{padding:6px 13px; border-radius:8px; font-size:12.5px; font-weight:500; color:var(--muted-2); display:flex; align-items:center; gap:7px; transition:background .15s,color .15s}
+.mode svg{width:14px; height:14px}
+.mode:hover{color:var(--text)}
+.mode[aria-selected="true"]{background:var(--card-bg); color:var(--text); box-shadow:0 2px 10px -4px rgba(0,0,0,.35)}
+.spacer{flex:1}
+
+.btn{background:var(--ember); color:#fff; border-radius:8px; padding:8px 15px; font-weight:500; font-size:13px; box-shadow:0 0 24px rgba(255,125,85,.30); transition:all .22s var(--spring); display:inline-flex; align-items:center; gap:7px}
+.btn:hover:not(:disabled){background:var(--ember-glow); transform:translateY(-1px); box-shadow:0 0 32px rgba(255,125,85,.50)}
+.btn:disabled{opacity:.4; box-shadow:none; cursor:not-allowed}
+.btn.ghost{background:transparent; color:var(--text-2); border:1px solid var(--line-strong); box-shadow:none}
+.btn.ghost:hover:not(:disabled){background:var(--hover); color:var(--text); transform:none; box-shadow:none}
+.btn.small{padding:5px 11px; font-size:12px}
+.btn svg{width:14px; height:14px}
+.icobtn{width:32px; height:32px; border-radius:9px; border:1px solid var(--line-strong); display:grid; place-items:center; color:var(--muted-2); background:var(--sub-bg)}
+.icobtn:hover{color:var(--text); background:var(--hover)}
+.icobtn svg{width:15px; height:15px}
+
+/* ---------- stage ---------- */
+.stage{display:grid; grid-template-columns:minmax(0,1fr) 384px; min-height:0}
+.view{position:relative; min-width:0; overflow:hidden}
+.view[hidden]{display:none}
+
+/* ---------- canvas ---------- */
+#canvas{
+  position:absolute; inset:0; overflow:hidden; cursor:grab; touch-action:none;
+  background-image:radial-gradient(circle, var(--dot) 1px, transparent 1px);
+  background-size:26px 26px;
+}
+#canvas.panning{cursor:grabbing}
+#canvas.linking{cursor:crosshair}
+#world{position:absolute; top:0; left:0; width:0; height:0; transform-origin:0 0}
+/* Parked at -3000,-3000 with an equal counter-translate on the contents, so
+   nodes at negative world coordinates are still inside the drawing area. */
+#edges{position:absolute; top:-3000px; left:-3000px; width:9000px; height:9000px; overflow:visible; pointer-events:none}
+#edges path{fill:none; stroke:var(--line-strong); stroke-width:1.6}
+#edges path.lit{stroke:var(--ember); stroke-width:2.2}
+#edges path.hit{stroke:transparent; stroke-width:16; pointer-events:stroke; cursor:pointer}
+#edges circle{fill:var(--muted)}
+#edges circle.lit{fill:var(--ember)}
+
+.node{
+  position:absolute; width:238px; border-radius:16px;
+  background:var(--node-bg); border:1px solid var(--card-border); box-shadow:var(--card-shadow);
+  backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur);
+  padding:12px 13px 11px; cursor:grab; user-select:none;
+  transition:box-shadow .18s, border-color .18s, opacity .18s;
+}
+.node:hover{border-color:rgba(255,125,85,.45)}
+.node.sel{border-color:var(--ember); box-shadow:0 0 0 2px rgba(255,125,85,.28), var(--card-shadow)}
+.node.dragging{cursor:grabbing; z-index:20}
+.node.target{border-color:var(--verdant); box-shadow:0 0 0 2px rgba(62,207,180,.35), var(--card-shadow)}
+.node.dim{opacity:.34}
+.node.disabled .avatar{filter:grayscale(1) opacity(.65)}
+.node-top{display:flex; gap:10px; align-items:flex-start}
+.avatar{width:36px; height:36px; border-radius:11px; flex:none; display:grid; place-items:center; font-family:var(--font-display); font-weight:600; font-size:13px; color:#fff}
+.node-id{min-width:0; flex:1}
+.node-name{font-family:var(--font-display); font-weight:600; font-size:14px; line-height:1.2; letter-spacing:-.01em}
+.node-title{font-size:11.5px; color:var(--muted); margin-top:2px; line-height:1.25}
+.chip{display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; font-weight:600}
+.node-preset{margin-top:9px}
+.node-meta{display:flex; align-items:center; gap:8px; margin-top:9px; font-size:10.5px; color:var(--muted)}
+.meter{flex:1; height:4px; border-radius:3px; background:var(--line-strong); overflow:hidden}
+.meter i{display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,var(--ember-deep),var(--ember-glow))}
+.node-flags{display:flex; gap:5px; margin-top:9px; flex-wrap:wrap}
+.flag{display:inline-flex; align-items:center; gap:4px; padding:2.5px 7px; border-radius:6px; font-size:10px; font-weight:500}
+.flag svg{width:10px; height:10px}
+.flag.warn{background:rgba(240,117,117,.16); color:var(--crimson)}
+.flag.time{background:rgba(242,177,92,.16); color:var(--amber)}
+.flag.check{background:rgba(123,167,240,.16); color:var(--azure)}
+.flag.off{background:var(--line-strong); color:var(--muted)}
+.link-handle{
+  position:absolute; bottom:-11px; left:50%; transform:translateX(-50%);
+  width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+  background:var(--card-bg); border:1px solid var(--line-strong); color:var(--muted);
+  opacity:0; transition:opacity .15s, color .15s, border-color .15s;
+  backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur);
+}
+.node:hover .link-handle, .node.sel .link-handle{opacity:1}
+.link-handle:hover{color:var(--ember); border-color:var(--ember)}
+.link-handle svg{width:11px; height:11px}
+.link-handle.armed{opacity:1; color:#fff; background:var(--ember); border-color:var(--ember)}
+
+.canvas-tools{position:absolute; left:16px; bottom:16px; display:flex; gap:4px; padding:5px; border-radius:12px; background:var(--card-bg); border:1px solid var(--card-border); box-shadow:var(--card-shadow); backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur)}
+.zoomval{min-width:48px; display:grid; place-items:center; font-family:var(--font-mono); font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums}
+.hintbar{position:absolute; left:50%; top:16px; transform:translateX(-50%); padding:8px 14px; border-radius:10px; font-size:12.5px; background:rgba(255,125,85,.16); border:1px solid rgba(255,125,85,.42); color:var(--text); display:flex; align-items:center; gap:9px; backdrop-filter:blur(10px); z-index:5}
+.hintbar[hidden]{display:none}
+.hintbar kbd{font-family:var(--font-mono); font-size:10.5px; padding:2px 6px; border-radius:5px; background:var(--sub-bg); border:1px solid var(--line-strong)}
+.legend{position:absolute; right:16px; bottom:16px; padding:10px 12px; border-radius:12px; background:var(--card-bg); border:1px solid var(--card-border); box-shadow:var(--card-shadow); backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur); display:flex; flex-direction:column; gap:6px}
+.legend .lg-t{font-family:var(--font-mono); font-size:9px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted)}
+.legend .row{display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text-2)}
+.swatch{width:9px; height:9px; border-radius:3px; flex:none}
+
+/* ---------- inspector ---------- */
+.inspector{border-left:1px solid var(--line); background:var(--rail-bg); backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur); display:flex; flex-direction:column; min-height:0}
+.insp-head{padding:16px 18px 13px; border-bottom:1px solid var(--line)}
+.insp-who{display:flex; gap:11px; align-items:flex-start}
+.insp-who .avatar{width:42px; height:42px; border-radius:13px; font-size:15px}
+.insp-name{font-family:var(--font-display); font-weight:600; font-size:16px; letter-spacing:-.01em}
+.insp-mail{font-family:var(--font-mono); font-size:10.5px; color:var(--muted); margin-top:3px; word-break:break-all}
+.insp-body{overflow-y:auto; padding:0 18px 24px; flex:1; min-height:0; scrollbar-width:thin}
+.insp-empty{display:grid; place-content:center; justify-items:center; gap:10px; height:100%; padding:40px; text-align:center; color:var(--muted)}
+.insp-empty svg{width:34px; height:34px; opacity:.5}
+
+.sec{padding:16px 0; border-bottom:1px solid var(--line-soft)}
+.sec:last-child{border-bottom:none}
+.sec-h{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:11px}
+.sec-t{font-family:var(--font-mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:600}
+.field{display:flex; flex-direction:column; gap:6px; margin-bottom:12px}
+.field:last-child{margin-bottom:0}
+label{color:var(--text-2); font-weight:500; font-size:11.5px}
+select, input[type="date"], input[type="text"]{
+  background:var(--input-bg); border:1px solid var(--line-strong); border-radius:8px; color:var(--text);
+  padding:7px 9px; font-family:var(--font-body); font-size:12.5px; width:100%; transition:all .12s;
+}
+select:focus, input:focus{border-color:var(--ember); box-shadow:0 0 0 3px rgba(255,125,85,.25); outline:none}
+.hint{font-size:11px; color:var(--muted); line-height:1.45}
+
+.pickrow{display:flex; flex-wrap:wrap; gap:5px}
+.pick{padding:5px 9px; border-radius:7px; border:1px solid var(--line-strong); background:var(--sub-bg); font-size:11.5px; color:var(--muted-2); transition:all .13s}
+.pick:hover{color:var(--text); border-color:var(--muted)}
+.pick[aria-pressed="true"]{background:rgba(255,125,85,.16); border-color:rgba(255,125,85,.5); color:var(--text)}
+.pick.mini{padding:4px 8px; font-size:11px}
+
+.radiolist{display:flex; flex-direction:column; gap:4px}
+.radio{display:flex; gap:9px; align-items:flex-start; padding:8px 10px; border-radius:9px; border:1px solid transparent; text-align:left; transition:all .13s}
+.radio:hover{background:var(--hover)}
+.radio[aria-checked="true"]{background:rgba(255,125,85,.10); border-color:rgba(255,125,85,.34)}
+.radio .bullet{width:14px; height:14px; border-radius:50%; border:1.5px solid var(--muted); flex:none; margin-top:1px; display:grid; place-items:center}
+.radio[aria-checked="true"] .bullet{border-color:var(--ember)}
+.radio[aria-checked="true"] .bullet::after{content:""; width:7px; height:7px; border-radius:50%; background:var(--ember)}
+.radio .rt{font-size:12.5px; font-weight:500}
+.radio .rd{font-size:11px; color:var(--muted); margin-top:2px; line-height:1.4}
+
+/* capability groups */
+.capgroup{border:1px solid var(--line); border-radius:12px; margin-bottom:8px; overflow:hidden; background:var(--sub-bg)}
+.capgroup summary{list-style:none; cursor:pointer}
+.capgroup summary::-webkit-details-marker{display:none}
+.capgroup summary::marker{content:""}
+.capgroup-h{display:flex; align-items:center; gap:9px; padding:9px 11px; width:100%; text-align:left}
+.capgroup-h:hover{background:var(--hover)}
+.capgroup-h .gi{width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:none}
+.capgroup-h .gi svg{width:14px; height:14px}
+.capgroup-h .gn{flex:1; font-size:12.5px; font-weight:500}
+.capgroup-h .gc{font-family:var(--font-mono); font-size:10px; color:var(--muted)}
+.capgroup-h .caret{width:12px; height:12px; color:var(--muted); transition:transform .18s}
+.capgroup[open] .caret{transform:rotate(90deg)}
+.capgroup-b{padding:2px 11px 10px; display:flex; flex-direction:column; gap:2px}
+.caprow{display:flex; align-items:center; gap:9px; padding:6px 0; border-top:1px solid var(--line-soft)}
+.caprow:first-child{border-top:none}
+.cap-id{flex:1; min-width:0}
+.cap-l{font-size:12px; line-height:1.3}
+.cap-k{font-family:var(--font-mono); font-size:9.5px; color:var(--faint); margin-top:2px}
+.cap-l .ovr{display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--ember); margin-left:5px; vertical-align:middle}
+.seg{display:flex; gap:1px; padding:2px; border-radius:8px; background:var(--line-strong); flex:none}
+.seg button{padding:3px 7px; border-radius:6px; font-family:var(--font-mono); font-size:9px; letter-spacing:.06em; text-transform:uppercase; font-weight:600; color:var(--muted); transition:all .13s}
+.seg button:hover:not(:disabled){color:var(--text)}
+.seg button:disabled{opacity:.25; cursor:not-allowed}
+.seg button[aria-pressed="true"]{background:var(--card-bg); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.seg button[aria-pressed="true"][data-lv="view"]{background:rgba(123,167,240,.24); color:var(--azure)}
+.seg button[aria-pressed="true"][data-lv="act"]{background:rgba(255,125,85,.24); color:var(--ember)}
+.seg button[aria-pressed="true"][data-lv="approve"]{background:rgba(62,207,180,.24); color:var(--verdant)}
+.seg button[aria-pressed="true"][data-lv="none"]{background:var(--sub-bg); color:var(--muted)}
+.caprow.checker{background:rgba(123,167,240,.07)}
+
+.sod{border:1px solid rgba(240,117,117,.4); background:rgba(240,117,117,.09); border-radius:11px; padding:11px 12px; display:flex; gap:10px}
+.sod svg{width:15px; height:15px; color:var(--crimson); flex:none; margin-top:1px}
+.sod .st{font-size:12px; font-weight:600; color:var(--crimson)}
+.sod .sd{font-size:11.5px; color:var(--text-2); margin-top:4px; line-height:1.45}
+.sod-ok{border:1px solid rgba(62,207,180,.32); background:rgba(62,207,180,.08); border-radius:11px; padding:10px 12px; display:flex; gap:9px; align-items:center; font-size:11.5px; color:var(--text-2)}
+.sod-ok svg{width:14px; height:14px; color:var(--verdant); flex:none}
+
+.toggle{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0}
+.toggle .tl{font-size:12.5px; font-weight:500}
+.toggle .td{font-size:11px; color:var(--muted); margin-top:3px; line-height:1.45}
+.sw{width:36px; height:20px; border-radius:999px; background:var(--line-strong); position:relative; flex:none; transition:background .18s}
+.sw::after{content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--muted); transition:transform .18s var(--spring), background .18s}
+.sw[aria-pressed="true"]{background:rgba(255,125,85,.35)}
+.sw[aria-pressed="true"]::after{transform:translateX(16px); background:var(--ember)}
+
+/* ---------- matrix ---------- */
+.matrix-wrap{position:absolute; inset:0; display:flex; flex-direction:column}
+.matrix-bar{display:flex; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap}
+.matrix-scroll{overflow:auto; flex:1; min-height:0; scrollbar-width:thin}
+table.matrix{border-collapse:separate; border-spacing:0; font-size:12px; min-width:100%}
+table.matrix th, table.matrix td{padding:0; text-align:left}
+table.matrix thead th{
+  position:sticky; top:0; z-index:3; background:var(--card-bg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line-strong); padding:9px 10px; vertical-align:bottom;
+}
+table.matrix thead th.corner{left:0; z-index:4; min-width:286px}
+.mh{display:flex; flex-direction:column; gap:5px; align-items:center; width:104px}
+.mh .avatar{width:26px; height:26px; border-radius:8px; font-size:10px}
+.mh .mn{font-size:11px; font-weight:600; text-align:center; line-height:1.2}
+.mh .mr{font-family:var(--font-mono); font-size:8.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
+table.matrix tbody th{
+  position:sticky; left:0; z-index:2; background:var(--card-bg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border-right:1px solid var(--line-strong); border-bottom:1px solid var(--line-soft); padding:7px 12px; font-weight:400;
+}
+table.matrix tbody td{border-bottom:1px solid var(--line-soft); padding:5px 8px; text-align:center}
+tr.grouprow th, tr.grouprow td{background:var(--sub-bg); border-bottom:1px solid var(--line-strong)}
+tr.grouprow th{font-family:var(--font-mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ember); padding:9px 12px; font-weight:600}
+.mcap-l{font-size:12px}
+.mcap-k{font-family:var(--font-mono); font-size:9px; color:var(--faint); margin-top:1px}
+.cell{
+  width:66px; padding:4px 0; border-radius:7px; font-family:var(--font-mono); font-size:9px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; border:1px solid transparent; transition:all .12s;
+}
+.cell:hover{border-color:var(--muted)}
+.cell[data-lv="none"]{background:var(--line-soft); color:var(--faint)}
+.cell[data-lv="view"]{background:rgba(123,167,240,.18); color:var(--azure)}
+.cell[data-lv="act"]{background:rgba(255,125,85,.20); color:var(--ember)}
+.cell[data-lv="approve"]{background:rgba(62,207,180,.20); color:var(--verdant)}
+.cell.locked{opacity:.5; cursor:not-allowed}
+.cell .od{display:inline-block; width:4px; height:4px; border-radius:50%; background:currentColor; margin-left:4px; vertical-align:middle}
+
+/* ---------- simulate ---------- */
+.sim-wrap{position:absolute; inset:0; overflow-y:auto; padding:20px 22px 30px; scrollbar-width:thin}
+.sim-head{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px}
+.sim-grid{display:grid; grid-template-columns:200px minmax(0,1fr); gap:18px; align-items:start}
+.card{background:var(--card-bg); border:1px solid var(--card-border); border-radius:16px; box-shadow:var(--card-shadow); backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur)}
+.sim-nav{padding:12px 10px}
+.sim-nav .navitem{cursor:default}
+.sim-nav .navitem.blocked{opacity:.32}
+.sim-nav .navitem.blocked svg{opacity:.5}
+.sim-rec{padding:18px 20px 20px}
+.sim-rec-h{display:flex; align-items:center; gap:12px; padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:6px}
+.sim-actions{display:flex; flex-direction:column}
+.sim-act{display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid var(--line-soft)}
+.sim-act:last-child{border-bottom:none}
+.sim-act .sa-n{flex:1; font-size:12.5px}
+.sim-act .sa-why{font-size:11px; color:var(--muted); margin-top:3px; display:flex; align-items:center; gap:5px}
+.sim-act .sa-why svg{width:11px; height:11px; flex:none}
+.pillbtn{padding:5px 11px; border-radius:7px; font-size:11.5px; font-weight:500; flex:none; border:1px solid transparent}
+.pillbtn.ok{background:rgba(255,125,85,.16); border-color:rgba(255,125,85,.42); color:var(--ember)}
+.pillbtn.rev{background:rgba(123,167,240,.14); border-color:rgba(123,167,240,.36); color:var(--azure)}
+.pillbtn.no{background:var(--line-soft); color:var(--faint); border-color:var(--line-strong); text-decoration:line-through}
+.scope-note{display:flex; gap:9px; padding:11px 13px; border-radius:11px; background:rgba(123,167,240,.09); border:1px solid rgba(123,167,240,.30); font-size:11.5px; color:var(--text-2); line-height:1.5; margin-bottom:16px}
+.scope-note svg{width:14px; height:14px; color:var(--azure); flex:none; margin-top:1px}
+
+/* ---------- change bar + drawer ---------- */
+.changebar{display:flex; align-items:center; gap:14px; padding:11px 20px; border-top:1px solid var(--line); background:var(--rail-bg); backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur)}
+.cb-count{display:flex; align-items:center; gap:9px; font-size:12.5px}
+.cb-dot{width:8px; height:8px; border-radius:50%; background:var(--faint)}
+.cb-dot.hot{background:var(--ember); box-shadow:0 0 10px rgba(255,125,85,.7)}
+.drawer{position:fixed; inset:0; z-index:60; display:none}
+.drawer.open{display:block}
+.drawer-scrim{position:absolute; inset:0; background:var(--scrim); backdrop-filter:blur(3px)}
+.drawer-panel{
+  position:absolute; right:0; top:0; bottom:0; width:min(560px,94vw);
+  background:var(--page-bg); border-left:1px solid var(--card-border); box-shadow:-30px 0 60px -20px rgba(0,0,0,.5);
+  display:flex; flex-direction:column;
+}
+.drawer-h{display:flex; align-items:center; gap:12px; padding:18px 22px 14px; border-bottom:1px solid var(--line)}
+.drawer-tabs{display:flex; gap:2px; padding:3px; border-radius:10px; background:var(--sub-bg); border:1px solid var(--line); margin:14px 22px 0}
+.drawer-tabs button{flex:1; padding:6px 10px; border-radius:7px; font-size:12px; font-weight:500; color:var(--muted-2)}
+.drawer-tabs button[aria-selected="true"]{background:var(--card-bg); color:var(--text)}
+.drawer-b{overflow-y:auto; padding:16px 22px 24px; flex:1; scrollbar-width:thin}
+.diff{display:flex; gap:11px; padding:11px 0; border-bottom:1px solid var(--line-soft)}
+.diff .dico{width:26px; height:26px; border-radius:8px; display:grid; place-items:center; flex:none}
+.diff .dico svg{width:13px; height:13px}
+.diff .dt{font-size:12.5px; line-height:1.4}
+.diff .dm{font-size:11px; color:var(--muted); margin-top:3px; font-family:var(--font-mono)}
+.diff .dm b{color:var(--text-2); font-weight:500}
+.arrow{color:var(--muted); margin:0 4px}
+.drawer-f{padding:14px 22px; border-top:1px solid var(--line); display:flex; gap:10px; align-items:center}
+.empty-diff{text-align:center; color:var(--muted); font-size:12.5px; padding:40px 20px; line-height:1.6}
+
+.toast{
+  position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(14px);
+  background:var(--card-bg); border:1px solid var(--card-border); box-shadow:var(--card-shadow);
+  backdrop-filter:var(--card-blur); -webkit-backdrop-filter:var(--card-blur);
+  padding:11px 17px; border-radius:11px; font-size:12.5px; display:flex; align-items:center; gap:9px;
+  opacity:0; pointer-events:none; transition:opacity .22s, transform .22s var(--spring); z-index:70;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+.toast svg{width:15px; height:15px; color:var(--verdant)}
+
+@media (max-width:1180px){
+  .shell{grid-template-columns:64px minmax(0,1fr)}
+  .rail-name,.rail-sub,.navitem span,.rail-user .who{display:none}
+  .rail-brand{justify-content:center; padding-left:0; padding-right:0}
+  .navitem{justify-content:center}
+  .rail-user{justify-content:center}
+  .stage{grid-template-columns:minmax(0,1fr) 330px}
+}
+@media (max-width:900px){
+  .stage{grid-template-columns:minmax(0,1fr)}
+  .inspector{display:none}
+}
+</style>
+
+<div class="shell">
+  <!-- ── rail ─────────────────────────────────────────────── -->
+  <aside class="rail">
+    <div class="rail-brand">
+      <div class="rail-mark">C</div>
+      <div>
+        <div class="rail-name">Champ Suite</div>
+        <div class="rail-sub">Onboarding</div>
+      </div>
+    </div>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-8 9 8v8a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg><span>Overview</span></a>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M17 9h4M17 13h4"/></svg><span>Candidates</span></a>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.4-2.9 8.2-7 9.4C7.9 19.2 5 15.4 5 11V6z"/><path d="M9.5 11.8l1.8 1.8 3.4-3.6"/></svg><span>Verification</span></a>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a1 1 0 00-1 1v16a1 1 0 001 1h10a1 1 0 001-1V7z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 16.5h4"/></svg><span>Exits</span></a>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M8.5 5v14"/></svg><span>Entities</span></a>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M9.5 19V4M15 19v-7M20.5 19v-4"/></svg><span>Analytics</span></a>
+    <a class="navitem" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.6 6.5L12 13l8.4-6.5"/></svg><span>Inbox</span></a>
+    <a class="navitem on" href="#" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="7" height="6" rx="1.6"/><rect x="13" y="15" width="7" height="6" rx="1.6"/><rect x="4" y="15" width="7" height="6" rx="1.6"/><path d="M7.5 9v3.5h9V15M7.5 12.5V15"/></svg><span>Access &amp; org</span></a>
+    <div class="rail-gap"></div>
+    <div class="rail-user">
+      <div class="avatar" style="width:30px;height:30px;border-radius:9px;font-size:11px;background:linear-gradient(145deg,#ff7d55,#d85a35)">HK</div>
+      <div class="who">
+        <div class="em">hemang.k@championsmail.com</div>
+        <div class="rl">Super admin</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── main ─────────────────────────────────────────────── -->
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <h1>Access &amp; reporting</h1>
+        <div class="sub">Who can do what, on whose records, and who signs it off.</div>
+      </div>
+      <div class="modes" role="tablist" aria-label="Workspace mode">
+        <button class="mode" role="tab" data-view="org" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="5" rx="1.4"/><rect x="2.5" y="16" width="6" height="5" rx="1.4"/><rect x="15.5" y="16" width="6" height="5" rx="1.4"/><path d="M12 8v4M5.5 16v-4h13v4"/></svg>Org chart</button>
+        <button class="mode" role="tab" data-view="matrix" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9h17M3.5 14.5h17M9 3.5v17M14.5 3.5v17"/></svg>Permission matrix</button>
+        <button class="mode" role="tab" data-view="sim" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>Simulate</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="icobtn" id="themeBtn" title="Switch theme" aria-label="Switch theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.2A8.2 8.2 0 019.8 4 8.5 8.5 0 1020 14.2z"/></svg>
+      </button>
+      <button class="btn ghost small" id="resetBtn">Reset to saved</button>
+    </header>
+
+    <section class="stage">
+      <!-- org chart -->
+      <div class="view" id="view-org">
+        <div id="canvas">
+          <div id="world">
+            <svg id="edges"></svg>
+          </div>
+        </div>
+        <div class="hintbar" id="hintbar" hidden>
+          <span id="hintText"></span>
+          <kbd>Esc</kbd><span class="muted">cancel</span>
+        </div>
+        <div class="canvas-tools">
+          <button class="icobtn" id="zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 12h12"/></svg></button>
+          <div class="zoomval" id="zoomVal">100%</div>
+          <button class="icobtn" id="zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6v12M6 12h12"/></svg></button>
+          <button class="icobtn" id="fitBtn" title="Fit to view" aria-label="Fit to view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15"/></svg></button>
+          <button class="icobtn" id="tidyBtn" title="Tidy layout" aria-label="Tidy layout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <div class="lg-t">Access level</div>
+          <div class="row"><span class="swatch" style="background:var(--azure)"></span>View</div>
+          <div class="row"><span class="swatch" style="background:var(--ember)"></span>Act</div>
+          <div class="row"><span class="swatch" style="background:var(--verdant)"></span>Approve</div>
+        </div>
+      </div>
+
+      <!-- matrix -->
+      <div class="view" id="view-matrix" hidden>
+        <div class="matrix-wrap">
+          <div class="matrix-bar">
+            <span class="eyebrow">Effective access</span>
+            <div class="pickrow" id="matrixFilter"></div>
+            <div class="spacer"></div>
+            <span class="hint">Click a cell to change a level. A dot marks an override on top of the role preset.</span>
+          </div>
+          <div class="matrix-scroll"><table class="matrix" id="matrixTable"></table></div>
+        </div>
+      </div>
+
+      <!-- simulate -->
+      <div class="view" id="view-sim" hidden>
+        <div class="sim-wrap">
+          <div class="sim-head">
+            <span class="eyebrow">Sign-in preview</span>
+            <select id="simWho" style="width:260px" aria-label="Preview as"></select>
+            <span class="hint">Exactly what this person sees and can press, before you save.</span>
+          </div>
+          <div class="scope-note" id="simScope"></div>
+          <div class="sim-grid">
+            <div class="card sim-nav" id="simNav"></div>
+            <div class="card sim-rec" id="simRec"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- inspector -->
+      <aside class="inspector">
+        <div id="inspector"></div>
+      </aside>
+    </section>
+
+    <footer class="changebar">
+      <div class="cb-count"><span class="cb-dot" id="cbDot"></span><span id="cbText">No unsaved changes</span></div>
+      <div class="spacer"></div>
+      <button class="btn ghost small" id="reviewBtn">Review changes</button>
+      <button class="btn small" id="applyBtn" disabled>Apply access</button>
+    </footer>
+  </div>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-scrim" data-close></div>
+  <div class="drawer-panel" role="dialog" aria-modal="true" aria-label="Review access changes">
+    <div class="drawer-h">
+      <h2 style="font-size:16px;flex:1">Review access changes</h2>
+      <button class="icobtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="drawer-tabs" role="tablist">
+      <button role="tab" data-tab="pending" aria-selected="true">Pending</button>
+      <button role="tab" data-tab="log" aria-selected="false">Recent activity</button>
+    </div>
+    <div class="drawer-b" id="drawerBody"></div>
+    <div class="drawer-f">
+      <span class="hint" style="flex:1">Applying writes an audit entry per change and signs affected people out of stale sessions.</span>
+      <button class="btn small" id="applyBtn2" disabled>Apply access</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12.5l5 5L20 6.5"/></svg><span id="toastText"></span></div>
+
+<script>
+/* ============================================================
+   1. Domain model — mirrors the real admin surface
+   ============================================================ */
+
+// The twelve group entities carried in lib/shared/brands.ts.
+const ENTITIES = [
+  ['champion-infratech','Champion Infratech'], ['champion-club','Champion Club'],
+  ['ip-momentum','IP Momentum'], ['champion-products','Champion Products'],
+  ['champion-infometrics','Champion Infometrics'], ['champion-yacht-club','Champion Yacht Club'],
+  ['cirrologix','Cirrologix'], ['iconic-studio','Iconic Studio'],
+  ['champion-landzone','Champion LandZone'], ['champion-luxury-resorts','Champion Luxury Resorts'],
+  ['iconic-build-studio','Iconic Build Studio'], ['100x-longevity','100X Longevity']
+].map(([slug,name]) => ({slug,name}));
+
+const TRACKS = ['intern','fresher','experienced','consultant','contract'];
+
+// kind → which levels the segmented control offers.
+// read    none | view              (looking only)
+// write   none | view | act        (doing the work)
+// full    none | view | act | approve   (doing it, or signing it off)
+// gate    none | approve           (pure authorisation, nothing to "do")
+const LEVELS = ['none','view','act','approve'];
+const KIND_LEVELS = {
+  read:['none','view'], write:['none','view','act'],
+  full:['none','view','act','approve'], gate:['none','approve']
+};
+const LEVEL_LABEL = {none:'—', view:'View', act:'Act', approve:'Sign'};
+
+const MODULES = [
+  {key:'candidates', name:'Candidate records', tone:'ember', icon:'users', caps:[
+    {k:'candidate.view',     kind:'read',  l:'Open candidate records'},
+    {k:'candidate.create',   kind:'write', l:'Generate an onboarding link'},
+    {k:'candidate.edit',     kind:'write', l:'Edit profile & master-tracker fields'},
+    {k:'candidate.shift',    kind:'write', l:'Set shift timing'},
+    {k:'candidate.approve',  kind:'full',  l:'Approve a submitted form'},
+    {k:'candidate.decision', kind:'full',  l:'Record the hiring decision'},
+    {k:'candidate.link',     kind:'write', l:'Revoke or regenerate the link'},
+    {k:'candidate.delete',   kind:'gate',  l:'Delete a candidate record'}
+  ]},
+  {key:'offer', name:'Offer letters', tone:'verdant', icon:'doc', caps:[
+    {k:'offer.draft',    kind:'write', l:'Draft the offer & CTC'},
+    {k:'offer.annexure', kind:'write', l:'Edit annexure pay components'},
+    {k:'offer.optional', kind:'write', l:'Add optional cash components'},
+    {k:'offer.preview',  kind:'read',  l:'Preview or download the PDF'},
+    {k:'offer.approve',  kind:'gate',  l:'Approve the offer for release'},
+    {k:'offer.send',     kind:'write', l:'Email the offer to the candidate'},
+    {k:'offer.revise',   kind:'full',  l:'Revise an offer already sent'}
+  ]},
+  {key:'docs', name:'Document sync & checks', tone:'azure', icon:'shield', caps:[
+    {k:'docs.view',      kind:'read',  l:'View uploaded documents'},
+    {k:'docs.sync',      kind:'write', l:'Run OCR sync and cross-check'},
+    {k:'docs.accept',    kind:'write', l:'Accept or flag a document'},
+    {k:'docs.reupload',  kind:'write', l:'Request a re-upload'},
+    {k:'docs.physical',  kind:'write', l:'Mark physical copies collected'},
+    {k:'docs.reference', kind:'write', l:'Manage HR reference documents'},
+    {k:'docs.reveal',    kind:'gate',  l:'Unmask Aadhaar and PAN'},
+    {k:'docs.zip',       kind:'gate',  l:'Download the full document pack'}
+  ]},
+  {key:'it', name:'IT provisioning', tone:'violet', icon:'chip', caps:[
+    {k:'it.fields',  kind:'write', l:'Set asset, email ID and seat'},
+    {k:'it.approve', kind:'gate',  l:'Approve the IT setup request'},
+    {k:'it.send',    kind:'write', l:'Send the setup mail to the helpdesk'},
+    {k:'it.block',   kind:'gate',  l:'Send the exit block mail'}
+  ]},
+  {key:'empid', name:'Employee ID', tone:'amber', icon:'badge', caps:[
+    {k:'empid.assign',  kind:'write', l:'Assign the employee code'},
+    {k:'empid.approve', kind:'gate',  l:'Approve the code before release'},
+    {k:'empid.notify',  kind:'write', l:'Send the employee code mail'},
+    {k:'empid.uan',     kind:'write', l:'Record the UAN'}
+  ]},
+  {key:'bgv', name:'Background verification', tone:'azure', icon:'search', caps:[
+    {k:'bgv.view',   kind:'read',  l:'Open BGV cases'},
+    {k:'bgv.send',   kind:'write', l:'Send a verification request'},
+    {k:'bgv.close',  kind:'gate',  l:'Close or delete a case'}
+  ]},
+  {key:'exit', name:'Exit & clearance', tone:'crimson', icon:'exit', caps:[
+    {k:'exit.initiate',    kind:'write', l:'Initiate an exit'},
+    {k:'exit.particulars', kind:'write', l:'Maintain exit particulars'},
+    {k:'exit.clearance',   kind:'write', l:'Send and chase department clearances'},
+    {k:'exit.handover',    kind:'write', l:'Manage the handover pack'},
+    {k:'exit.fnf',         kind:'full',  l:'Prepare the full & final settlement'},
+    {k:'exit.closure',     kind:'gate',  l:'Sign off the closure'},
+    {k:'exit.reopen',      kind:'gate',  l:'Reopen a closed exit'}
+  ]},
+  {key:'entities', name:'Entities & branding', tone:'ember', icon:'building', caps:[
+    {k:'entity.view',    kind:'read',  l:'View the entity list'},
+    {k:'entity.create',  kind:'write', l:'Add a company'},
+    {k:'entity.brand',   kind:'write', l:'Set logo and brand theme'},
+    {k:'entity.archive', kind:'gate',  l:'Archive or restore a company'}
+  ]},
+  {key:'comms', name:'Mail & templates', tone:'violet', icon:'mail', caps:[
+    {k:'inbox.view',      kind:'read',  l:'Read the shared inbox'},
+    {k:'inbox.templates', kind:'write', l:'Edit mail templates'},
+    {k:'inbox.lists',     kind:'write', l:'Edit fixed lists and defaults'}
+  ]},
+  {key:'data', name:'Insights & export', tone:'amber', icon:'chart', caps:[
+    {k:'analytics.view', kind:'read', l:'Open the analytics board'},
+    {k:'export.run',     kind:'gate', l:'Export the candidate dataset'},
+    {k:'audit.view',     kind:'read', l:'Read the audit trail'}
+  ]},
+  {key:'access', name:'Access & org', tone:'crimson', icon:'key', caps:[
+    {k:'team.view',        kind:'read', l:'See the team list'},
+    {k:'team.invite',      kind:'write',l:'Create and disable logins'},
+    {k:'team.permissions', kind:'gate', l:'Change anyone’s access'},
+    {k:'team.org',         kind:'gate', l:'Redraw reporting lines'}
+  ]}
+];
+
+const CAPS = {};
+const CAP_MODULE = {};
+MODULES.forEach(m => m.caps.forEach(c => { CAPS[c.k] = c; CAP_MODULE[c.k] = m; }));
+const ALL_CAP_KEYS = Object.keys(CAPS);
+
+/* Role presets. `mods` sets a ceiling per module; `over` pins individual
+   capabilities. 'max' means the highest level the capability offers. */
+const PRESETS = {
+  super_admin: {name:'Super admin', tone:'ember', locked:true, all:'max'},
+  hr_manager: {name:'HR manager', tone:'verdant', mods:{
+      candidates:'max', offer:'max', docs:'act', it:'act', empid:'max', bgv:'act',
+      exit:'act', entities:'view', comms:'act', data:'view', access:'view'},
+    over:{'docs.reveal':'approve','docs.zip':'approve','exit.closure':'approve','candidate.delete':'none','export.run':'approve'}},
+  hr_exec: {name:'HR executive', tone:'azure', mods:{
+      candidates:'act', offer:'act', docs:'act', it:'act', empid:'act', bgv:'act',
+      exit:'act', entities:'view', comms:'view', data:'none', access:'none'},
+    over:{'candidate.approve':'view','candidate.decision':'none','candidate.delete':'none',
+          'offer.approve':'none','offer.revise':'view','docs.reveal':'none','docs.zip':'none',
+          'it.approve':'none','empid.approve':'none','exit.fnf':'view','exit.closure':'none','exit.reopen':'none'}},
+  recruiter: {name:'Recruiter', tone:'amber', mods:{
+      candidates:'act', offer:'act', docs:'view', it:'none', empid:'none', bgv:'view',
+      exit:'none', entities:'view', comms:'view', data:'none', access:'none'},
+    over:{'candidate.approve':'none','candidate.decision':'none','candidate.delete':'none',
+          'offer.approve':'none','offer.revise':'none','offer.send':'none','docs.reupload':'act'}},
+  it_coord: {name:'IT coordinator', tone:'violet', mods:{
+      candidates:'view', offer:'none', docs:'none', it:'max', empid:'view', bgv:'none',
+      exit:'view', entities:'view', comms:'view', data:'none', access:'none'},
+    over:{'empid.notify':'act','exit.clearance':'act'}},
+  finance: {name:'Finance & payroll', tone:'amber', mods:{
+      candidates:'view', offer:'view', docs:'none', it:'none', empid:'view', bgv:'none',
+      exit:'act', entities:'view', comms:'none', data:'view', access:'none'},
+    over:{'empid.uan':'act','exit.fnf':'approve','exit.closure':'none','export.run':'approve','offer.annexure':'view'}},
+  auditor: {name:'Auditor', tone:'azure', mods:{
+      candidates:'view', offer:'view', docs:'view', it:'view', empid:'view', bgv:'view',
+      exit:'view', entities:'view', comms:'view', data:'view', access:'view'},
+    over:{'docs.reveal':'none','docs.zip':'none','export.run':'none'}}
+};
+const PRESET_KEYS = Object.keys(PRESETS);
+
+const TONE_HEX = {ember:'#ff7d55', verdant:'#3ecf9a', azure:'#7ba7f0', amber:'#f2b15c', crimson:'#f07575', violet:'#9278ff'};
+
+/* Population — the SuccessFactors "target group": whose records this person
+   may touch, as distinct from what they may do. */
+const POPULATIONS = [
+  {k:'own',    t:'Only their own records',   d:'Candidates and exits they created.'},
+  {k:'team',   t:'Their direct reports’ records', d:'Their own, plus everyone reporting straight to them.'},
+  {k:'tree',   t:'Their whole reporting tree', d:'Every level beneath them on the org chart.'},
+  {k:'entity', t:'Everything in their entities', d:'All records for the entities ticked above.'},
+  {k:'all',    t:'Every record in the group',  d:'No entity or ownership limit. Use sparingly.'}
+];
+
+/* Segregation-of-duties rules: pairs one person should not hold at once. */
+const SOD_RULES = [
+  {a:'offer.draft', b:'offer.approve', t:'Drafts and approves the same offer', d:'The person setting the CTC also releases it. Route approval to their reporting manager instead.'},
+  {a:'empid.assign', b:'empid.approve', t:'Issues and approves employee codes', d:'A code can reach payroll without a second pair of eyes.'},
+  {a:'candidate.create', b:'candidate.approve', t:'Creates and approves the same candidate', d:'A record can pass onboarding end to end with no review.'},
+  {a:'exit.fnf', b:'exit.closure', t:'Settles and closes the same F&F', d:'Full & final figures go out unchecked.'},
+  {a:'docs.reveal', b:'export.run', t:'Can unmask PII and bulk-export it', d:'Aadhaar and PAN in the clear, downloadable in one file.'}
+];
+
+/* People. x/y are canvas coordinates; tidy layout can recompute them. */
+const SEED_PEOPLE = [
+  {id:'u1', name:'Hemang Kapoor', title:'Head of HR technology', email:'hemang.k@championsmail.com',
+   preset:'super_admin', reportsTo:null, x:520, y:60, status:'active',
+   entities:'all', tracks:'all', population:'all', overrides:{}, checkers:{}, expires:null},
+
+  {id:'u2', name:'Priya Nair', title:'HR manager — Infra & Realty', email:'priya.n@championsmail.com',
+   preset:'hr_manager', reportsTo:'u1', x:120, y:300, status:'active',
+   entities:['champion-infratech','champion-landzone','iconic-build-studio','iconic-studio'],
+   tracks:'all', population:'tree', overrides:{'export.run':'approve'}, checkers:{}, expires:null},
+
+  {id:'u3', name:'Rohit Menon', title:'HR manager — Tech & Ventures', email:'rohit.m@championsmail.com',
+   preset:'hr_manager', reportsTo:'u1', x:560, y:300, status:'active',
+   entities:['cirrologix','ip-momentum','champion-infometrics','100x-longevity'],
+   tracks:'all', population:'tree', overrides:{}, checkers:{'offer.send':true}, expires:null},
+
+  {id:'u4', name:'Sneha Iyer', title:'HR executive — onboarding', email:'sneha.i@championsmail.com',
+   preset:'hr_exec', reportsTo:'u2', x:-140, y:560, status:'active',
+   entities:['champion-infratech','champion-landzone'], tracks:'all', population:'entity',
+   overrides:{'docs.reveal':'approve'}, checkers:{}, expires:null},
+
+  {id:'u5', name:'Arjun Bhatia', title:'Recruiter — bulk hiring', email:'arjun.b@championsmail.com',
+   preset:'recruiter', reportsTo:'u2', x:130, y:560, status:'active',
+   entities:['champion-infratech','iconic-build-studio'], tracks:['intern','fresher','contract'],
+   population:'own', overrides:{'offer.approve':'approve'}, checkers:{}, expires:null},
+
+  {id:'u6', name:'Kavya Rao', title:'Recruiter — lateral & tech', email:'kavya.r@championsmail.com',
+   preset:'recruiter', reportsTo:'u3', x:400, y:560, status:'active',
+   entities:['cirrologix','ip-momentum'], tracks:['experienced','consultant'],
+   population:'own', overrides:{}, checkers:{'offer.draft':true}, expires:'2026-12-31'},
+
+  {id:'u7', name:'Deepak Shetty', title:'IT coordinator', email:'deepak.s@championsmail.com',
+   preset:'it_coord', reportsTo:'u3', x:680, y:560, status:'active',
+   entities:'all', tracks:'all', population:'all', overrides:{}, checkers:{}, expires:null},
+
+  {id:'u8', name:'Meera Joshi', title:'Payroll lead', email:'meera.j@championsmail.com',
+   preset:'finance', reportsTo:'u1', x:990, y:300, status:'active',
+   entities:'all', tracks:'all', population:'all', overrides:{}, checkers:{}, expires:null},
+
+  {id:'u9', name:'Anand Verma', title:'Internal audit (contract)', email:'anand.v@championsmail.com',
+   preset:'auditor', reportsTo:'u8', x:990, y:560, status:'active',
+   entities:'all', tracks:'all', population:'all', overrides:{}, checkers:{}, expires:'2026-10-15'}
+];
+
+/* ============================================================
+   2. State
+   ============================================================ */
+const STORE_KEY = 'champ-access-studio-v1';
+let people = load();
+let saved = clone(people);           // the last applied version, for the diff
+let selectedId = 'u5';
+let linkFrom = null;                 // node id armed for a reporting link
+let view = 'org';
+let simWho = 'u5';
+let matrixFilter = 'all';
+let drawerTab = 'pending';
+let activityLog = [
+  {when:'Today, 09:41', who:'hemang.k', what:'Gave Sneha Iyer sign-off on unmasking Aadhaar and PAN.'},
+  {when:'Yesterday, 17:02', who:'hemang.k', what:'Moved Kavya Rao to report to Rohit Menon.'},
+  {when:'6 Sep, 11:20', who:'hemang.k', what:'Removed offer approval from the Recruiter preset.'}
+];
+
+function clone(v){ return JSON.parse(JSON.stringify(v)); }
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw){ const p = JSON.parse(raw); if(Array.isArray(p) && p.length) return p; }
+  }catch(e){}
+  return clone(SEED_PEOPLE);
+}
+function persist(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(people)); }catch(e){} }
+function byId(id){ return people.find(p => p.id === id); }
+
+/* ============================================================
+   3. Permission resolution
+   ============================================================ */
+function levelIndex(l){ return LEVELS.indexOf(l); }
+function capLevels(capKey){ return KIND_LEVELS[CAPS[capKey].kind]; }
+function capMax(capKey){ const ls = capLevels(capKey); return ls[ls.length-1]; }
+
+// Clamp a requested level to what the capability actually offers.
+function clampLevel(capKey, wanted){
+  const allowed = capLevels(capKey);
+  if(wanted === 'max') return allowed[allowed.length-1];
+  if(allowed.includes(wanted)) return wanted;
+  for(let i = levelIndex(wanted); i >= 0; i--){
+    if(allowed.includes(LEVELS[i])) return LEVELS[i];
+  }
+  return 'none';
+}
+
+function presetLevel(presetKey, capKey){
+  const p = PRESETS[presetKey];
+  if(!p) return 'none';
+  if(p.all) return clampLevel(capKey, p.all);
+  if(p.over && p.over[capKey] !== undefined) return clampLevel(capKey, p.over[capKey]);
+  const mod = CAP_MODULE[capKey].key;
+  return clampLevel(capKey, (p.mods && p.mods[mod]) || 'none');
+}
+
+function effLevel(person, capKey){
+  if(PRESETS[person.preset].locked) return capMax(capKey);
+  const o = person.overrides[capKey];
+  return o !== undefined ? clampLevel(capKey, o) : presetLevel(person.preset, capKey);
+}
+function isOverride(person, capKey){
+  if(PRESETS[person.preset].locked) return false;
+  const o = person.overrides[capKey];
+  return o !== undefined && o !== presetLevel(person.preset, capKey);
+}
+function grantedCount(person){
+  return ALL_CAP_KEYS.filter(k => effLevel(person, k) !== 'none').length;
+}
+function sodConflicts(person){
+  return SOD_RULES.filter(r =>
+    levelIndex(effLevel(person, r.a)) >= levelIndex('act') &&
+    levelIndex(effLevel(person, r.b)) >= levelIndex('act') &&
+    !person.checkers[r.a] && !person.checkers[r.b]);
+}
+function entityLabel(person){
+  if(person.entities === 'all') return 'All 12 entities';
+  const n = person.entities.length;
+  return n === 1 ? ENTITIES.find(e => e.slug === person.entities[0]).name : n + ' entities';
+}
+function initials(name){ return name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase(); }
+function avatarStyle(person){
+  const hex = TONE_HEX[PRESETS[person.preset].tone];
+  return 'background:linear-gradient(145deg,' + hex + ',' + shade(hex,-38) + ')' +
+         (person.status === 'disabled' ? ';filter:grayscale(1) opacity(.6)' : '');
+}
+function shade(hex, amt){
+  const n = parseInt(hex.slice(1),16);
+  const c = [n>>16, (n>>8)&255, n&255].map(v => Math.max(0, Math.min(255, v+amt)));
+  return '#' + c.map(v => v.toString(16).padStart(2,'0')).join('');
+}
+function managerOf(person){ return person.reportsTo ? byId(person.reportsTo) : null; }
+function directReports(id){ return people.filter(p => p.reportsTo === id); }
+function isDescendant(candidateId, ofId){
+  let cur = byId(candidateId);
+  while(cur && cur.reportsTo){
+    if(cur.reportsTo === ofId) return true;
+    cur = byId(cur.reportsTo);
+  }
+  return false;
+}
+
+/* ============================================================
+   4. Icons
+   ============================================================ */
+const ICONS = {
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M16 6.2a3 3 0 010 5.6M17.5 19c0-2-.8-3.6-2-4.6"/>',
+  doc:'<path d="M14 3H7a1 1 0 00-1 1v16a1 1 0 001 1h10a1 1 0 001-1V7z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 16.5h4"/>',
+  shield:'<path d="M12 3l7 3v5c0 4.4-2.9 8.2-7 9.4C7.9 19.2 5 15.4 5 11V6z"/><path d="M9.5 11.8l1.8 1.8 3.4-3.6"/>',
+  chip:'<rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/>',
+  badge:'<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9.5" cy="11" r="2.1"/><path d="M6.2 16.4c.5-1.4 1.8-2.2 3.3-2.2s2.8.8 3.3 2.2M15 10h3.5M15 13.5h3"/>',
+  search:'<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l4.5 4.5"/>',
+  exit:'<path d="M14 4H6a1 1 0 00-1 1v14a1 1 0 001 1h8"/><path d="M17 8.5L20.5 12 17 15.5M20 12h-9"/>',
+  building:'<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 9.5h17M8.5 5v14"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.6 6.5L12 13l8.4-6.5"/>',
+  chart:'<path d="M4 19V9M9.5 19V4M15 19v-7M20.5 19v-4"/>',
+  key:'<circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H21M17.5 12v3M20 12v2.4"/>',
+  warn:'<path d="M12 4l9 15.5H3z"/><path d="M12 10v4M12 17h.01"/>',
+  clock:'<circle cx="12" cy="12" r="8.2"/><path d="M12 7.5V12l3 1.8"/>',
+  checkline:'<path d="M4 12.5l5 5L20 6.5"/>',
+  branch:'<circle cx="7" cy="6" r="2.4"/><circle cx="7" cy="18" r="2.4"/><circle cx="17" cy="12" r="2.4"/><path d="M7 8.4v7.2M9.4 6h3.1a2 2 0 012 2v2M9.4 18h3.1a2 2 0 002-2v-2"/>',
+  info:'<circle cx="12" cy="12" r="8.4"/><path d="M12 11v5M12 8h.01"/>',
+  lock:'<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.2 10.5V8a3.8 3.8 0 017.6 0v2.5"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  arrow:'<path d="M5 12h13M13 7l5 5-5 5"/>',
+  minus:'<path d="M6 12h12"/>'
+};
+function ico(name, cls){
+  return '<svg class="' + (cls||'') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+         'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + ICONS[name] + '</svg>';
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============================================================
+   5. Canvas — pan, zoom, drag, reporting links
+   ============================================================ */
+const canvas = document.getElementById('canvas');
+const world  = document.getElementById('world');
+const edgesSvg = document.getElementById('edges');
+const NODE_W = 238;
+let tx = 40, ty = 20, k = 0.82;
+
+function applyTransform(){
+  world.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
+  canvas.style.backgroundSize = (26*k) + 'px ' + (26*k) + 'px';
+  canvas.style.backgroundPosition = tx + 'px ' + ty + 'px';
+  document.getElementById('zoomVal').textContent = Math.round(k*100) + '%';
+}
+function zoomAt(cx, cy, factor){
+  const nk = Math.max(0.35, Math.min(1.6, k*factor));
+  const r = nk/k;
+  tx = cx - (cx - tx)*r;
+  ty = cy - (cy - ty)*r;
+  k = nk;
+  applyTransform();
+}
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.11 : 1/1.11);
+}, {passive:false});
+
+document.getElementById('zoomIn').onclick  = () => zoomAt(canvas.clientWidth/2, canvas.clientHeight/2, 1.18);
+document.getElementById('zoomOut').onclick = () => zoomAt(canvas.clientWidth/2, canvas.clientHeight/2, 1/1.18);
+document.getElementById('fitBtn').onclick  = fit;
+document.getElementById('tidyBtn').onclick = () => { tidy(); render(); fit(); toast('Layout tidied'); };
+
+function fit(){
+  if(!people.length) return;
+  const xs = people.map(p => p.x), ys = people.map(p => p.y);
+  const minX = Math.min(...xs) - 40, maxX = Math.max(...xs) + NODE_W + 40;
+  const minY = Math.min(...ys) - 40, maxY = Math.max(...ys) + 190;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  k = Math.max(0.35, Math.min(1.15, Math.min(w/(maxX-minX), h/(maxY-minY))));
+  tx = (w - (maxX-minX)*k)/2 - minX*k;
+  ty = (h - (maxY-minY)*k)/2 - minY*k;
+  applyTransform();
+}
+
+// Tidy tree: depth by reporting line, leaves packed left to right.
+function tidy(){
+  const roots = people.filter(p => !p.reportsTo);
+  const GAP_X = 46, GAP_Y = 250;
+  let cursor = 0;
+  function place(node, depth){
+    const kids = directReports(node.id);
+    node.y = 60 + depth*GAP_Y;
+    if(!kids.length){
+      node.x = cursor; cursor += NODE_W + GAP_X;
+    } else {
+      kids.forEach(c => place(c, depth+1));
+      node.x = (kids[0].x + kids[kids.length-1].x)/2;
+    }
+  }
+  roots.forEach(r => place(r, 0));
+}
+
+// pan
+let panning = false, panStart = null;
+canvas.addEventListener('pointerdown', e => {
+  if(e.target.closest('.node') || e.target.closest('.canvas-tools')) return;
+  if(linkFrom){ cancelLink(); return; }
+  panning = true; panStart = {x:e.clientX - tx, y:e.clientY - ty};
+  canvas.classList.add('panning');
+  canvas.setPointerCapture(e.pointerId);
+  select(null);
+});
+canvas.addEventListener('pointermove', e => {
+  if(!panning) return;
+  tx = e.clientX - panStart.x; ty = e.clientY - panStart.y;
+  applyTransform();
+});
+canvas.addEventListener('pointerup', e => {
+  panning = false; canvas.classList.remove('panning');
+  try{ canvas.releasePointerCapture(e.pointerId); }catch(err){}
+});
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){
+    if(linkFrom) cancelLink();
+    else if(document.getElementById('drawer').classList.contains('open')) closeDrawer();
+  }
+});
+
+/* ---- link mode ---- */
+function armLink(id){
+  linkFrom = id;
+  canvas.classList.add('linking');
+  const p = byId(id);
+  showHint('Click the person who should report to <b>' + esc(p.name) + '</b>');
+  render();
+}
+function cancelLink(){
+  linkFrom = null; canvas.classList.remove('linking'); hideHint(); render();
+}
+function showHint(html){
+  const h = document.getElementById('hintbar');
+  document.getElementById('hintText').innerHTML = html;
+  h.hidden = false;
+}
+function hideHint(){ document.getElementById('hintbar').hidden = true; }
+
+function setManager(childId, managerId){
+  if(childId === managerId) return toast('Someone cannot report to themselves');
+  if(isDescendant(managerId, childId)) return toast('That would loop the reporting line');
+  const child = byId(childId);
+  child.reportsTo = managerId;
+  cancelLink();
+  select(childId);
+  commit();
+  toast(child.name + ' now reports to ' + byId(managerId).name);
+}
+
+/* ============================================================
+   6. Render — canvas
+   ============================================================ */
+function render(){
+  renderNodes();
+  renderEdges();
+  renderInspector();
+  renderChangeBar();
+  if(view === 'matrix') renderMatrix();
+  if(view === 'sim') renderSim();
+}
+
+function renderNodes(){
+  world.querySelectorAll('.node').forEach(n => n.remove());
+  const frag = document.createDocumentFragment();
+  people.forEach(p => {
+    const conflicts = sodConflicts(p);
+    const count = grantedCount(p);
+    const pct = Math.round(count/ALL_CAP_KEYS.length*100);
+    const el = document.createElement('div');
+    el.className = 'node' + (p.id === selectedId ? ' sel' : '') +
+      (p.status === 'disabled' ? ' disabled' : '') +
+      (linkFrom && p.id !== linkFrom && !isDescendant(linkFrom, p.id) ? ' target' : '') +
+      (linkFrom && p.id === linkFrom ? ' dim' : '');
+    el.style.left = p.x + 'px';
+    el.style.top = p.y + 'px';
+    el.dataset.id = p.id;
+
+    const checkerCount = Object.keys(p.checkers).filter(c => p.checkers[c]).length;
+    let flags = '';
+    if(conflicts.length) flags += '<span class="flag warn">' + ico('warn') + conflicts.length + ' duty clash' + (conflicts.length>1?'es':'') + '</span>';
+    if(checkerCount) flags += '<span class="flag check">' + ico('checkline') + checkerCount + ' need sign-off</span>';
+    if(p.expires) flags += '<span class="flag time">' + ico('clock') + 'Ends ' + fmtDate(p.expires) + '</span>';
+    if(p.status === 'disabled') flags += '<span class="flag off">' + ico('lock') + 'Disabled</span>';
+
+    el.innerHTML =
+      '<div class="node-top">' +
+        '<div class="avatar" style="' + avatarStyle(p) + '">' + initials(p.name) + '</div>' +
+        '<div class="node-id">' +
+          '<div class="node-name">' + esc(p.name) + '</div>' +
+          '<div class="node-title">' + esc(p.title) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="node-preset"><span class="chip" style="background:' + hexA(TONE_HEX[PRESETS[p.preset].tone], .16) +
+        ';color:' + TONE_HEX[PRESETS[p.preset].tone] + '">' + esc(PRESETS[p.preset].name) + '</span></div>' +
+      '<div class="node-meta">' +
+        '<span class="mono">' + count + '/' + ALL_CAP_KEYS.length + '</span>' +
+        '<span class="meter"><i style="width:' + pct + '%"></i></span>' +
+        '<span>' + esc(entityLabel(p)) + '</span>' +
+      '</div>' +
+      (flags ? '<div class="node-flags">' + flags + '</div>' : '') +
+      '<button class="link-handle' + (linkFrom === p.id ? ' armed' : '') + '" data-link="' + p.id +
+        '" title="Add a direct report" aria-label="Add a direct report to ' + esc(p.name) + '">' + ico('plus') + '</button>';
+    frag.appendChild(el);
+  });
+  world.appendChild(frag);
+  nodeHeights = {};
+  world.querySelectorAll('.node').forEach(n => { nodeHeights[n.dataset.id] = n.offsetHeight; });
+  wireNodes();
+}
+function hexA(hex, a){
+  const n = parseInt(hex.slice(1),16);
+  return 'rgba(' + (n>>16) + ',' + ((n>>8)&255) + ',' + (n&255) + ',' + a + ')';
+}
+function fmtDate(iso){
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-IN', {day:'numeric', month:'short'});
+}
+
+function wireNodes(){
+  world.querySelectorAll('.node').forEach(el => {
+    const id = el.dataset.id;
+    el.querySelector('.link-handle').addEventListener('pointerdown', e => e.stopPropagation());
+    el.querySelector('.link-handle').addEventListener('click', e => {
+      e.stopPropagation();
+      linkFrom === id ? cancelLink() : armLink(id);
+    });
+    el.addEventListener('pointerdown', e => {
+      if(e.target.closest('.link-handle')) return;
+      e.stopPropagation();
+      if(linkFrom){
+        if(linkFrom !== id) setManager(id, linkFrom); else cancelLink();
+        return;
+      }
+      select(id);
+      const p = byId(id);
+      const start = {x:e.clientX, y:e.clientY, px:p.x, py:p.y};
+      let moved = false;
+      el.classList.add('dragging');
+      el.setPointerCapture(e.pointerId);
+      const move = ev => {
+        const dx = (ev.clientX - start.x)/k, dy = (ev.clientY - start.y)/k;
+        if(Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+        p.x = Math.round(start.px + dx); p.y = Math.round(start.py + dy);
+        el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
+        renderEdges();
+      };
+      const up = ev => {
+        el.classList.remove('dragging');
+        el.removeEventListener('pointermove', move);
+        el.removeEventListener('pointerup', up);
+        try{ el.releasePointerCapture(ev.pointerId); }catch(err){}
+        if(moved) persist();
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+    });
+  });
+}
+
+const EDGE_OFFSET = 3000;
+let nodeHeights = {};
+function renderEdges(){
+  let d = '';
+  people.forEach(p => {
+    if(!p.reportsTo) return;
+    const m = byId(p.reportsTo);
+    if(!m) return;
+    const x1 = m.x + NODE_W/2, y1 = m.y + (nodeHeights[m.id] || 138);
+    const x2 = p.x + NODE_W/2, y2 = p.y;
+    const mid = y1 + (y2 - y1)/2;
+    const lit = (p.id === selectedId || m.id === selectedId);
+    const path = 'M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + mid + ' ' + x2 + ' ' + mid + ' ' + x2 + ' ' + y2;
+    d += '<path class="hit" data-child="' + p.id + '" d="' + path + '"><title>Remove this reporting line</title></path>' +
+         '<path class="' + (lit ? 'lit' : '') + '" d="' + path + '" vector-effect="non-scaling-stroke"></path>' +
+         '<circle class="' + (lit ? 'lit' : '') + '" cx="' + x2 + '" cy="' + y2 + '" r="3"></circle>';
+  });
+  edgesSvg.innerHTML = '<g transform="translate(' + EDGE_OFFSET + ',' + EDGE_OFFSET + ')">' + d + '</g>';
+  edgesSvg.querySelectorAll('path.hit').forEach(h => {
+    h.addEventListener('click', e => {
+      e.stopPropagation();
+      const child = byId(h.dataset.child);
+      child.reportsTo = null;
+      select(child.id);
+      commit();
+      toast(child.name + ' now reports to nobody — Reset to saved will undo it');
+    });
+  });
+}
+
+function select(id){
+  selectedId = id;
+  if(id) simWho = id;
+  render();
+}
+
+/* ============================================================
+   7. Inspector
+   ============================================================ */
+// Which capability groups are expanded, and how far the panel is scrolled —
+// kept across re-renders so toggling a level doesn't slam the group shut.
+let openGroups = new Set(['offer']);
+function renderInspector(){
+  const host = document.getElementById('inspector');
+  const prevScroll = (host.querySelector('.insp-body') || {}).scrollTop || 0;
+  const p = selectedId ? byId(selectedId) : null;
+  if(!p){
+    host.innerHTML =
+      '<div class="insp-empty">' + ico('branch') +
+      '<div><div style="font-weight:600;color:var(--text);font-family:var(--font-display)">Nobody selected</div>' +
+      '<div style="font-size:12px;margin-top:6px;line-height:1.5">Pick a person on the canvas to set what they can do.<br>' +
+      'Drag a card to move it, or use <b>+</b> under a card to give them a direct report.</div></div></div>';
+    return;
+  }
+  const preset = PRESETS[p.preset];
+  const mgr = managerOf(p);
+  const conflicts = sodConflicts(p);
+  const reports = directReports(p.id);
+
+  host.innerHTML =
+    '<div class="insp-head">' +
+      '<div class="insp-who">' +
+        '<div class="avatar" style="' + avatarStyle(p) + '">' + initials(p.name) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="insp-name">' + esc(p.name) + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + esc(p.title) + '</div>' +
+          '<div class="insp-mail">' + esc(p.email) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">' +
+        '<span class="chip" style="background:' + hexA(TONE_HEX[preset.tone], .16) + ';color:' + TONE_HEX[preset.tone] + '">' + esc(preset.name) + '</span>' +
+        '<span class="chip" style="background:var(--line-strong);color:var(--muted)">' + grantedCount(p) + ' of ' + ALL_CAP_KEYS.length + ' powers</span>' +
+        (reports.length ? '<span class="chip" style="background:var(--line-strong);color:var(--muted)">' + reports.length + ' direct report' + (reports.length>1?'s':'') + '</span>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="insp-body">' +
+      sectionRole(p, mgr) +
+      sectionScope(p) +
+      sectionSod(p, conflicts) +
+      sectionCaps(p) +
+      sectionLifecycle(p) +
+    '</div>';
+
+  const body = host.querySelector('.insp-body');
+  if(body) body.scrollTop = prevScroll;
+  host.querySelectorAll('.capgroup').forEach(g => {
+    g.addEventListener('toggle', () => {
+      g.open ? openGroups.add(g.dataset.mod) : openGroups.delete(g.dataset.mod);
+    });
+  });
+  wireInspector(p);
+}
+
+function sectionRole(p, mgr){
+  const opts = PRESET_KEYS.map(kk =>
+    '<option value="' + kk + '"' + (kk === p.preset ? ' selected' : '') + '>' + PRESETS[kk].name + '</option>').join('');
+  const mgrOpts = ['<option value="">— Nobody (top of the chart)</option>'].concat(
+    people.filter(o => o.id !== p.id && !isDescendant(o.id, p.id))
+          .map(o => '<option value="' + o.id + '"' + (o.id === p.reportsTo ? ' selected' : '') + '>' + esc(o.name) + '</option>')).join('');
+  return '<div class="sec">' +
+    '<div class="sec-h"><span class="sec-t">Role &amp; reporting</span></div>' +
+    '<div class="field"><label for="fPreset">Role preset</label>' +
+      '<select id="fPreset"' + (PRESETS[p.preset].locked ? ' disabled' : '') + '>' + opts + '</select>' +
+      '<div class="hint">' + (PRESETS[p.preset].locked
+        ? 'Super admins hold every power by definition. Change the preset to limit them.'
+        : 'The preset sets the baseline. Anything you change below is kept as a personal override.') + '</div></div>' +
+    '<div class="field"><label for="fMgr">Reports to</label><select id="fMgr">' + mgrOpts + '</select>' +
+      '<div class="hint">' + (mgr
+        ? 'Approvals that need a second pair of eyes route to <b>' + esc(mgr.name) + '</b>.'
+        : 'Nobody above them, so anything marked <b>needs sign-off</b> below will stall.') + '</div></div>' +
+  '</div>';
+}
+
+function sectionScope(p){
+  const all = p.entities === 'all';
+  const chips = ENTITIES.map(e => {
+    const on = all || p.entities.includes(e.slug);
+    return '<button class="pick mini" data-ent="' + e.slug + '" aria-pressed="' + on + '">' + esc(e.name) + '</button>';
+  }).join('');
+  const trackChips = TRACKS.map(t => {
+    const on = p.tracks === 'all' || p.tracks.includes(t);
+    return '<button class="pick mini" data-track="' + t + '" aria-pressed="' + on + '">' + t + '</button>';
+  }).join('');
+  const pops = POPULATIONS.map(o =>
+    '<button class="radio" data-pop="' + o.k + '" role="radio" aria-checked="' + (p.population === o.k) + '">' +
+      '<span class="bullet"></span><span><span class="rt">' + o.t + '</span><span class="rd">' + o.d + '</span></span></button>').join('');
+  return '<div class="sec">' +
+    '<div class="sec-h"><span class="sec-t">Whose records</span>' +
+      '<button class="pick mini" id="entAll" aria-pressed="' + all + '">All entities</button></div>' +
+    '<div class="field"><label>Entities</label><div class="pickrow" id="entRow">' + chips + '</div></div>' +
+    '<div class="field"><label>Hiring tracks</label><div class="pickrow" id="trackRow">' + trackChips + '</div></div>' +
+    '<div class="field"><label>Reach</label><div class="radiolist" role="radiogroup" id="popRow">' + pops + '</div></div>' +
+  '</div>';
+}
+
+function sectionSod(p, conflicts){
+  if(PRESETS[p.preset].locked){
+    return '<div class="sec"><div class="sec-h"><span class="sec-t">Separation of duties</span></div>' +
+      '<div class="sod-ok">' + ico('lock') + '<span>Super admins sit outside these checks. Keep the count of them low and review the audit trail.</span></div></div>';
+  }
+  const body = conflicts.length
+    ? conflicts.map(c => '<div class="sod">' + ico('warn') +
+        '<div><div class="st">' + c.t + '</div><div class="sd">' + c.d + '</div>' +
+        '<button class="btn ghost small" style="margin-top:9px" data-fixsod="' + c.b + '">Send ' +
+          esc(CAPS[c.b].l.toLowerCase()) + ' for sign-off</button></div></div>').join('')
+    : '<div class="sod-ok">' + ico('checkline') + '<span>No maker-and-checker clashes on this person.</span></div>';
+  return '<div class="sec"><div class="sec-h"><span class="sec-t">Separation of duties</span>' +
+    (conflicts.length ? '<span class="chip" style="background:rgba(240,117,117,.16);color:var(--crimson)">' + conflicts.length + ' to look at</span>' : '') +
+    '</div>' + body + '</div>';
+}
+
+function sectionCaps(p){
+  const locked = PRESETS[p.preset].locked;
+  const groups = MODULES.map(m => {
+    const on = m.caps.filter(c => effLevel(p, c.k) !== 'none').length;
+    const ovr = m.caps.filter(c => isOverride(p, c.k)).length;
+    const hex = TONE_HEX[m.tone];
+    const rows = m.caps.map(c => {
+      const cur = effLevel(p, c.k);
+      const allowed = capLevels(c.k);
+      const segs = LEVELS.map(l => {
+        const ok = allowed.includes(l);
+        return '<button data-cap="' + c.k + '" data-lv="' + l + '" aria-pressed="' + (cur === l) + '"' +
+          (ok && !locked ? '' : ' disabled') + ' title="' + LEVEL_LABEL[l] + '">' + LEVEL_LABEL[l] + '</button>';
+      }).join('');
+      const needsChecker = !!p.checkers[c.k];
+      return '<div class="caprow' + (needsChecker ? ' checker' : '') + '">' +
+        '<div class="cap-id"><div class="cap-l">' + c.l + (isOverride(p, c.k) ? '<span class="ovr" title="Override"></span>' : '') + '</div>' +
+        '<div class="cap-k">' + c.k + (needsChecker ? ' · needs sign-off' : '') + '</div></div>' +
+        '<div class="seg">' + segs + '</div></div>';
+    }).join('');
+    return '<details class="capgroup" data-mod="' + m.key + '"' + (openGroups.has(m.key) ? ' open' : '') + '>' +
+      '<summary class="capgroup-h">' +
+        '<span class="gi" style="background:' + hexA(hex,.15) + ';color:' + hex + '">' + ico(m.icon) + '</span>' +
+        '<span class="gn">' + m.name + '</span>' +
+        '<span class="gc">' + on + '/' + m.caps.length + (ovr ? ' · ' + ovr + ' custom' : '') + '</span>' +
+        ico('arrow','caret') +
+      '</summary>' +
+      '<div class="capgroup-b">' + rows + '</div></details>';
+  }).join('');
+  return '<div class="sec"><div class="sec-h"><span class="sec-t">What they can do</span>' +
+    (Object.keys(p.overrides).length && !locked
+      ? '<button class="pick mini" id="clearOvr">Back to preset</button>' : '') +
+    '</div>' + groups + '</div>';
+}
+
+function sectionLifecycle(p){
+  const checkable = ALL_CAP_KEYS.filter(kk => levelIndex(effLevel(p, kk)) >= levelIndex('act'));
+  const opts = ['<option value="">Add a step that needs sign-off…</option>'].concat(
+    checkable.filter(kk => !p.checkers[kk]).map(kk => '<option value="' + kk + '">' + CAPS[kk].l + '</option>')).join('');
+  const active = Object.keys(p.checkers).filter(kk => p.checkers[kk]);
+  const list = active.length
+    ? '<div class="pickrow" style="margin-top:8px">' + active.map(kk =>
+        '<button class="pick mini" data-unchk="' + kk + '" aria-pressed="true" title="Remove">' +
+        esc(CAPS[kk].l) + ' ×</button>').join('') + '</div>'
+    : '<div class="hint" style="margin-top:6px">Nothing routed for a second signature yet.</div>';
+  return '<div class="sec">' +
+    '<div class="sec-h"><span class="sec-t">Sign-off &amp; expiry</span></div>' +
+    '<div class="field"><label for="fChk">Needs their manager’s sign-off</label>' +
+      '<select id="fChk">' + opts + '</select>' + list + '</div>' +
+    '<div class="field"><label for="fExp">Access ends on</label>' +
+      '<input type="date" id="fExp" value="' + (p.expires || '') + '">' +
+      '<div class="hint">Leave blank for permanent access. Contractors and stand-ins should always carry a date.</div></div>' +
+    '<div class="toggle"><div><div class="tl">Login enabled</div>' +
+      '<div class="td">Turning this off ends their sessions immediately.</div></div>' +
+      '<button class="sw" id="fStatus" aria-pressed="' + (p.status === 'active') + '" aria-label="Login enabled"></button></div>' +
+  '</div>';
+}
+
+function wireInspector(p){
+  const $ = s => document.getElementById(s);
+  const preset = $('fPreset');
+  if(preset) preset.onchange = e => { p.preset = e.target.value; p.overrides = {}; commit(); };
+  $('fMgr').onchange = e => {
+    const v = e.target.value || null;
+    if(v && isDescendant(v, p.id)) return toast('That would loop the reporting line');
+    p.reportsTo = v; commit();
+  };
+  const entAll = $('entAll');
+  if(entAll) entAll.onclick = () => {
+    p.entities = p.entities === 'all' ? [ENTITIES[0].slug] : 'all'; commit();
+  };
+  document.querySelectorAll('[data-ent]').forEach(b => b.onclick = () => {
+    const slug = b.dataset.ent;
+    if(p.entities === 'all') p.entities = ENTITIES.map(e => e.slug);
+    const i = p.entities.indexOf(slug);
+    if(i >= 0){ if(p.entities.length === 1) return toast('Leave them at least one entity'); p.entities.splice(i,1); }
+    else p.entities.push(slug);
+    if(p.entities.length === ENTITIES.length) p.entities = 'all';
+    commit();
+  });
+  document.querySelectorAll('[data-track]').forEach(b => b.onclick = () => {
+    const t = b.dataset.track;
+    if(p.tracks === 'all') p.tracks = TRACKS.slice();
+    const i = p.tracks.indexOf(t);
+    if(i >= 0){ if(p.tracks.length === 1) return toast('Leave them at least one track'); p.tracks.splice(i,1); }
+    else p.tracks.push(t);
+    if(p.tracks.length === TRACKS.length) p.tracks = 'all';
+    commit();
+  });
+  document.querySelectorAll('[data-pop]').forEach(b => b.onclick = () => { p.population = b.dataset.pop; commit(); });
+  document.querySelectorAll('[data-cap]').forEach(b => b.onclick = () => {
+    setCap(p, b.dataset.cap, b.dataset.lv);
+  });
+  document.querySelectorAll('[data-fixsod]').forEach(b => b.onclick = () => {
+    p.checkers[b.dataset.fixsod] = true; commit();
+    toast('Routed to ' + (managerOf(p) ? managerOf(p).name : 'their manager') + ' for sign-off');
+  });
+  const clear = $('clearOvr');
+  if(clear) clear.onclick = () => { p.overrides = {}; commit(); toast('Back to the ' + PRESETS[p.preset].name + ' preset'); };
+  $('fChk').onchange = e => { if(e.target.value){ p.checkers[e.target.value] = true; commit(); } };
+  document.querySelectorAll('[data-unchk]').forEach(b => b.onclick = () => { delete p.checkers[b.dataset.unchk]; commit(); });
+  $('fExp').onchange = e => { p.expires = e.target.value || null; commit(); };
+  $('fStatus').onclick = () => { p.status = p.status === 'active' ? 'disabled' : 'active'; commit(); };
+}
+
+function setCap(person, capKey, level){
+  if(PRESETS[person.preset].locked) return;
+  const base = presetLevel(person.preset, capKey);
+  if(level === base) delete person.overrides[capKey];
+  else person.overrides[capKey] = level;
+  if(levelIndex(level) < levelIndex('act')) delete person.checkers[capKey];
+  commit();
+}
+
+/* ============================================================
+   8. Matrix
+   ============================================================ */
+function renderMatrix(){
+  const filterHost = document.getElementById('matrixFilter');
+  if(!filterHost.dataset.built){
+    filterHost.innerHTML = ['all'].concat(MODULES.map(m => m.key)).map(kk =>
+      '<button class="pick mini" data-mf="' + kk + '" aria-pressed="' + (kk === matrixFilter) + '">' +
+      (kk === 'all' ? 'All modules' : MODULES.find(m => m.key === kk).name) + '</button>').join('');
+    filterHost.dataset.built = '1';
+    filterHost.querySelectorAll('[data-mf]').forEach(b => b.onclick = () => {
+      matrixFilter = b.dataset.mf;
+      filterHost.querySelectorAll('[data-mf]').forEach(x => x.setAttribute('aria-pressed', x.dataset.mf === matrixFilter));
+      renderMatrix();
+    });
+  }
+  const mods = matrixFilter === 'all' ? MODULES : MODULES.filter(m => m.key === matrixFilter);
+  const cols = people;
+  let html = '<thead><tr><th class="corner" style="position:sticky;left:0">' +
+    '<span class="sec-t">Capability</span></th>' +
+    cols.map(p => '<th><div class="mh"><div class="avatar" style="' + avatarStyle(p) + '">' + initials(p.name) + '</div>' +
+      '<div class="mn">' + esc(p.name.split(' ')[0]) + '<br>' + esc(p.name.split(' ')[1] || '') + '</div>' +
+      '<div class="mr">' + esc(PRESETS[p.preset].name) + '</div></div></th>').join('') + '</tr></thead><tbody>';
+
+  mods.forEach(m => {
+    html += '<tr class="grouprow"><th>' + m.name + '</th>' + cols.map(() => '<td></td>').join('') + '</tr>';
+    m.caps.forEach(c => {
+      html += '<tr><th><div class="mcap-l">' + c.l + '</div><div class="mcap-k">' + c.k + '</div></th>' +
+        cols.map(p => {
+          const lv = effLevel(p, c.k);
+          const locked = PRESETS[p.preset].locked;
+          return '<td><button class="cell' + (locked ? ' locked' : '') + '" data-lv="' + lv + '" data-mp="' + p.id +
+            '" data-mc="' + c.k + '"' + (locked ? ' disabled title="Super admin"' : '') + '>' + LEVEL_LABEL[lv] +
+            (isOverride(p, c.k) ? '<span class="od"></span>' : '') + '</button></td>';
+        }).join('') + '</tr>';
+    });
+  });
+  html += '</tbody>';
+  const table = document.getElementById('matrixTable');
+  table.innerHTML = html;
+  table.querySelectorAll('[data-mp]').forEach(b => b.onclick = () => {
+    const p = byId(b.dataset.mp), cap = b.dataset.mc;
+    const allowed = capLevels(cap);
+    const cur = effLevel(p, cap);
+    const next = allowed[(allowed.indexOf(cur) + 1) % allowed.length];
+    setCap(p, cap, next);
+  });
+}
+
+/* ============================================================
+   9. Simulate
+   ============================================================ */
+const SIM_NAV = [
+  {label:'Overview', icon:'chart', cap:null},
+  {label:'Candidates', icon:'users', cap:'candidate.view'},
+  {label:'Verification', icon:'shield', cap:'bgv.view'},
+  {label:'Exits', icon:'exit', cap:'exit.particulars'},
+  {label:'Entities', icon:'building', cap:'entity.view'},
+  {label:'Analytics', icon:'chart', cap:'analytics.view'},
+  {label:'Inbox', icon:'mail', cap:'inbox.view'},
+  {label:'Access & org', icon:'key', cap:'team.view'}
+];
+const SIM_ACTIONS = [
+  {cap:'offer.draft',   n:'Draft the offer & CTC'},
+  {cap:'offer.annexure',n:'Edit the annexure'},
+  {cap:'offer.approve', n:'Approve the offer'},
+  {cap:'offer.send',    n:'Email the offer'},
+  {cap:'docs.sync',     n:'Run the document cross-check'},
+  {cap:'docs.reveal',   n:'Unmask Aadhaar & PAN'},
+  {cap:'it.send',       n:'Send the IT setup mail'},
+  {cap:'empid.assign',  n:'Assign the employee code'},
+  {cap:'empid.notify',  n:'Send the employee code mail'},
+  {cap:'candidate.approve', n:'Approve the onboarding form'},
+  {cap:'candidate.delete',  n:'Delete the record'}
+];
+
+function renderSim(){
+  const sel = document.getElementById('simWho');
+  sel.innerHTML = people.map(p => '<option value="' + p.id + '"' + (p.id === simWho ? ' selected' : '') + '>' +
+    esc(p.name) + ' — ' + esc(PRESETS[p.preset].name) + '</option>').join('');
+  sel.onchange = e => { simWho = e.target.value; renderSim(); };
+
+  const p = byId(simWho);
+  const mgr = managerOf(p);
+  const pop = POPULATIONS.find(o => o.k === p.population);
+
+  document.getElementById('simScope').innerHTML = ico('info') +
+    '<span><b>' + esc(p.name) + '</b> can reach: ' + pop.t.toLowerCase() + ' · ' + esc(entityLabel(p)) +
+    ' · ' + (p.tracks === 'all' ? 'all hiring tracks' : p.tracks.join(', ')) +
+    (p.expires ? ' · access ends ' + fmtDate(p.expires) : '') +
+    (p.status === 'disabled' ? ' · <b style="color:var(--crimson)">login disabled</b>' : '') + '.</span>';
+
+  document.getElementById('simNav').innerHTML = SIM_NAV.map(item => {
+    const ok = !item.cap || effLevel(p, item.cap) !== 'none';
+    return '<div class="navitem' + (ok ? '' : ' blocked') + '">' + ico(item.icon) + '<span>' + item.label + '</span></div>';
+  }).join('');
+
+  const sampleEntity = p.entities === 'all' ? ENTITIES[0].name : ENTITIES.find(e => e.slug === p.entities[0]).name;
+  document.getElementById('simRec').innerHTML =
+    '<div class="sim-rec-h">' +
+      '<div class="avatar" style="background:linear-gradient(145deg,#7ba7f0,#4b76bd)">RS</div>' +
+      '<div style="flex:1"><div style="font-family:var(--font-display);font-weight:600;font-size:15px">Ritika Sharma</div>' +
+      '<div style="font-size:11.5px;color:var(--muted);margin-top:2px">' + esc(sampleEntity) + ' · experienced · submitted 4 Sep</div></div>' +
+      '<span class="chip" style="background:rgba(242,177,92,.16);color:var(--amber)">Awaiting approval</span>' +
+    '</div>' +
+    '<div class="sim-actions">' + SIM_ACTIONS.map(a => {
+      const lv = effLevel(p, a.cap);
+      const needsChk = !!p.checkers[a.cap];
+      let cls = 'no', label = 'Hidden', why = 'Not granted on the ' + PRESETS[p.preset].name + ' preset.';
+      if(lv === 'view'){ cls = 'rev'; label = 'Read only'; why = 'Can see it, cannot change it.'; }
+      else if(lv !== 'none'){
+        cls = 'ok'; label = lv === 'approve' ? 'Sign off' : 'Do it';
+        why = 'Allowed on ' + (p.population === 'own' ? 'records they created' : pop.t.toLowerCase()) + '.';
+        if(needsChk){
+          cls = 'rev'; label = 'Send for sign-off';
+          why = mgr ? 'Goes to ' + mgr.name + ' before it takes effect.' : 'Needs a manager, and nobody is set above them.';
+        }
+      }
+      if(p.status === 'disabled'){ cls = 'no'; label = 'Blocked'; why = 'Login is disabled.'; }
+      const icon = cls === 'ok' ? 'checkline' : cls === 'rev' ? 'clock' : 'lock';
+      return '<div class="sim-act"><div class="sa-n">' + a.n +
+        '<div class="sa-why">' + ico(icon) + esc(why) + '</div></div>' +
+        '<span class="pillbtn ' + cls + '">' + label + '</span></div>';
+    }).join('') + '</div>';
+}
+
+/* ============================================================
+   10. Change tracking, diff, apply
+   ============================================================ */
+function diffList(){
+  const out = [];
+  const savedById = {}; saved.forEach(s => savedById[s.id] = s);
+  people.forEach(p => {
+    const s = savedById[p.id];
+    if(!s){ out.push({kind:'add', who:p.name, t:'New login added', m:p.email}); return; }
+    if(s.preset !== p.preset)
+      out.push({kind:'role', who:p.name, t:'Role preset', a:PRESETS[s.preset].name, b:PRESETS[p.preset].name});
+    if(s.reportsTo !== p.reportsTo)
+      out.push({kind:'org', who:p.name, t:'Reports to',
+        a:s.reportsTo ? (byId(s.reportsTo) || {name:'—'}).name : 'nobody',
+        b:p.reportsTo ? byId(p.reportsTo).name : 'nobody'});
+    if(s.population !== p.population)
+      out.push({kind:'scope', who:p.name, t:'Reach',
+        a:POPULATIONS.find(o => o.k === s.population).t, b:POPULATIONS.find(o => o.k === p.population).t});
+    const se = s.entities === 'all' ? 'all 12' : s.entities.length + '';
+    const pe = p.entities === 'all' ? 'all 12' : p.entities.length + '';
+    if(se !== pe) out.push({kind:'scope', who:p.name, t:'Entities', a:se + ' entities', b:pe + ' entities'});
+    const st = s.tracks === 'all' ? 'all' : s.tracks.join(',');
+    const pt = p.tracks === 'all' ? 'all' : p.tracks.join(',');
+    if(st !== pt) out.push({kind:'scope', who:p.name, t:'Hiring tracks', a:st, b:pt});
+    if(s.status !== p.status) out.push({kind:'status', who:p.name, t:'Login', a:s.status, b:p.status});
+    if((s.expires || '') !== (p.expires || ''))
+      out.push({kind:'time', who:p.name, t:'Access ends', a:s.expires || 'never', b:p.expires || 'never'});
+    ALL_CAP_KEYS.forEach(kk => {
+      const before = effOn(s, kk), after = effLevel(p, kk);
+      if(before !== after)
+        out.push({kind:levelIndex(after) > levelIndex(before) ? 'grant' : 'revoke',
+          who:p.name, t:CAPS[kk].l, a:LEVEL_LABEL[before], b:LEVEL_LABEL[after], key:kk});
+    });
+    Object.keys(Object.assign({}, s.checkers, p.checkers)).forEach(kk => {
+      if(!!s.checkers[kk] !== !!p.checkers[kk])
+        out.push({kind:'check', who:p.name, t:CAPS[kk].l,
+          a:s.checkers[kk] ? 'needs sign-off' : 'direct', b:p.checkers[kk] ? 'needs sign-off' : 'direct'});
+    });
+  });
+  return out;
+}
+// effective level against a snapshot object (no live lookups)
+function effOn(snap, capKey){
+  if(PRESETS[snap.preset].locked) return capMax(capKey);
+  const o = snap.overrides[capKey];
+  return o !== undefined ? clampLevel(capKey, o) : presetLevel(snap.preset, capKey);
+}
+
+function renderChangeBar(){
+  const n = diffList().length;
+  document.getElementById('cbText').innerHTML = n
+    ? '<b>' + n + '</b> unsaved change' + (n>1?'s':'') + ' across ' + new Set(diffList().map(d => d.who)).size + ' ' +
+      (new Set(diffList().map(d => d.who)).size > 1 ? 'people' : 'person')
+    : 'No unsaved changes';
+  document.getElementById('cbDot').className = 'cb-dot' + (n ? ' hot' : '');
+  document.getElementById('applyBtn').disabled = !n;
+  document.getElementById('applyBtn2').disabled = !n;
+}
+
+const DIFF_TONE = {grant:'verdant', revoke:'crimson', role:'ember', org:'azure', scope:'azure',
+  status:'amber', time:'amber', check:'azure', add:'verdant'};
+const DIFF_ICON = {grant:'plus', revoke:'minus', role:'key', org:'branch', scope:'building',
+  status:'lock', time:'clock', check:'checkline', add:'plus'};
+
+function renderDrawer(){
+  const body = document.getElementById('drawerBody');
+  document.querySelectorAll('.drawer-tabs button').forEach(b =>
+    b.setAttribute('aria-selected', b.dataset.tab === drawerTab));
+  if(drawerTab === 'log'){
+    body.innerHTML = activityLog.map(l =>
+      '<div class="diff"><div class="dico" style="background:var(--line-strong);color:var(--muted)">' + ico('clock') + '</div>' +
+      '<div><div class="dt">' + esc(l.what) + '</div><div class="dm">' + esc(l.when) + ' · ' + esc(l.who) + '</div></div></div>').join('');
+    return;
+  }
+  const diffs = diffList();
+  if(!diffs.length){
+    body.innerHTML = '<div class="empty-diff">Nothing to apply.<br>Change a role, a reporting line or a capability and it will be listed here first.</div>';
+    return;
+  }
+  const grouped = {};
+  diffs.forEach(d => { (grouped[d.who] = grouped[d.who] || []).push(d); });
+  body.innerHTML = Object.keys(grouped).map(who =>
+    '<div style="margin-bottom:18px">' +
+      '<div class="sec-t" style="margin-bottom:6px">' + esc(who) + '</div>' +
+      grouped[who].map(d => {
+        const hex = TONE_HEX[DIFF_TONE[d.kind]];
+        return '<div class="diff"><div class="dico" style="background:' + hexA(hex,.16) + ';color:' + hex + '">' +
+          ico(DIFF_ICON[d.kind]) + '</div><div><div class="dt">' + esc(d.t) + '</div>' +
+          '<div class="dm">' + (d.m ? esc(d.m) : '<b>' + esc(d.a) + '</b><span class="arrow">→</span><b>' + esc(d.b) + '</b>') +
+          '</div></div></div>';
+      }).join('') +
+    '</div>').join('');
+}
+
+function openDrawer(tab){ drawerTab = tab || 'pending'; document.getElementById('drawer').classList.add('open'); renderDrawer(); }
+function closeDrawer(){ document.getElementById('drawer').classList.remove('open'); }
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeDrawer);
+document.querySelectorAll('.drawer-tabs button').forEach(b => b.onclick = () => openDrawer(b.dataset.tab));
+document.getElementById('reviewBtn').onclick = () => openDrawer('pending');
+
+function applyAccess(){
+  const diffs = diffList();
+  if(!diffs.length) return;
+  const stamp = new Date().toLocaleString('en-IN', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+  const byWho = {};
+  diffs.forEach(d => { byWho[d.who] = (byWho[d.who] || 0) + 1; });
+  Object.keys(byWho).reverse().forEach(who =>
+    activityLog.unshift({when:stamp, who:'hemang.k', what:'Applied ' + byWho[who] + ' access change' + (byWho[who]>1?'s':'') + ' to ' + who + '.'}));
+  saved = clone(people);
+  persist(); render(); closeDrawer();
+  toast(diffs.length + ' change' + (diffs.length>1?'s':'') + ' applied and logged');
+}
+document.getElementById('applyBtn').onclick = applyAccess;
+document.getElementById('applyBtn2').onclick = applyAccess;
+document.getElementById('resetBtn').onclick = () => {
+  if(!diffList().length) return toast('Already matching the saved version');
+  people = clone(saved); render(); persist(); toast('Reverted to the saved version');
+};
+
+function commit(){ persist(); render(); }
+
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  document.getElementById('toastText').textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ============================================================
+   11. Views & theme
+   ============================================================ */
+document.querySelectorAll('.mode').forEach(b => b.onclick = () => {
+  view = b.dataset.view;
+  document.querySelectorAll('.mode').forEach(x => x.setAttribute('aria-selected', x.dataset.view === view));
+  ['org','matrix','sim'].forEach(v => document.getElementById('view-' + v).hidden = (v !== view));
+  render();
+  if(view === 'org') applyTransform();
+});
+
+const themeBtn = document.getElementById('themeBtn');
+themeBtn.onclick = () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const isDark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+};
+
+/* ============================================================
+   12. Boot
+   ============================================================ */
+render();
+applyTransform();
+requestAnimationFrame(() => fit());
+window.addEventListener('resize', () => { if(view === 'org') fit(); });
+</script>
