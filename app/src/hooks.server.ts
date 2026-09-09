@@ -6,10 +6,9 @@ import { resolveSession } from '$lib/server/auth';
 import { isAllowedAdminIp } from '$lib/server/ip-allowlist';
 import { startBgvReminderTicker } from '$lib/server/bgv-reminders';
 
-// Module scope: runs once per server process, not once per request. A
-// long-running deployment chases unanswered BGV requests on its own from here;
-// serverless has no process to hold the interval and calls
-// /api/cron/bgv-reminders instead. Both paths share one Redis lock.
+// Module scope: runs once per server process, not once per request. This is
+// the only thing that chases unanswered BGV requests — there is no HTTP
+// trigger for it on purpose. Replicas coordinate through a Redis lock.
 startBgvReminderTicker();
 
 // Redis-backed rate limiter — fails open so a Redis outage never blocks the app.

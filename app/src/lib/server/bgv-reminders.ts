@@ -21,6 +21,13 @@
 // webhook stamps replyReceivedAt and clears nextReminderAt (see
 // /webhooks/resend), so a reply that arrives thirty seconds before a sweep
 // still cancels that sweep's mail.
+//
+// Sweeps are driven entirely by this process's own ticker (see the bottom of
+// this file). There is deliberately no HTTP trigger: an endpoint that makes
+// the platform send mail is worth protecting, and nothing under /api is
+// covered by the admin IP allowlist or the session guard in hooks.server.ts.
+// A deployment that cannot hold an interval — a serverless host that scales to
+// zero — would need one reintroduced, behind a shared secret.
 import { env } from '$env/dynamic/private';
 import { connectDb } from './db';
 import { getRedis } from './redis';
@@ -208,7 +215,7 @@ export async function sweepBgvReminders(): Promise<SweepResult> {
 	// due query below is the only gate. BGV_REMINDER_TICKER=off is the
 	// operational kill switch if a deploy ever needs one.
 
-	// Fails open on a Redis outage: a missed lock risks a duplicate reminder,
+	// Fails open on a Redis outage — still worth holding across replicas: a missed lock risks a duplicate reminder,
 	// while refusing to run risks every verification stalling silently. The
 	// per-row claim below is the real guard.
 	let lockToken: string | null = null;
@@ -282,9 +289,10 @@ export async function sweepBgvReminders(): Promise<SweepResult> {
 // ── In-process ticker ────────────────────────────────────────────────────────
 //
 // A long-running server (Docker, Railway, `npm run dev`) schedules its own
-// sweeps, so a working deployment needs no external cron. Serverless does not:
-// a lambda has no process to hold an interval, so Vercel deployments must hit
-// /api/cron/bgv-reminders on a schedule instead — the same sweep, same locking.
+// sweeps, which is the only trigger there is. Missing a tick costs nothing: a
+// due row stays due, so the next sweep picks up whatever the last one missed —
+// a restart, a deploy or an idled process delays a reminder rather than
+// dropping it.
 
 const TICK_MS = 15 * 60_000;
 /** Nothing sweeps for the first minute: the process has just booted, Mongo may
