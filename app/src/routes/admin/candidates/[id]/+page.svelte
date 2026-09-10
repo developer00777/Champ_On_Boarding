@@ -1290,8 +1290,13 @@
 				<div class="frow">
 					<span class="flabel">Religion</span>
 					{#if editingProfile}
-						<select class="fedit" name="religion" value={c.religion ?? ''}>
-							<option value="">—</option>
+						<!-- `required` with a disabled empty option: a legacy row with no
+						     religion still opens on the placeholder rather than silently
+						     preselecting the first faith on the list, but the form will not
+						     submit until a real one is picked. The server rejects a blank
+						     regardless — see validateProfileEdit. -->
+						<select class="fedit" name="religion" value={c.religion ?? ''} required>
+							<option value="" disabled>— select —</option>
 							{#each RELIGIONS as r}<option value={r}>{r}</option>{/each}
 							<!-- Legacy rows may hold a value the list no longer offers (e.g. the
 							     retired "Prefer not to say"). Keep it selectable so opening the

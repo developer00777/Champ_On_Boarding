@@ -164,11 +164,22 @@ function validateProfileEdit(fields: Record<string, string>, original?: { religi
 	}
 	if (fields.maritalStatus && !['single', 'married'].includes(fields.maritalStatus))
 		errors.push('Marital status must be single or married');
+	// Religion is mandatory everywhere it can be set, not just on the candidate's
+	// own submission (validateMasterSheet). It is a Master Tracker column payroll
+	// and the statutory registers read, so a blank has to be chased down by hand
+	// after joining — and HR's editor was the one door left open: it validated the
+	// value only when one was present, so saving the form with the dropdown on "—"
+	// silently cleared it.
+	//
+	// This also catches legacy rows created before the Aug 2026 rule: opening one
+	// in the editor now requires a religion before it will save. That is the
+	// intended way those blanks get backfilled — the dropdown is right there — but
+	// it does mean an unrelated edit to an old record has to fill this in first.
+	if (!fields.religion?.trim()) errors.push('Religion is required');
 	// Same closed-list check as marital status. A legacy value already on the row
 	// (e.g. the retired "Prefer not to say") is left alone — the editor re-offers
 	// it as an option, so round-tripping an unrelated edit must not fail here.
-	if (
-		fields.religion &&
+	else if (
 		!RELIGIONS.includes(fields.religion as (typeof RELIGIONS)[number]) &&
 		fields.religion !== original?.religion
 	)
