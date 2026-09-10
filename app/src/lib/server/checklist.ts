@@ -8,7 +8,18 @@ export interface SlotStatus {
 	mandatory: boolean;
 	maxFiles: number;
 	ocr: boolean;
-	docs: Array<{ id: string; docType: string; reviewStatus: string; ocrStatus: string; reviewNote: string | null; mime: string }>;
+	docs: Array<{
+		id: string;
+		docType: string;
+		reviewStatus: string;
+		ocrStatus: string;
+		reviewNote: string | null;
+		mime: string;
+		/** How many times a replacement has been asked for, and when last —
+		 *  so the UI can say "asked 2×" instead of just "asked". */
+		reuploadCount: number;
+		reuploadRequestedAt: string | null;
+	}>;
 	satisfied: boolean;
 	/** Set when this slot is one of several alternatives (see DocSlot.group). */
 	group?: string;
@@ -18,7 +29,7 @@ export interface SlotStatus {
 	/** HR has asked the candidate to upload this slot even though nothing has
 	 *  been uploaded yet (only meaningful when docs is empty — once a file
 	 *  lands the normal per-document reupload flow takes over). */
-	uploadRequested?: { note: string | null };
+	uploadRequested?: { note: string | null; count: number; requestedAt: string | null };
 }
 
 export async function checklistFor(
@@ -27,14 +38,25 @@ export async function checklistFor(
 	brandSlug?: string | null
 ): Promise<SlotStatus[]> {
 	const [docs, candidate] = await Promise.all([
-		Document.find({ candidateId }, 'docType reviewStatus ocrStatus reviewNote mime').lean(),
+		Document.find(
+			{ candidateId },
+			'docType reviewStatus ocrStatus reviewNote mime reuploadCount reuploadRequestedAt'
+		).lean(),
 		Candidate.findById(candidateId, 'requestedDocTypes').lean()
 	]);
-	const requested = new Map<string, string | null>(
-		(candidate?.requestedDocTypes ?? []).map((r: { docType: string; note?: string | null }) => [
-			r.docType,
-			r.note ?? null
-		])
+	type RequestedEntry = { note: string | null; count: number; requestedAt: string | null };
+	const requested = new Map<string, RequestedEntry>(
+		(candidate?.requestedDocTypes ?? []).map(
+			(r: { docType: string; note?: string | null; count?: number; requestedAt?: Date | null }) => [
+				r.docType,
+				{
+					note: r.note ?? null,
+					// Rows written before the counter existed have asked exactly once.
+					count: r.count ?? 1,
+					requestedAt: r.requestedAt ? new Date(r.requestedAt).toISOString() : null
+				}
+			]
+		)
 	);
 	const slots = slotsForTrack(track, brandSlug);
 
@@ -58,7 +80,11 @@ export async function checklistFor(
 				reviewStatus: d.reviewStatus,
 				ocrStatus: d.ocrStatus,
 				reviewNote: d.reviewNote ?? null,
-				mime: d.mime
+				mime: d.mime,
+				reuploadCount: d.reuploadCount ?? 0,
+				reuploadRequestedAt: d.reuploadRequestedAt
+					? new Date(d.reuploadRequestedAt).toISOString()
+					: null
 			}));
 		const usable = slotDocs.filter((d) => d.reviewStatus !== 'reupload_requested');
 		// A grouped slot rides on its group: a bank statement satisfies the payslip
@@ -78,9 +104,8 @@ export async function checklistFor(
 			alternatives: slot.group
 				? slots.filter((s) => s.group === slot.group && s.type !== slot.type).map((s) => s.label)
 				: undefined,
-			uploadRequested: slotDocs.length === 0 && requested.has(slot.type)
-				? { note: requested.get(slot.type) ?? null }
-				: undefined
+			uploadRequested:
+				slotDocs.length === 0 ? requested.get(slot.type) : undefined
 		};
 	});
 }

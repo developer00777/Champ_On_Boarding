@@ -121,8 +121,19 @@ const candidateSchema = new Schema(
 		// degree certificate) — there is no Document row to flip reviewStatus on
 		// for a file that was never uploaded, so the request lives here instead,
 		// keyed by docType. Cleared the moment a matching Document appears.
+		// `count`/`requestedAt` mirror the same pair on Document: an upload can be
+		// asked for repeatedly, and HR needs to see how many times it already has
+		// been before sending another. One entry per docType — a repeat updates
+		// the entry in place rather than stacking rows.
 		requestedDocTypes: {
-			type: [{ docType: { type: String, required: true }, note: { type: String, default: null } }],
+			type: [
+				{
+					docType: { type: String, required: true },
+					note: { type: String, default: null },
+					count: { type: Number, default: 1 },
+					requestedAt: { type: Date, default: Date.now }
+				}
+			],
 			default: []
 		},
 		/** Joining-day details HR has asked the candidate to re-confirm from their
@@ -137,6 +148,10 @@ const candidateSchema = new Schema(
 				{
 					field: { type: String, required: true },
 					note: { type: String, default: null },
+					// Same counter as requestedDocTypes and Document.reuploadCount: a
+					// detail can be queried as many times as it takes to get a
+					// straight answer, and HR needs to see how often it already has.
+					count: { type: Number, default: 1 },
 					requestedAt: { type: Date, default: Date.now }
 				}
 			],
@@ -216,7 +231,15 @@ const documentSchema = new Schema(
 			enum: ['uploaded', 'flagged', 'accepted', 'reupload_requested'],
 			default: 'uploaded'
 		},
-		reviewNote: { type: String, default: null }
+		reviewNote: { type: String, default: null },
+		// How many times HR has asked for this one to be replaced, and when they
+		// last asked. A re-upload can be requested as often as it takes — a
+		// candidate who sends the same glared photo three times needs asking
+		// three times — so reviewStatus alone cannot say whether anyone has
+		// chased this, or how hard. Shown on the candidate page so HR is
+		// re-asking deliberately rather than blindly.
+		reuploadCount: { type: Number, default: 0 },
+		reuploadRequestedAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
 );

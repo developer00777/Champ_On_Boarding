@@ -25,6 +25,18 @@
 
 	let reuploadFor: string | null = $state(null);
 	let uploadRequestFor: string | null = $state(null);
+
+	/** "asked 3× · 2 days ago". A document can be chased as often as it takes,
+	 *  so the count is what tells HR whether this is a first ask or the fourth —
+	 *  and the age is what tells them whether it is fair to ask again yet. */
+	function askedLabel(count: number, at: string | null): string {
+		const times = count > 1 ? `asked ${count}×` : 'asked';
+		if (!at) return times;
+		const days = Math.floor((Date.now() - new Date(at).getTime()) / 86_400_000);
+		if (days <= 0) return `${times} · today`;
+		if (days === 1) return `${times} · yesterday`;
+		return `${times} · ${days} days ago`;
+	}
 	let editingProfile = $state(false);
 	$effect(() => {
 		if (form?.profileSaved) editingProfile = false;
@@ -1102,7 +1114,7 @@
 							<div class="doc-name" style="color:var(--ae-muted)">{slot.label}</div>
 							<div class="doc-sub">
 								Not uploaded
-								{#if slot.uploadRequested}· requested{slot.uploadRequested.note ? `: ${slot.uploadRequested.note}` : ''}{/if}
+								{#if slot.uploadRequested}· {askedLabel(slot.uploadRequested.count, slot.uploadRequested.requestedAt)}{slot.uploadRequested.note ? `: ${slot.uploadRequested.note}` : ''}{/if}
 							</div>
 						</div>
 						{#if slot.mandatory}
@@ -1110,9 +1122,9 @@
 						{:else if slot.uploadRequested}
 							<span class="pill gold">UPLOAD ASKED</span>
 						{/if}
-						{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status) && !slot.uploadRequested}
+						{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status)}
 							<button type="button" class="btn ghost small" onclick={() => (uploadRequestFor = uploadRequestFor === slot.type ? null : slot.type)}>
-								Request upload
+								{slot.uploadRequested ? 'Ask again' : 'Request upload'}
 							</button>
 						{/if}
 					</div>
@@ -1133,6 +1145,7 @@
 								<div class="doc-name">{slot.label}</div>
 								<div class="doc-sub">
 									{doc.mime === 'application/pdf' ? 'PDF' : 'Image'} · {(doc.sizeBytes / 1024).toFixed(0)} KB
+									{#if doc.reuploadCount}· {askedLabel(doc.reuploadCount, doc.reuploadRequestedAt)}{/if}
 									{#if doc.reviewNote}· {doc.reviewNote}{/if}
 								</div>
 								{#if doc.standardStatus && stdPill[doc.standardStatus]}
@@ -1156,9 +1169,14 @@
 								<span class="pill {docPill[doc.ocrStatus]?.cls}">{docPill[doc.ocrStatus]?.label ?? doc.ocrStatus}</span>
 							{/if}
 							<a class="btn ghost small" href="/admin/candidates/{c.id}/doc/{doc.id}" target="_blank" rel="noopener">View</a>
-							{#if data.isApprover && c.status === 'submitted' && doc.reviewStatus !== 'reupload_requested'}
+							<!-- Same gate as "Request upload" above, and repeatable for the same
+							     reason. It used to require status === 'submitted', but asking for
+							     one re-upload sets the record to changes_requested — which then hid
+							     the button on every other document, capping HR at one request per
+							     submission. -->
+							{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status)}
 								<button type="button" class="btn ghost small" onclick={() => (reuploadFor = reuploadFor === doc.id ? null : doc.id)}>
-									Re-upload
+									{doc.reviewStatus === 'reupload_requested' ? 'Ask again' : 'Re-upload'}
 								</button>
 							{/if}
 						</div>
@@ -1869,7 +1887,8 @@
 							</p>
 						{:else if item.requestedAt}
 							<p class="cd-note cd-wait">
-								Asked the candidate on {new Date(item.requestedAt).toLocaleDateString('en-IN', {
+								{item.requestCount > 1 ? `Asked ${item.requestCount}×, last on` : 'Asked the candidate on'}
+								{new Date(item.requestedAt).toLocaleDateString('en-IN', {
 									day: 'numeric',
 									month: 'short'
 								})} — waiting for their reply{item.requestNote ? ` · "${item.requestNote}"` : ''}

@@ -314,6 +314,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				ocrStatus: d.ocrStatus,
 				reviewStatus: d.reviewStatus,
 				reviewNote: d.reviewNote,
+				reuploadCount: d.reuploadCount,
+				reuploadRequestedAt: d.reuploadRequestedAt,
 				ocrTranscript: null,
 				uploadedAt: new Date().toISOString(),
 				// Per-document standard-conformance check (e.g. "is this actually a
@@ -346,6 +348,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				currentValue: confirms ? ((candidate as Record<string, any>)[confirms] ?? null) : null,
 				requestedAt: request?.requestedAt?.toISOString() ?? null,
 				requestNote: request?.note ?? null,
+				// Entries written before the counter existed have asked once.
+				requestCount: request ? (request.count ?? 1) : 0,
 				candidateConfirmedAt: item?.candidateConfirmedAt?.toISOString() ?? null,
 				candidateConfirmedValue: item?.candidateConfirmedValue ?? null
 			};
@@ -685,9 +689,18 @@ export const actions: Actions = {
 		const doc = await Document.findOne({ _id: docId, candidateId: params.id }).lean();
 		if (!doc) return fail(404);
 
+		// Deliberately repeatable: a candidate who sends back the same unreadable
+		// scan needs asking again, and the second ask is the one that works. Each
+		// call re-sends the mail, bumps the counter and re-stamps the date, so the
+		// page can show how many times this has been chased.
+		const attempt = (doc.reuploadCount ?? 0) + 1;
 		await Document.findByIdAndUpdate(doc._id, {
-			reviewStatus: 'reupload_requested',
-			reviewNote: note || null
+			$set: {
+				reviewStatus: 'reupload_requested',
+				reviewNote: note || null,
+				reuploadRequestedAt: new Date()
+			},
+			$inc: { reuploadCount: 1 }
 		});
 		await Candidate.findByIdAndUpdate(params.id, { status: 'changes_requested' });
 		await audit({
@@ -695,14 +708,19 @@ export const actions: Actions = {
 			actor: locals.admin!.email,
 			action: 'reupload_requested',
 			field: doc.docType,
-			newValue: note,
+			newValue: attempt > 1 ? `${note} (ask #${attempt})` : note,
 			ip: getClientAddress()
 		});
 		const reuploadBrand = brandBySlug(row.company?.brandSlug ?? undefined);
 		await sendBrandedMail(
 			row.candidate.email,
-			'Action needed on your onboarding documents',
-			`Hello,\n\nHR has requested a re-upload of one of your documents (${doc.docType.replace(/_/g, ' ')})` +
+			attempt > 1
+				? 'Reminder: your onboarding documents still need attention'
+				: 'Action needed on your onboarding documents',
+			`Hello,\n\n` +
+				(attempt > 1
+					? `We are still waiting on a replacement for one of your documents (${doc.docType.replace(/_/g, ' ')})`
+					: `HR has requested a re-upload of one of your documents (${doc.docType.replace(/_/g, ' ')})`) +
 				(note ? `:\n"${note}"` : '.') +
 				`\n\nPlease open your onboarding link again, replace the document, and resubmit.\n\n${brandSignoff(reuploadBrand)}`,
 			reuploadBrand,
@@ -752,27 +770,55 @@ export const actions: Actions = {
 		const slot = slotByType(docType);
 		if (!slot) return fail(404);
 
-		// Pull any stale request for this docType before pushing the fresh one —
-		// two ops, not one, since Mongo can't $pull and $push the same array path
-		// in a single update.
-		await Candidate.findByIdAndUpdate(params.id, { $pull: { requestedDocTypes: { docType } } });
-		await Candidate.findByIdAndUpdate(params.id, {
-			$push: { requestedDocTypes: { docType, note: note || null } },
-			...(row.candidate.status === 'submitted' ? { status: 'changes_requested' } : {})
-		});
+		// Repeatable, like requestReupload: one entry per docType, updated in
+		// place so a third ask does not leave three rows behind. Update-then-push
+		// rather than pull-then-push, because pulling first would throw away the
+		// count we are trying to carry forward.
+		const now = new Date();
+		const bumped = await Candidate.updateOne(
+			{ _id: params.id, 'requestedDocTypes.docType': docType },
+			{
+				$set: {
+					'requestedDocTypes.$.note': note || null,
+					'requestedDocTypes.$.requestedAt': now
+				},
+				$inc: { 'requestedDocTypes.$.count': 1 }
+			}
+		);
+		if (!bumped.matchedCount) {
+			await Candidate.findByIdAndUpdate(params.id, {
+				$push: { requestedDocTypes: { docType, note: note || null, count: 1, requestedAt: now } }
+			});
+		}
+		if (row.candidate.status === 'submitted') {
+			await Candidate.findByIdAndUpdate(params.id, { status: 'changes_requested' });
+		}
+
+		const asked = await Candidate.findById(params.id, 'requestedDocTypes').lean();
+		const attempt =
+			(asked?.requestedDocTypes ?? []).find(
+				(r: { docType: string; count?: number }) => r.docType === docType
+			)?.count ?? 1;
+
 		await audit({
 			candidateId: params.id,
 			actor: locals.admin!.email,
 			action: 'upload_requested',
 			field: docType,
-			newValue: note,
+			newValue: attempt > 1 ? `${note} (ask #${attempt})` : note,
 			ip: getClientAddress()
 		});
 		const requestBrand = brandBySlug(row.company?.brandSlug ?? undefined);
+		const slotLabel = slot.label.replace(/\s*\(optional\)/i, '');
 		await sendBrandedMail(
 			row.candidate.email,
-			'Action needed on your onboarding documents',
-			`Hello,\n\nHR has requested that you upload your ${slot.label.replace(/\s*\(optional\)/i, '')}` +
+			attempt > 1
+				? 'Reminder: your onboarding documents still need attention'
+				: 'Action needed on your onboarding documents',
+			`Hello,\n\n` +
+				(attempt > 1
+					? `We are still waiting on your ${slotLabel}`
+					: `HR has requested that you upload your ${slotLabel}`) +
 				(note ? `:\n"${note}"` : '.') +
 				`\n\nPlease open your onboarding link again and upload it.\n\n${brandSignoff(requestBrand)}`,
 			requestBrand,
@@ -812,32 +858,53 @@ export const actions: Actions = {
 				message: 'This record is revoked — restore it before asking the candidate to confirm.'
 			});
 
-		// $pull then $push: Mongo cannot do both on one array path in a single
-		// update, and a second request for the same field should replace the
-		// first rather than stack up.
-		await Candidate.findByIdAndUpdate(params.id, {
-			$pull: { requestedConfirmations: { field } }
-		});
-		await Candidate.findByIdAndUpdate(params.id, {
-			$push: { requestedConfirmations: { field, note: note || null, requestedAt: new Date() } }
-		});
+		// Repeatable, and counted — same treatment as a document re-request. One
+		// entry per field, updated in place, so a fourth ask does not leave four
+		// rows behind but does show as the fourth.
+		const askedAt = new Date();
+		const bumped = await Candidate.updateOne(
+			{ _id: params.id, 'requestedConfirmations.field': field },
+			{
+				$set: {
+					'requestedConfirmations.$.note': note || null,
+					'requestedConfirmations.$.requestedAt': askedAt
+				},
+				$inc: { 'requestedConfirmations.$.count': 1 }
+			}
+		);
+		if (!bumped.matchedCount) {
+			await Candidate.findByIdAndUpdate(params.id, {
+				$push: { requestedConfirmations: { field, note: note || null, count: 1, requestedAt: askedAt } }
+			});
+		}
+
+		const askedRow = await Candidate.findById(params.id, 'requestedConfirmations').lean();
+		const attempt =
+			(askedRow?.requestedConfirmations ?? []).find(
+				(r: { field: string; count?: number }) => r.field === field
+			)?.count ?? 1;
 
 		await audit({
 			candidateId: params.id,
 			actor: locals.admin!.email,
 			action: 'confirmation_requested',
 			field,
-			newValue: note || null,
+			newValue: attempt > 1 ? `${note || ''} (ask #${attempt})`.trim() : note || null,
 			ip: getClientAddress()
 		});
 
 		const brand = brandBySlug(row.company?.brandSlug ?? undefined);
 		await sendBrandedMail(
 			row.candidate.email,
-			`Please confirm your ${item.confirmLabel}`,
+			attempt > 1
+				? `Reminder: please confirm your ${item.confirmLabel}`
+				: `Please confirm your ${item.confirmLabel}`,
 			`Hello,
 
-Before your joining day we need you to confirm your ${item.confirmLabel} on record` +
+` +
+				(attempt > 1
+					? `We are still waiting for you to confirm your ${item.confirmLabel} on record`
+					: `Before your joining day we need you to confirm your ${item.confirmLabel} on record`) +
 				(note ? `:
 "${note}"` : '.') +
 				`
