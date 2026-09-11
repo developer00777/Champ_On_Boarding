@@ -565,6 +565,12 @@ const exitSchema = new Schema(
 		doj: { type: String, default: null },
 		designation: { type: String, default: null },
 		department: { type: String, default: null },
+		/** The "Team" line on the No Dues certificate's header. Distinct from
+		 *  `department`, which is the org unit — the certificate asks for both,
+		 *  and HR fills this alongside the rest of the particulars. Previously
+		 *  collected from the employee as `ndc.team`; that field is still read
+		 *  as a fallback for exits recorded before the form moved internal. */
+		team: { type: String, default: null },
 		reportingManager: { type: String, default: null },
 		division: { type: String, default: null },
 		uanNo: { type: String, default: null },
@@ -761,6 +767,10 @@ const exitSchema = new Schema(
 
 		/** Whether a recommendation letter is being issued — HR's call, per the
 		 *  brief ("the recommendation letter if applicable"). */
+		/** Retained for records already carrying it. Nothing reads it any more:
+		 *  the Recommendation Letter handover slot it gated was removed, and with
+		 *  it the only control that set it. Dropping the field outright would
+		 *  rewrite history on closed exits for no gain. */
 		recommendationApplicable: { type: Boolean, default: false },
 
 		/** SOP 10.7 exit-completion checklist: itemKey → checked. Kept as a map

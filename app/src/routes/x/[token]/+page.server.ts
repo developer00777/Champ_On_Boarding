@@ -13,15 +13,11 @@ import { brandBySlug } from '$lib/shared/brands';
 import { isValidAadhaar, isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate, todayDDMMYYYYInIST } from '$lib/shared/dates';
 import {
-	ASSET_ITEMS,
 	EXIT_Q11_ROWS,
 	EXIT_Q12_ROWS,
 	EXIT_Q13_ROWS,
 	EXIT_TEXT_QUESTIONS,
 	EXIT_UPLOAD_DOCS,
-	NDC_EMPLOYEE_DECLARATIONS,
-	NDC_EMPLOYEE_ROW_KEYS,
-	NDC_EMPLOYEE_SECTIONS,
 	RELIEVING_ITEMS
 } from '$lib/shared/offboarding';
 import {
@@ -32,7 +28,7 @@ import {
 	resolveExitToken,
 	serviceLabel
 } from '$lib/server/offboarding/exit';
-import { availableDocs } from '$lib/server/offboarding/documents';
+import { availableDocs, employeeDocsPendingReason } from '$lib/server/offboarding/documents';
 import { sendExitAlert } from '$lib/server/offboarding/mail';
 
 /** Stages in which the employee may still edit. Mirrors EDITABLE_STATUSES in
@@ -68,16 +64,6 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const files = await ExitDocument.find({ exitId: exit._id, source: 'employee' }).lean();
 
-	// The asset list starts from the SOP's standard set, with whatever the
-	// employee has already declared merged over it.
-	const declared = new Map(
-		(e.assets ?? []).map((a: Record<string, unknown>) => [String(a.item), a])
-	);
-	const assets = ASSET_ITEMS.map((item) => {
-		const row = declared.get(item) as Record<string, unknown> | undefined;
-		return { item, returned: !!row?.returned, note: (row?.note as string | null) ?? '' };
-	});
-
 	return {
 		brand,
 		companyName: company?.name ?? brand.legalName,
@@ -102,17 +88,6 @@ export const load: PageServerLoad = async ({ params }) => {
 			// is on file, exactly as the onboarding portal handles it.
 			hasAadhaar: !!e.nda?.aadhaarNoEncrypted,
 			aadhaarLast4: e.nda?.aadhaarLast4 ?? null,
-			ndc: {
-				team: e.ndc?.team ?? '',
-				nameAsPerBank: e.ndc?.nameAsPerBank ?? '',
-				filesHandover: e.ndc?.filesHandover ?? '',
-				loginsHandover: e.ndc?.loginsHandover ?? '',
-				leadsHandover: e.ndc?.leadsHandover ?? '',
-				deptOthers: e.ndc?.deptOthers ?? '',
-				rows: asRecord(e.ndc?.rows),
-				rowNotes: asRecord(e.ndc?.rowNotes),
-				submitted: !!e.ndc?.submittedAt
-			},
 			nda: {
 				agreementDate: e.nda?.agreementDate ?? '',
 				agreementDateIso: toIsoDate(e.nda?.agreementDate),
@@ -160,11 +135,13 @@ export const load: PageServerLoad = async ({ params }) => {
 				addressForCorrespondence: e.gratuity?.addressForCorrespondence ?? '',
 				submitted: !!e.gratuity?.submittedAt
 			},
-			assets
 		},
 		forms: formStates(e),
 		complete: allFormsComplete(e),
-		documents: availableDocs(e),
+		// 'employee' gates the list: the No Dues certificate is internal, and the
+		// rest are released only once HR has accepted the submission.
+		documents: availableDocs(e, 'employee'),
+		documentsPending: employeeDocsPendingReason(e),
 		requestedFields: (e.requestedFields ?? []).map((r: { field: string; note?: string | null }) => ({
 			field: r.field,
 			note: r.note ?? null
@@ -247,87 +224,9 @@ export const actions: Actions = {
 	},
 
 	/** 5.1 — the employee's half of the No Dues certificate. */
-	saveNdc: async ({ params, request, getClientAddress }) => {
-		const c = await ctx(params.token);
-		const bad = guard(c?.exit);
-		if (bad) return bad;
-		const form = await request.formData();
-		const get = (k: string) => String(form.get(k) ?? '').trim();
-
-		// Assets are declared alongside the NDC — they are the same conversation.
-		// An approver may already have verified some of these on their clearance
-		// page, so the employee's save must carry those stamps forward rather than
-		// rebuilding the array from scratch and wiping them. A row an approver has
-		// verified keeps that verdict: their physical check outranks a later
-		// self-declaration.
-		const prior = new Map(
-			(((c!.exit as unknown as Record<string, any>).assets ?? []) as {
-				toObject?: () => Record<string, unknown>;
-			}[]).map((raw) => {
-				const a = (raw.toObject ? raw.toObject() : raw) as Record<string, unknown>;
-				return [String(a.item), a];
-			})
-		);
-		const assets = ASSET_ITEMS.map((item) => {
-			const was = prior.get(item);
-			const declared = form.get(`asset_${item}`) === 'on';
-			return {
-				item,
-				returned: was?.verifiedAt ? !!was.returned : declared,
-				note: String(form.get(`assetnote_${item}`) ?? '').trim() || null,
-				verifiedAt: (was?.verifiedAt as Date | null) ?? null
-			};
-		});
-
-		// The employee's declaration against the certificate's own tick-rows. Only
-		// keys NDC_EMPLOYEE_ROW_KEYS knows about are accepted, and only the three
-		// declared values, so a hand-crafted POST cannot invent a row or smuggle
-		// an approver's `no_dues` verdict in through the employee's form.
-		const allowed = new Set<string>(NDC_EMPLOYEE_DECLARATIONS.map((d) => d.value));
-		const priorRows = asRecord((c!.exit as unknown as Record<string, any>).ndc?.rows);
-		const priorNotes = asRecord((c!.exit as unknown as Record<string, any>).ndc?.rowNotes);
-		const ndcRows: Record<string, string> = {};
-		const ndcRowNotes: Record<string, string> = {};
-		for (const section of NDC_EMPLOYEE_SECTIONS) {
-			for (const row of section.rows) {
-				// A row the rendered form did not carry keeps whatever it had —
-				// saving one section must never blank another's answers.
-				if (!form.has(`ndcrow_${row.key}`)) {
-					if (priorRows[row.key]) ndcRows[row.key] = priorRows[row.key];
-					if (priorNotes[row.key]) ndcRowNotes[row.key] = priorNotes[row.key];
-					continue;
-				}
-				const value = get(`ndcrow_${row.key}`);
-				if (allowed.has(value) && NDC_EMPLOYEE_ROW_KEYS.has(row.key)) ndcRows[row.key] = value;
-				// Rows with a `noteField` keep their note on that dedicated field
-				// (filesHandover and friends), so they are never doubled up here.
-				if (row.noteField) continue;
-				const note = get(`ndcnote_${row.key}`);
-				if (note) ndcRowNotes[row.key] = note;
-			}
-		}
-
-		await Exit.findByIdAndUpdate(c!.exit._id, {
-			'ndc.team': get('team') || null,
-			'ndc.nameAsPerBank': titleCase(get('nameAsPerBank')) || null,
-			'ndc.filesHandover': get('filesHandover') || null,
-			'ndc.loginsHandover': get('loginsHandover') || null,
-			'ndc.leadsHandover': get('leadsHandover') || null,
-			'ndc.deptOthers': get('deptOthers') || null,
-			'ndc.rows': ndcRows,
-			'ndc.rowNotes': ndcRowNotes,
-			'ndc.submittedAt': new Date(),
-			assets
-		});
-		await afterSave(String(c!.exit._id), c!.exit.status, 'ndc');
-		await audit({
-			candidateId: c!.exit.candidateId ? String(c!.exit.candidateId) : null,
-			actor: 'employee',
-			action: 'exit_ndc_saved',
-			ip: getClientAddress()
-		});
-		return { ndcSaved: true };
-	},
+	// saveNdc removed: the No Dues certificate is filled internally by HR and
+	// the clearing departments now, not by the employee. See saveNdcInternal
+	// on /admin/offboarding/[id].
 
 	/** 5.2 — the NDA. Accepting the agreement and supplying the Aadhaar is the
 	 *  signature event; the image itself is uploaded separately. */

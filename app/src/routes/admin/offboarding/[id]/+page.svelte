@@ -126,27 +126,6 @@
 	// `field` is the dotted path the re-request action stores and the mail names.
 	const reviewGroups = $derived([
 		{
-			title: 'No Dues details',
-			items: [
-				{ field: 'ndc.team', label: 'Team / department', value: e.ndc?.team },
-				{ field: 'ndc.nameAsPerBank', label: 'Name as per bank', value: e.ndc?.nameAsPerBank },
-				{ field: 'ndc.filesHandover', label: 'Files handed over', value: e.ndc?.filesHandover },
-				{ field: 'ndc.loginsHandover', label: 'Logins handed over', value: e.ndc?.loginsHandover },
-				{ field: 'ndc.leadsHandover', label: 'Leads & client follow-up', value: e.ndc?.leadsHandover },
-				{ field: 'ndc.deptOthers', label: 'Other remarks', value: e.ndc?.deptOthers },
-				// The employee's declaration against the certificate's own rows —
-				// the same claim each approver cross-checks on their clearance
-				// page, so HR reviews exactly what the approvers are shown.
-				...NDC_EMPLOYEE_SECTIONS.flatMap((section) =>
-					section.rows.map((row) => ({
-						field: `ndc.rows.${row.key}`,
-						label: `${section.label} — ${row.label}`,
-						value: ndcDeclared(row.key, row.noteField)
-					}))
-				)
-			]
-		},
-		{
 			title: 'NDA & Non-Compete',
 			items: [
 				{ field: 'nda.agreementDate', label: 'Agreement date', value: e.nda?.agreementDate },
@@ -246,7 +225,8 @@
 						<label class="f"><span>Personal email</span><input name="personalEmail" type="email" value={e.personalEmail} /></label>
 						<label class="f"><span>Personal mobile</span><input name="personalMobile" value={e.personalMobile ?? ''} /></label>
 						<label class="f"><span>Designation</span><input name="designation" value={e.designation ?? ''} /></label>
-						<label class="f"><span>Team / department</span><input name="department" value={e.department ?? ''} /></label>
+						<label class="f"><span>Department</span><input name="department" value={e.department ?? ''} /></label>
+						<label class="f"><span>Team <small>(No Dues header)</small></span><input name="team" value={e.team ?? e.ndc?.team ?? ''} /></label>
 						<label class="f"><span>Division</span><input name="division" value={e.division ?? ''} /></label>
 						<label class="f"><span>Reporting manager</span><input name="reportingManager" value={e.reportingManager ?? ''} /></label>
 						<label class="f"><span>Notice period</span><input name="noticePeriod" value={e.noticePeriod ?? ''} placeholder="e.g. 60 days" /></label>
@@ -282,15 +262,88 @@
 							</select>
 						</label>
 					</div>
-					<label class="check">
-						<input type="checkbox" name="recommendationApplicable" checked={e.recommendationApplicable} />
-						<span>Issue a recommendation letter for this employee</span>
-					</label>
 					{#if form?.particularsError && form?.message}<p class="error">{form.message}</p>{/if}
 					<div class="row-actions">
 						<button class="btn" disabled={sending['particulars']}>
 							{sending['particulars'] ? 'Saving…' : 'Save particulars'}
 						</button>
+					</div>
+				</fieldset>
+			</form>
+		</section>
+
+		<!-- 1b. No Dues certificate — filled internally, never by the employee -->
+		<section class="card">
+			<div class="sec-head">
+				<span class="section-num">01b</span>
+				<div>
+					<h2>No Dues certificate</h2>
+					<p class="muted">
+						Filled here, not by the employee. The header comes from the particulars above; record
+						the handover position below and each department confirms it on their clearance page.
+					</p>
+				</div>
+				{#if form?.ndcSaved}<span class="saved">Saved ✓</span>{/if}
+			</div>
+
+			<form method="POST" action="?/saveNdcInternal" use:enhance={track('ndc')}>
+				<fieldset class="rbac" disabled={!data.isHr}>
+					<div class="fgrid">
+						<label class="f"><span>Name as per bank</span><input name="nameAsPerBank" value={e.ndc?.nameAsPerBank ?? e.bankAccountName ?? ''} /></label>
+					</div>
+					<div class="fgrid" style="margin-top:10px">
+						<label class="f"><span>Files handed over <small>(soft &amp; hard copies)</small></span><textarea name="filesHandover" rows="2">{e.ndc?.filesHandover ?? ''}</textarea></label>
+						<label class="f"><span>Logins handed over</span><textarea name="loginsHandover" rows="2">{e.ndc?.loginsHandover ?? ''}</textarea></label>
+						<label class="f"><span>Leads &amp; client follow-up</span><textarea name="leadsHandover" rows="2">{e.ndc?.leadsHandover ?? ''}</textarea></label>
+						<label class="f"><span>Other remarks</span><textarea name="deptOthers" rows="2">{e.ndc?.deptOthers ?? ''}</textarea></label>
+					</div>
+
+					{#each data.ndcInternalSections as section}
+						<div class="ndc-block">
+							<div class="ndc-block-head">{section.label}</div>
+							{#each section.rows as row}
+								<div class="ndc-line">
+									<span class="ndc-line-label">{row.label}</span>
+									<div class="ndc-line-opts">
+										{#each data.ndcDeclarations as opt}
+											<label class="ndc-opt">
+												<input type="radio" name={'row_' + row.key} value={opt.value}
+													checked={(e.ndc?.rows ?? {})[row.key] === opt.value} />
+												<span>{opt.label}</span>
+											</label>
+										{/each}
+									</div>
+									{#if !row.noteField}
+										<input class="ndc-line-note" name={'note_' + row.key}
+											placeholder="Remark (optional)"
+											value={(e.ndc?.rowNotes ?? {})[row.key] ?? ''} />
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{/each}
+
+					<div class="ndc-block">
+						<div class="ndc-block-head">Company assets returned</div>
+						{#each data.ndcAssets as a}
+							<div class="ndc-line">
+								<label class="ndc-opt ndc-line-label">
+									<input type="checkbox" name={'asset_' + a.item} checked={a.returned} />
+									<span>{a.item}</span>
+								</label>
+								<input class="ndc-line-note" name={'assetnote_' + a.item}
+									placeholder="Remark (optional)" value={a.note} />
+							</div>
+						{/each}
+					</div>
+
+					<div class="btn-row">
+						<button class="btn teal" disabled={sending['ndc']}>
+							{sending['ndc'] ? 'Saving…' : 'Save No Dues details'}
+						</button>
+						{#if e.ndc?.submittedAt}
+							<span class="muted tiny">Last recorded {stamp(e.ndc.submittedAt)}</span>
+						{/if}
 					</div>
 				</fieldset>
 			</form>
@@ -303,7 +356,7 @@
 				<div>
 					<h2>Exit documents link</h2>
 					<p class="muted">
-						Sends the employee a private link to complete the No Dues details, NDA, Exit Interview
+						Sends the employee a private link to complete the NDA, Exit Interview
 						and Relieving Formalities — plus Gratuity Form I when it applies.
 					</p>
 				</div>
@@ -737,13 +790,11 @@
 				{#each data.handoverSlots as slot}
 					{@const uploaded = data.handoverFiles.find((f) => f.docType === slot.docType)}
 					{@const gated =
-						slot.applicableWhen === 'recommendationApplicable'
-							? e.recommendationApplicable
-							: slot.applicableWhen === 'pfExitProcessed'
-								? !!e.fnf?.pfExitProcessed
-								: slot.applicableWhen === 'taxationApplicable'
-									? !!e.fnf?.taxationApplicable
-									: true}
+						slot.applicableWhen === 'pfExitProcessed'
+							? !!e.fnf?.pfExitProcessed
+							: slot.applicableWhen === 'taxationApplicable'
+								? !!e.fnf?.taxationApplicable
+								: true}
 					<div class="slot" class:muted-slot={!gated}>
 						<div class="slot-main">
 							<div class="slot-label">
@@ -1428,5 +1479,40 @@
 		width: auto;
 		margin-top: 2px;
 		flex: none;
+	}
+	.ndc-block {
+		border: 1px solid var(--ae-line);
+		border-radius: 10px;
+		margin-top: 12px;
+		overflow: hidden;
+	}
+	.ndc-block-head {
+		font-family: var(--ae-font-mono);
+		font-size: 9.5px;
+		letter-spacing: 0.13em;
+		text-transform: uppercase;
+		color: var(--ae-ember);
+		padding: 8px 12px;
+		background: var(--ae-sub-bg);
+		border-bottom: 1px solid var(--ae-line);
+	}
+	.ndc-line {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 6px 14px;
+		align-items: center;
+		padding: 9px 12px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.ndc-line:last-child { border-bottom: none; }
+	.ndc-line-label { font-size: 12.5px; color: var(--ae-text-2); line-height: 1.4; }
+	.ndc-line-opts { display: flex; gap: 10px; flex-wrap: wrap; }
+	.ndc-opt { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ae-muted-2); cursor: pointer; }
+	.ndc-opt input { width: 14px; height: 14px; accent-color: var(--ae-ember); }
+	/* The remark spans both columns so a long note is not squeezed into the
+	   radio column on a narrow screen. */
+	.ndc-line-note { grid-column: 1 / -1; font-size: 12px; }
+	@media (max-width: 720px) {
+		.ndc-line { grid-template-columns: 1fr; }
 	}
 </style>

@@ -27,6 +27,19 @@ export type ExitDocKey =
 	| 'gratuity'
 	| 'fnf_summary';
 
+/** Who may see a document, and when.
+ *
+ *  `internal`        HR only, never offered to the employee. The No Dues
+ *                    certificate is the internal clearance record — it carries
+ *                    other departments' verdicts and signatures, and the
+ *                    employee neither fills it nor receives it.
+ *  `after_approval`  Released to the employee once HR has accepted their
+ *                    submission (Exit.reviewedAt). Before that the document is
+ *                    a draft of unreviewed answers, and handing someone a
+ *                    PDF of their own unchecked NDA invites them to treat it
+ *                    as final. */
+type ExitDocAudience = 'internal' | 'after_approval';
+
 interface ExitDocDef {
 	key: ExitDocKey;
 	label: string;
@@ -36,6 +49,15 @@ interface ExitDocDef {
 	/** Only offered when this returns true — gratuity depends on service length,
 	 *  the F&F summary on HR having filled the settlement block. */
 	applies: (exit: Record<string, any>) => boolean;
+	audience: ExitDocAudience;
+}
+
+/** HR has accepted the employee's submission — set by ?/acceptSubmission,
+ *  which also moves the exit to `clearances`. Read as a timestamp rather than
+ *  as a status so a later stage (cleared, fnf, completed) still counts as
+ *  approved; a status list would have to be extended every time one is added. */
+export function hrApproved(exit: Record<string, any>): boolean {
+	return !!exit.reviewedAt;
 }
 
 export const EXIT_DOCS: ExitDocDef[] = [
@@ -44,35 +66,42 @@ export const EXIT_DOCS: ExitDocDef[] = [
 		label: 'No Dues Certificate',
 		slug: 'No-Dues-Certificate',
 		render: noDuesPdf,
-		applies: () => true
+		applies: () => true,
+		// Internal: filled by HR and the clearing departments, signed by them,
+		// and never part of what the employee receives.
+		audience: 'internal'
 	},
 	{
 		key: 'exit_interview',
 		label: 'Exit Interview Form',
 		slug: 'Exit-Interview-Form',
 		render: exitInterviewPdf,
-		applies: () => true
+		applies: () => true,
+		audience: 'after_approval'
 	},
 	{
 		key: 'nda',
 		label: 'NDA & Non-Compete Agreement',
 		slug: 'NDA-Non-Compete',
 		render: ndaPdf,
-		applies: () => true
+		applies: () => true,
+		audience: 'after_approval'
 	},
 	{
 		key: 'relieving_formalities',
 		label: 'Relieving Formalities Form',
 		slug: 'Relieving-Formalities',
 		render: relievingFormalitiesPdf,
-		applies: () => true
+		applies: () => true,
+		audience: 'after_approval'
 	},
 	{
 		key: 'gratuity',
 		label: 'Gratuity — Form I',
 		slug: 'Gratuity-Form-I',
 		render: gratuityFormPdf,
-		applies: (e) => !!e.gratuity?.applicable
+		applies: (e) => !!e.gratuity?.applicable,
+		audience: 'after_approval'
 	},
 	{
 		key: 'fnf_summary',
@@ -81,7 +110,8 @@ export const EXIT_DOCS: ExitDocDef[] = [
 		render: fnfSummaryPdf,
 		// Only once HR has recorded something — an empty statement of blanks is
 		// worse than no statement at all.
-		applies: (e) => !!(e.fnf?.netAmount || e.fnf?.settlementDate || e.fnf?.salaryDueFrom)
+		applies: (e) => !!(e.fnf?.netAmount || e.fnf?.settlementDate || e.fnf?.salaryDueFrom),
+		audience: 'after_approval'
 	}
 ];
 
@@ -128,9 +158,34 @@ export async function loadPdfInput(exitId: string): Promise<ExitPdfInput | null>
 	};
 }
 
-/** Documents currently available for an exit, in printed order. */
-export function availableDocs(exit: Record<string, any>) {
-	return EXIT_DOCS.filter((d) => d.applies(exit)).map((d) => ({ key: d.key, label: d.label }));
+/** Documents currently available for an exit, in printed order.
+ *
+ *  `viewer` decides what the list may contain. HR sees everything that
+ *  applies; the employee sees only what their audience allows, and only once
+ *  HR has approved. Defaulting to 'hr' keeps every existing HR-side caller
+ *  correct — a new caller that forgets the argument over-shows to staff rather
+ *  than leaking to the employee. */
+export function availableDocs(exit: Record<string, any>, viewer: 'hr' | 'employee' = 'hr') {
+	return EXIT_DOCS.filter((d) => d.applies(exit) && canSee(d, exit, viewer)).map((d) => ({
+		key: d.key,
+		label: d.label
+	}));
+}
+
+/** The single rule both the listing and the download route ask. Keeping it one
+ *  function is the point: a UI that hides a link is not a control, and these
+ *  two must never be able to disagree. */
+export function canSee(def: ExitDocDef, exit: Record<string, any>, viewer: 'hr' | 'employee') {
+	if (viewer === 'hr') return true;
+	if (def.audience === 'internal') return false;
+	return hrApproved(exit);
+}
+
+/** Why the employee cannot download yet — shown on their portal so the absence
+ *  of a download reads as a stage, not a fault. */
+export function employeeDocsPendingReason(exit: Record<string, any>): string | null {
+	if (hrApproved(exit)) return null;
+	return 'Your copies are released once HR has reviewed and accepted your submission.';
 }
 
 export function safeFilename(name: string): string {
@@ -141,10 +196,14 @@ export function safeFilename(name: string): string {
  *  apply to this exit, so a hand-typed URL can't produce a nonsense PDF. */
 export async function renderExitDoc(
 	key: string,
-	input: ExitPdfInput
+	input: ExitPdfInput,
+	viewer: 'hr' | 'employee' = 'hr'
 ): Promise<{ bytes: Uint8Array; filename: string; label: string } | null> {
 	const def = EXIT_DOC_BY_KEY.get(key as ExitDocKey);
 	if (!def || !def.applies(input.exit)) return null;
+	// The audience check lives here, not only in the caller: this is the one
+	// function every download route goes through.
+	if (!canSee(def, input.exit, viewer)) return null;
 	const bytes = await def.render(input);
 	const stem = safeFilename(String(input.exit.fullName ?? input.exit.employeeId ?? 'exit'));
 	return { bytes, filename: `${stem}_${def.slug}.pdf`, label: def.label };

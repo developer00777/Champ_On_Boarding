@@ -250,7 +250,11 @@ export function formStates(exit: Record<string, unknown>): FormState[] {
 		!!(exit[key] as { submittedAt?: Date | null } | undefined)?.submittedAt;
 	const gratuity = exit.gratuity as { applicable?: boolean } | undefined;
 	return [
-		{ key: 'ndc', label: 'No Dues / Clearance details', submitted: sub('ndc'), applicable: true },
+		// The No Dues certificate is deliberately absent. It is filled by HR and
+		// the clearing departments, never by the employee, so it is not one of
+		// the forms an exit link waits on — see saveNdcInternal on the admin
+		// offboarding page. Leaving it here would block submitAll forever on a
+		// form the employee cannot reach.
 		{ key: 'nda', label: 'Non-Disclosure & Non-Compete Agreement', submitted: sub('nda'), applicable: true },
 		{ key: 'exitInterview', label: 'Exit Interview', submitted: sub('exitInterview'), applicable: true },
 		{

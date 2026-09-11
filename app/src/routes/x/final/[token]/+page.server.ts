@@ -30,7 +30,6 @@ export const load: PageServerLoad = async ({ params }) => {
 	// why their "PF details" row is empty when they had no PF.
 	const applies = (when: string | null) => {
 		if (!when) return true;
-		if (when === 'recommendationApplicable') return !!exit.recommendationApplicable;
 		if (when === 'pfExitProcessed') return !!e.fnf?.pfExitProcessed;
 		if (when === 'taxationApplicable') return !!e.fnf?.taxationApplicable;
 		return true;

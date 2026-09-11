@@ -15,8 +15,12 @@ export const GET: RequestHandler = async ({ params, getClientAddress }) => {
 	const input = await loadPdfInput(String(resolved.exit._id));
 	if (!input) error(404, 'Exit record not found');
 
-	const rendered = await renderExitDoc(params.key, input);
-	if (!rendered) error(404, 'That document does not apply to your exit');
+	// 'employee' is what enforces the release rule — the No Dues certificate is
+	// internal, and the rest only unlock once HR has accepted the submission.
+	// A 404 rather than a 403: the employee has no business knowing an internal
+	// document exists for them to be refused.
+	const rendered = await renderExitDoc(params.key, input, 'employee');
+	if (!rendered) error(404, 'That document is not available on your exit link yet.');
 
 	await audit({
 		candidateId: resolved.exit.candidateId ? String(resolved.exit.candidateId) : null,

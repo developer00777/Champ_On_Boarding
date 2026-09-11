@@ -21,9 +21,13 @@ import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import {
 	CLEARANCE_DEPT_LABELS,
+	ASSET_ITEMS,
 	CLOSURE_CHECKLIST_KEYS,
 	EXIT_UPLOAD_DOCS,
 	HANDOVER_DOCS,
+	NDC_EMPLOYEE_DECLARATIONS,
+	NDC_EMPLOYEE_ROW_KEYS,
+	NDC_EMPLOYEE_SECTIONS,
 	NDC_SECTIONS,
 	type ClearanceDept
 } from '$lib/shared/offboarding';
@@ -91,6 +95,9 @@ const PARTICULAR_FIELDS = {
 	personalMobile: (v: string) => v,
 	designation: (v: string) => v,
 	department: (v: string) => v,
+	// The No Dues certificate's "Team" line. Collected here because the whole
+	// certificate is filled internally — the employee is never asked for it.
+	team: (v: string) => v,
 	division: (v: string) => v,
 	reportingManager: titleCase,
 	uanNo: (v: string) => v,
@@ -151,6 +158,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			dojIso: toIsoDate(exit.doj),
 			designation: exit.designation ?? null,
 			department: exit.department ?? null,
+			team: exit.team ?? null,
 			division: exit.division ?? null,
 			reportingManager: exit.reportingManager ?? null,
 			uanNo: exit.uanNo ?? null,
@@ -164,7 +172,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			consentAt: exit.consentAt?.toISOString() ?? null,
 			itAccessRevokedMailSentAt: exit.itAccessRevokedMailSentAt?.toISOString() ?? null,
 			handoverMailSentAt: exit.handoverMailSentAt?.toISOString() ?? null,
-			recommendationApplicable: !!exit.recommendationApplicable,
 			requestedFields: (exit.requestedFields ?? []).map(
 				(r: { field: string; note?: string | null }) => ({ field: r.field, note: r.note ?? null })
 			),
@@ -230,6 +237,26 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			link: exitTokenUrl(clearanceTokens[i])
 		})),
 		clearanceProgress: clearanceProgress(clearances.map((c) => ({ status: String(c.status) }))),
+		// The sections HR records a position against, and the vocabulary they use.
+		// Passed as data rather than imported by the component so the page and
+		// the action are bounded by exactly the same list.
+		ndcInternalSections: NDC_EMPLOYEE_SECTIONS.map((s) => ({
+			dept: s.dept,
+			label: s.label,
+			rows: s.rows.map((r) => ({ key: r.key, label: r.label, noteField: r.noteField ?? null }))
+		})),
+		ndcDeclarations: NDC_EMPLOYEE_DECLARATIONS.map((d) => ({ value: d.value, label: d.label })),
+		// The SOP's standard asset set with whatever has been recorded merged over
+		// it, so a newly added item appears on an exit already in progress.
+		ndcAssets: (() => {
+			const recorded = new Map(
+				((e.assets ?? []) as Record<string, unknown>[]).map((a) => [String(a.item), a])
+			);
+			return ASSET_ITEMS.map((item) => {
+				const row = recorded.get(item);
+				return { item, returned: !!row?.returned, note: (row?.note as string | null) ?? '' };
+			});
+		})(),
 		ndcSections: NDC_SECTIONS.map((s) => ({
 			dept: s.dept,
 			label: s.label,
@@ -319,7 +346,6 @@ export const actions: Actions = {
 			lwd,
 			resignationDate,
 			separationType,
-			recommendationApplicable: get('recommendationApplicable') === 'on',
 			'gratuity.applicable': applicable
 		});
 
@@ -336,12 +362,10 @@ export const actions: Actions = {
 			// text fields do. Gratuity especially: it decides whether a Form I is
 			// generated at all, so an untraced flip is exactly what an audit log
 			// is for.
-			recommendationApplicable: String(get('recommendationApplicable') === 'on'),
 			'gratuity.applicable': String(applicable)
 		};
 		const beforeFlags: Record<string, string | null> = {
 			separationType: (row.exit.separationType as string | null) ?? null,
-			recommendationApplicable: String(!!row.exit.recommendationApplicable),
 			'gratuity.applicable': String(
 				!!(row.exit as unknown as { gratuity?: { applicable?: boolean } }).gratuity?.applicable
 			)
@@ -496,6 +520,73 @@ export const actions: Actions = {
 	 *  clearance round. Deliberately separate from sending the clearance emails:
 	 *  accepting is a judgement, sending is a mechanical follow-up, and HR may
 	 *  want to fix an approver address in between. */
+	/** The No Dues certificate, filled internally.
+	 *
+	 *  This used to be the employee's first exit form. It is now HR's: the
+	 *  certificate records what the company holds and what each department
+	 *  signs off, none of which the employee is in a position to state. The
+	 *  header (name, employee number, team, reporting to, dates, contact, bank
+	 *  name) comes from the particulars above; this action captures the
+	 *  handover notes and the per-row position the approvers cross-check. */
+	saveNdcInternal: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+
+		const form = await request.formData();
+		const get = (k: string) => String(form.get(k) ?? '').trim();
+
+		const patch: Record<string, unknown> = {
+			'ndc.nameAsPerBank': get('nameAsPerBank') || null,
+			'ndc.filesHandover': get('filesHandover') || null,
+			'ndc.loginsHandover': get('loginsHandover') || null,
+			'ndc.leadsHandover': get('leadsHandover') || null,
+			'ndc.deptOthers': get('deptOthers') || null
+		};
+
+		// Bounded exactly as the employee form used to bound it: only known row
+		// keys and known declaration values are stored, so a hand-crafted POST
+		// cannot invent a row the certificate will then print.
+		const allowed = new Set<string>(NDC_EMPLOYEE_DECLARATIONS.map((d) => d.value));
+		const rows: Record<string, string> = {};
+		const rowNotes: Record<string, string> = {};
+		for (const section of NDC_EMPLOYEE_SECTIONS) {
+			for (const r of section.rows) {
+				const value = get(`row_${r.key}`);
+				if (allowed.has(value) && NDC_EMPLOYEE_ROW_KEYS.has(r.key)) rows[r.key] = value;
+				// The four Employee's-Department rows keep their note on the
+				// dedicated ndc.* field above, never duplicated into rowNotes.
+				if (!r.noteField) {
+					const note = get(`note_${r.key}`);
+					if (note) rowNotes[r.key] = note;
+				}
+			}
+		}
+		patch['ndc.rows'] = rows;
+		patch['ndc.rowNotes'] = rowNotes;
+		patch['ndc.submittedAt'] = new Date();
+
+		// Company assets print on the certificate itself (see noDuesPdf), so they
+		// are recorded here with the rest of it rather than self-declared.
+		patch.assets = ASSET_ITEMS.map((item) => ({
+			item,
+			returned: form.get(`asset_${item}`) === 'on',
+			note: get(`assetnote_${item}`) || null
+		}));
+
+		await Exit.findByIdAndUpdate(params.id, patch);
+		await audit({
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_ndc_recorded',
+			field: 'ndc',
+			newValue: `${Object.keys(rows).length} rows recorded`,
+			ip: getClientAddress()
+		});
+		return { ndcSaved: true };
+	},
+
 	acceptSubmission: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;

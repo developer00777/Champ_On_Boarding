@@ -95,7 +95,7 @@ function identityRows(e: Record<string, any>) {
 	return [
 		{ label: 'Name', value: dash(e.fullName) },
 		{ label: 'Employee No.', value: dash(e.employeeId) },
-		{ label: 'Team / Dept.', value: dash(e.ndc?.team) || dash(e.department) },
+		{ label: 'Team / Dept.', value: dash(e.team) || dash(e.ndc?.team) || dash(e.department) },
 		{ label: 'Reporting to', value: dash(e.reportingManager) },
 		{ label: 'Date of Joining', value: dash(e.doj) },
 		{ label: 'Date of Leaving', value: dash(e.lwd) || dash(e.resignationDate) },

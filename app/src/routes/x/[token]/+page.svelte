@@ -15,8 +15,6 @@
 		EXIT_WORKLOAD_OPTIONS,
 		NDA_CLAUSES,
 		NDA_REGISTERED_OFFICE,
-		NDC_EMPLOYEE_DECLARATIONS,
-		NDC_EMPLOYEE_SECTIONS,
 		RELIEVING_ITEMS
 	} from '$lib/shared/offboarding';
 
@@ -46,7 +44,7 @@
 	// first unfinished form.
 	$effect(() => {
 		if (open !== null) return;
-		const flagged = ['ndc', 'nda', 'exitInterview', 'relievingFormalities', 'gratuity'].find((k) =>
+		const flagged = ['nda', 'exitInterview', 'relievingFormalities', 'gratuity'].find((k) =>
 			requestedIn(k)
 		);
 		if (flagged) {
@@ -196,8 +194,8 @@
 					</div>
 					<hr />
 					<p class="dpdp">
-						The details you enter are used only to complete your exit formalities, your No Dues
-						certificate and your full and final settlement, and are stored securely. Your Aadhaar
+						The details you enter are used only to complete your exit formalities and your full
+						and final settlement, and are stored securely. Your Aadhaar
 						number is encrypted and is never shown back to you or to anyone outside HR and payroll.
 					</p>
 					<form method="POST" action="?/consent" use:enhance>
@@ -281,116 +279,7 @@
 				{#if uploadMsg['signature']}<p class="err">{uploadMsg['signature']}</p>{/if}
 			</section>
 
-			<!-- ── 1. No Dues details ── -->
-			<section class="card" class:flagged={requestedIn('ndc')}>
-				<button class="card-head as-btn" type="button" onclick={() => toggle('ndc')}>
-					<h2>No Dues &amp; handover details</h2>
-					<span class="state" class:ok={e.ndc.submitted}>{e.ndc.submitted ? 'Saved' : 'To do'}</span>
-					<svg class="chev" class:up={open === 'ndc'} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6" /></svg>
-				</button>
-				{#if open === 'ndc'}
-					<form method="POST" action="?/saveNdc" use:enhance={track('ndc')}>
-						<p class="hint">
-							What you are handing over, so each department can confirm it. Your manager, IT, admin,
-							finance and HR each sign off against these.
-						</p>
-						<div class="fgrid">
-							<label class="f"><span>Team / department</span><input name="team" value={e.ndc.team} /></label>
-							<label class="f">
-								<span>Name as printed on your bank passbook</span>
-								<input name="nameAsPerBank" value={e.ndc.nameAsPerBank || e.bankAccountName || ''} />
-							</label>
-						</div>
-						<label class="f">
-							<span>Files you are handing over (soft &amp; hard copies)</span>
-							<textarea name="filesHandover" rows="2" value={e.ndc.filesHandover}></textarea>
-						</label>
-						<label class="f">
-							<span>Official logins / credentials handed over</span>
-							<textarea name="loginsHandover" rows="2" value={e.ndc.loginsHandover}></textarea>
-						</label>
-						<label class="f">
-							<span>Leads &amp; client follow-up details handed over</span>
-							<textarea name="leadsHandover" rows="2" value={e.ndc.leadsHandover}></textarea>
-						</label>
-						<label class="f">
-							<span>Anything else worth noting</span>
-							<textarea name="deptOthers" rows="2" value={e.ndc.deptOthers}></textarea>
-						</label>
-
-						<!-- The certificate's own rows, section by section. Each approver
-						     sees your answer beside the row they sign, so this is the
-						     claim they check against — not a duplicate of the boxes
-						     above (the Employee's Department rows reuse those as their
-						     note, which is why they carry no note field here). -->
-						<div class="eyebrow" style="margin:22px 0 8px">Clearance items</div>
-						<p class="hint" style="margin-top:0">
-							For each item below, tell us where it stands. Each department sees your answer
-							next to the row they sign off, so anything you flag as still with you is chased
-							rather than missed.
-						</p>
-						{#each NDC_EMPLOYEE_SECTIONS as section}
-							<div class="ndc-sec">
-								<h3 class="ndc-sec-head">{section.label}</h3>
-								{#each section.rows as row}
-									<div class="ndc-row">
-										<p class="ndc-row-label">{row.label}</p>
-										<div class="ndc-opts">
-											{#each NDC_EMPLOYEE_DECLARATIONS as opt}
-												<label class="ndc-opt">
-													<input
-														type="radio"
-														name={`ndcrow_${row.key}`}
-														value={opt.value}
-														checked={e.ndc.rows[row.key] === opt.value}
-													/>
-													<span>{opt.label}</span>
-												</label>
-											{/each}
-										</div>
-										{#if !row.noteField}
-											<input
-												class="ndc-note"
-												name={`ndcnote_${row.key}`}
-												value={e.ndc.rowNotes[row.key] ?? ''}
-												placeholder="note (optional)"
-											/>
-										{/if}
-									</div>
-								{/each}
-							</div>
-						{/each}
-
-						<div class="eyebrow" style="margin:20px 0 8px">Company assets</div>
-						<p class="hint" style="margin-top:0">
-							Tick what you have returned. IT and admin verify these before signing.
-						</p>
-						<div class="assets">
-							{#each e.assets as a}
-								<div class="asset">
-									<label class="acheck">
-										<input type="checkbox" name={`asset_${a.item}`} checked={a.returned} />
-										<span>{a.item}</span>
-									</label>
-									<input
-										class="anote"
-										name={`assetnote_${a.item}`}
-										value={a.note}
-										placeholder="note (optional)"
-									/>
-								</div>
-							{/each}
-						</div>
-
-						<button class="cta small" disabled={saving['ndc']}>
-							{saving['ndc'] ? 'Saving…' : 'Save this section'}
-						</button>
-						{#if form?.ndcSaved}<span class="saved">Saved ✓</span>{/if}
-					</form>
-				{/if}
-			</section>
-
-			<!-- ── 2. NDA ── -->
+			<!-- ── 1. NDA ── -->
 			<section class="card" class:flagged={requestedIn('nda')}>
 				<button class="card-head as-btn" type="button" onclick={() => toggle('nda')}>
 					<h2>Non-Disclosure &amp; Non-Compete Agreement</h2>
@@ -444,7 +333,7 @@
 				{/if}
 			</section>
 
-			<!-- ── 3. Exit interview ── -->
+			<!-- ── 2. Exit interview ── -->
 			<section class="card" class:flagged={requestedIn('exitInterview')}>
 				<button class="card-head as-btn" type="button" onclick={() => toggle('exitInterview')}>
 					<h2>Exit interview</h2>
@@ -561,7 +450,7 @@
 				{/if}
 			</section>
 
-			<!-- ── 4. Relieving formalities ── -->
+			<!-- ── 3. Relieving formalities ── -->
 			<section class="card" class:flagged={requestedIn('relievingFormalities')}>
 				<button class="card-head as-btn" type="button" onclick={() => toggle('relievingFormalities')}>
 					<h2>Relieving formalities</h2>
@@ -653,7 +542,7 @@
 				{/if}
 			</section>
 
-			<!-- ── 5. Gratuity, only when service qualifies ── -->
+			<!-- ── 4. Gratuity, only when service qualifies ── -->
 			{#if e.gratuity.applicable}
 				<section class="card" class:flagged={requestedIn('gratuity')}>
 					<button class="card-head as-btn" type="button" onclick={() => toggle('gratuity')}>
@@ -703,6 +592,8 @@
 							</a>
 						{/each}
 					</div>
+				{:else if data.documentsPending}
+					<p class="fine pending-docs">{data.documentsPending}</p>
 				{/if}
 				{#if form?.submitError && form?.message}<p class="err">{form.message}</p>{/if}
 				<form method="POST" action="?/submitAll" use:enhance={track('submit')}>
@@ -1025,17 +916,6 @@
 	}
 	.f input,
 	.f textarea,
-	.anote {
-		font: inherit;
-		font-size: 13.5px;
-		padding: 9px 11px;
-		border: 1px solid var(--brand-border, #e6e6ee);
-		border-radius: 8px;
-		background: #fff;
-		color: inherit;
-		width: 100%;
-		box-sizing: border-box;
-	}
 	.f textarea {
 		resize: vertical;
 	}
@@ -1122,71 +1002,7 @@
 	.cell input {
 		accent-color: var(--brand-primary, #6b4cf6);
 	}
-	.ndc-sec {
-		border: 1px solid var(--line, #e4e7ec);
-		border-radius: 10px;
-		padding: 12px 14px;
-		margin: 0 0 10px;
-	}
-	.ndc-sec-head {
-		margin: 0 0 8px;
-		font-size: 12.5px;
-		font-weight: 800;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-		opacity: 0.72;
-	}
-	.ndc-row + .ndc-row {
-		margin-top: 12px;
-		padding-top: 12px;
-		border-top: 1px dashed var(--line, #e4e7ec);
-	}
-	.ndc-row-label {
-		margin: 0 0 6px;
-		font-size: 13px;
-		line-height: 1.5;
-	}
-	.ndc-opts {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px 16px;
-	}
-	.ndc-opt {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12.5px;
-		cursor: pointer;
-	}
-	.ndc-opt input {
-		accent-color: var(--primary, #0b63ce);
-	}
-	.ndc-note {
-		margin-top: 8px;
-		width: 100%;
-	}
 
-	.assets {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.asset {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		gap: 10px;
-		align-items: center;
-	}
-	.acheck {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		cursor: pointer;
-	}
-	.acheck input {
-		accent-color: var(--brand-primary, #6b4cf6);
-	}
 	.agreement {
 		max-height: 300px
 		;overflow-y: auto;
@@ -1329,6 +1145,10 @@
 		margin: 0;
 		font-size: 15.5px;
 	}
+	.pending-docs {
+		margin: 2px 0 12px;
+		opacity: 0.85;
+	}
 	.dl-inline {
 		display: flex;
 		gap: 8px;
@@ -1412,10 +1232,6 @@
 		margin-bottom: 7px;
 	}
 	@media (max-width: 560px) {
-		.asset {
-			grid-template-columns: minmax(0, 1fr);
-			gap: 5px;
-		}
 		.hero,
 		.hero-body {
 			padding-left: 20px;

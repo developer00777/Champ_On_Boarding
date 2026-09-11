@@ -582,8 +582,6 @@ export const HANDOVER_DOCS = [
 	{ docType: 'payslip_3', label: 'Payslip — month 3', applicableWhen: null },
 	{ docType: 'fnf_statement', label: 'Full & Final settlement statement', applicableWhen: null },
 	{ docType: 'relieving_letter', label: 'Relieving Letter', applicableWhen: null },
-	{ docType: 'experience_letter', label: 'Experience Letter', applicableWhen: null },
-	{ docType: 'recommendation_letter', label: 'Recommendation Letter', applicableWhen: 'recommendationApplicable' },
 	{ docType: 'pf_statement', label: 'PF withdrawal / transfer details', applicableWhen: 'pfExitProcessed' },
 	{ docType: 'form_16', label: 'Form 16 / taxation details', applicableWhen: 'taxationApplicable' }
 ] as const;
