@@ -648,6 +648,22 @@
 			{:else if c.hiringDecision === 'rejected'}
 				<span class="pill red">REJECTED</span>
 			{/if}
+			<!-- Who took the decision and when. A decision is one click that the
+			     whole team then works from, so it should never read as though the
+			     record decided itself. -->
+			{#if c.hiringDecision && (c.hiringDecisionBy || c.hiringDecisionAt)}
+				<span class="decided-by">
+					{#if c.hiringDecisionBy}by {c.hiringDecisionBy}{/if}
+					{#if c.hiringDecisionAt}
+						· {new Date(c.hiringDecisionAt).toLocaleString('en-IN', {
+							day: 'numeric',
+							month: 'short',
+							hour: 'numeric',
+							minute: '2-digit'
+						})}
+					{/if}
+				</span>
+			{/if}
 			<!-- On the Aegis dark chrome the plating inverts: white logo art needs no
 			     plate at all, while dark art needs a light one to stay legible. -->
 			<img
@@ -2934,5 +2950,11 @@
 		/* Dark glyph on the green fill: #fff on #3ECF9A is only ~1.8:1. */
 		color: #06231a;
 		flex-shrink: 0;
+	}
+
+	.decided-by {
+		font-size: 11.5px;
+		color: var(--ae-muted);
+		white-space: nowrap;
 	}
 </style>

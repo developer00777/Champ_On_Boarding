@@ -44,6 +44,10 @@ export const load: PageServerLoad = async ({ url }) => {
 				fullName: c.fullName ?? null,
 				track: c.track,
 				status: c.status,
+				// Carried into the list so a decision one person took is visible to
+				// everyone scanning for work, not only to whoever opens the record.
+				// Without it the list looked identical before and after an Accept.
+				hiringDecision: c.hiringDecision ?? null,
 				company: company?.name ?? '',
 				createdAt: (c as { createdAt: Date }).createdAt.toISOString(),
 				submittedAt: c.submittedAt?.toISOString() ?? null,

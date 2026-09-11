@@ -153,6 +153,11 @@
 					<span class="pill {statusMeta[c.status]?.cls}">
 						{statusMeta[c.status]?.label ?? c.status}
 					</span>
+					{#if c.hiringDecision === 'accepted'}
+						<span class="pill teal decision-pill">ACCEPTED</span>
+					{:else if c.hiringDecision === 'rejected'}
+						<span class="pill red decision-pill">REJECTED</span>
+					{/if}
 				</div>
 				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{c.joiningDate ?? '—'}</div>
 				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{when(c.createdAt)}</div>
@@ -245,5 +250,12 @@
 	.thead,
 	.trow {
 		grid-template-columns: 1.4fr 1fr 0.8fr 1.1fr 0.9fr 0.7fr auto;
+	}
+
+	/* Sits under the status pill rather than beside it: the Status column is
+	   already the narrowest, and two pills side by side wrapped mid-word. */
+	.decision-pill {
+		display: inline-block;
+		margin-top: 4px;
 	}
 </style>

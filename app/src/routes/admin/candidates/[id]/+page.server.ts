@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import {
+	Admin,
 	Candidate,
 	CandidateFile,
 	Company,
@@ -215,6 +216,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		CandidateFile.find({ candidateId: candidate._id }).sort({ createdAt: -1 }).lean()
 	]);
 
+	// The decision is stored against an Admin id; the page needs the email. A
+	// deleted login leaves the id dangling, so fall back rather than dropping
+	// the attribution entirely — "someone decided this" still beats silence.
+	const decidedBy = candidate.hiringDecisionBy
+		? ((await Admin.findById(candidate.hiringDecisionBy, 'email').lean())?.email ??
+			'a login since removed')
+		: null;
+
 	// Candidates created before an item type existed have no row for it, and the
 	// toggle needs one to write to. Backfilling on read keeps the joining-day
 	// checklist complete for every record without a migration; insertMany with
@@ -305,6 +314,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			reviewedAt: candidate.reviewedAt?.toISOString() ?? null,
 			hiringDecision: candidate.hiringDecision ?? null,
 			hiringDecisionAt: candidate.hiringDecisionAt?.toISOString() ?? null,
+			// Who made the call. Recorded on every decision since the field was
+			// added, but never surfaced until now — so a decision one person took
+			// looked anonymous to the next person opening the record, and there
+			// was no way to tell a considered Accept from a mis-click.
+			hiringDecisionBy: decidedBy,
 			shiftTiming: candidate.shiftTiming ?? null,
 			teamName: candidate.teamName ?? null,
 			itRequestId: candidate.itRequestId ?? null,
