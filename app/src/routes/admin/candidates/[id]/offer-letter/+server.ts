@@ -83,7 +83,9 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 	// silently drop a super admin's changes.
 	if (locals.admin.role !== 'super_admin') {
 		const draft = await OfferLetter.findOne({ candidateId: params.id }).lean();
-		parsed.input.manualEdits = offerLetterInputFromDraft(draft).manualEdits;
+		const saved = offerLetterInputFromDraft(draft);
+		parsed.input.manualEdits = saved.manualEdits;
+		parsed.input.manualAdditions = saved.manualAdditions;
 	}
 
 	await audit({

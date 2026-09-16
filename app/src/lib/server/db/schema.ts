@@ -398,6 +398,14 @@ const offerLetterSchema = new Schema(
 		 *  field names. Almost always empty — the fields above cover the normal
 		 *  letter, this covers the offer that has to say something else. */
 		manualEdits: { type: [{ key: String, text: String }], default: [] },
+		/** Whole blocks a super admin added to the letter, each anchored after an
+		 *  existing one by that block's key. Anchored rather than indexed so a
+		 *  later change to the template cannot shuffle someone's added clause to
+		 *  a different place in their letter. */
+		manualAdditions: {
+			type: [{ id: String, afterKey: String, kind: String, marker: String, text: String }],
+			default: []
+		},
 		/** Who last hand-edited the wording, and when. A letter that no longer
 		 *  matches the template is worth being able to trace back to a person
 		 *  without reading the audit log. */

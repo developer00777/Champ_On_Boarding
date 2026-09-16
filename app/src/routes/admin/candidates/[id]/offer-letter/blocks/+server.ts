@@ -42,6 +42,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// the editor can offer to clear them instead of leaving them invisible.
 	const drawn = new Set(blocks.map((b) => b.key));
 	const orphans = parsed.input.manualEdits.filter((e) => !drawn.has(e.key)).map((e) => e.key);
+	// An added block whose anchor this letter does not draw never renders, for
+	// the same reason and with the same remedy.
+	const orphanAdditions = parsed.input.manualAdditions
+		.filter((a) => !drawn.has(a.afterKey))
+		.map((a) => a.id);
 
-	return json({ blocks, orphans });
+	return json({ blocks, orphans, orphanAdditions });
 };

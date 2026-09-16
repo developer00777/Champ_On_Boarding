@@ -152,7 +152,22 @@
 		text: string;
 		overridden: boolean;
 		removed: boolean;
+		added?: boolean;
+		afterKey?: string;
 	};
+	type LetterAddition = {
+		id: string;
+		afterKey: string;
+		kind: 'para' | 'clause' | 'bullet' | 'subheading';
+		marker: string;
+		text: string;
+	};
+	const ADD_KINDS: Array<{ value: LetterAddition['kind']; label: string }> = [
+		{ value: 'para', label: 'Paragraph' },
+		{ value: 'clause', label: 'Numbered clause' },
+		{ value: 'bullet', label: 'Bullet' },
+		{ value: 'subheading', label: 'Heading' }
+	];
 
 	const editsToMap = (list: Array<{ key: string; text: string }>) =>
 		Object.fromEntries(list.map((e) => [e.key, e.text]));
@@ -165,7 +180,13 @@
 	$effect(() => {
 		manualEdits = editsToMap(ol.manualEdits ?? []);
 	});
-	const manualEditCount = $derived(Object.keys(manualEdits).length);
+	let manualAdditions = $state<LetterAddition[]>(
+		untrack(() => (data.offerLetter.manualAdditions ?? []).map((a) => ({ ...a })))
+	);
+	$effect(() => {
+		manualAdditions = (ol.manualAdditions ?? []).map((a) => ({ ...a }));
+	});
+	const manualEditCount = $derived(Object.keys(manualEdits).length + manualAdditions.length);
 
 	let meOpen = $state(false);
 	let meLoading = $state(false);
@@ -175,6 +196,9 @@
 	/** The modal's working copy — Cancel has to leave the form untouched, so
 	 *  nothing is written back to `manualEdits` until Apply. */
 	let meDraft: Record<string, string> = $state({});
+	/** Working copy of the added blocks, on the same terms as meDraft. */
+	let meAdds: LetterAddition[] = $state([]);
+	let meOrphanAdds: string[] = $state([]);
 
 	/** Opens the editor on the letter as it reads *right now*: the block list is
 	 *  built by rendering the posted form, so a job title typed a moment ago
@@ -186,6 +210,8 @@
 		meBlocks = [];
 		meOrphans = [];
 		meDraft = { ...manualEdits };
+		meAdds = manualAdditions.map((a) => ({ ...a }));
+		meOrphanAdds = [];
 		meOpen = true;
 		try {
 			const res = await fetch(`/admin/candidates/${c.id}/offer-letter/blocks`, {
@@ -199,9 +225,16 @@
 						: `Could not read the letter (${res.status}). Try saving first.`;
 				return;
 			}
-			const body = (await res.json()) as { blocks: LetterBlock[]; orphans: string[] };
-			meBlocks = body.blocks;
+			const body = (await res.json()) as {
+				blocks: LetterBlock[];
+				orphans: string[];
+				orphanAdditions: string[];
+			};
+			// Added blocks are rendered from meAdds, in place under their anchor, so
+			// the server's copies of them are dropped from the template list here.
+			meBlocks = body.blocks.filter((b) => !b.added);
 			meOrphans = body.orphans;
+			meOrphanAdds = body.orphanAdditions;
 		} catch {
 			meError = 'Could not read the letter — check your connection and try again.';
 		} finally {
@@ -230,19 +263,55 @@
 	}
 	function applyManualEdits() {
 		manualEdits = { ...meDraft };
+		// An added block left completely blank was started and abandoned, not
+		// written — it would render as nothing, so it is dropped on the way out
+		// rather than saved as an empty row someone has to clean up later.
+		manualAdditions = meAdds.filter((a) => a.text.trim()).map((a) => ({ ...a }));
 		meOpen = false;
 	}
 	function clearAllManualEdits() {
 		meDraft = {};
+		meAdds = [];
 	}
 	function dropOrphans() {
 		for (const key of meOrphans) delete meDraft[key];
 		meDraft = { ...meDraft };
 		meOrphans = [];
+		meAdds = meAdds.filter((a) => !meOrphanAdds.includes(a.id));
+		meOrphanAdds = [];
 	}
 
-	const meDirty = $derived(JSON.stringify(meDraft) !== JSON.stringify(manualEdits));
-	const meEditedCount = $derived(Object.keys(meDraft).length);
+	/** A new block under `b`. Numbered clauses are the fiddly case: the letter's
+	 *  own numbering is fixed text, so a marker is suggested from the block it
+	 *  follows and left editable — renumbering what comes after is the author's
+	 *  call, and often not what they want. */
+	function addBlockAfter(b: LetterBlock, existing: LetterAddition[]) {
+		const isClause = b.kind === 'clause';
+		const n = Number((b.marker ?? '').replace(/[^0-9]/g, ''));
+		meAdds = [
+			...meAdds,
+			{
+				id: `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+				afterKey: b.key,
+				kind: isClause ? 'clause' : 'para',
+				marker: isClause && n ? `${n + 1 + existing.length}.` : '',
+				text: ''
+			}
+		];
+	}
+	function updateAdd(id: string, patch: Partial<LetterAddition>) {
+		meAdds = meAdds.map((a) => (a.id === id ? { ...a, ...patch } : a));
+	}
+	function removeAdd(id: string) {
+		meAdds = meAdds.filter((a) => a.id !== id);
+	}
+	const addsAfter = (key: string) => meAdds.filter((a) => a.afterKey === key);
+
+	const meDirty = $derived(
+		JSON.stringify(meDraft) !== JSON.stringify(manualEdits) ||
+			JSON.stringify(meAdds.filter((a) => a.text.trim())) !== JSON.stringify(manualAdditions)
+	);
+	const meEditedCount = $derived(Object.keys(meDraft).length + meAdds.length);
 
 	function blockLabel(b: LetterBlock): string {
 		if (b.kind === 'clause') return b.marker?.trim() ? `Clause ${b.marker.replace(/[.)]$/, '')}` : 'Clause';
@@ -720,8 +789,9 @@
 
 			<p class="me-intro">
 				Every part of {c.fullName || c.email}'s letter, in the order it prints. Edit any block to
-				change what that letter says — this candidate's only. Clearing a block's text leaves it out
-				of the letter altogether. Wrap text in <code>**stars**</code> to set it bold.
+				change what that letter says — this candidate's only. <strong>+ Add below</strong> puts a new
+				clause, paragraph, bullet or heading in at that exact point. Clearing a block's text leaves
+				it out of the letter altogether. Wrap text in <code>**stars**</code> to set it bold.
 			</p>
 
 			{#if meError}
@@ -731,14 +801,14 @@
 			{#if meLoading}
 				<p class="muted" style="font-size:12px">Reading the letter…</p>
 			{:else if meBlocks.length}
-				{#if meOrphans.length}
+				{#if meOrphans.length || meOrphanAdds.length}
 					<div class="it-modal-warn">
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0Z"/></svg>
 						<span>
-							{meOrphans.length}
-							{meOrphans.length === 1 ? 'saved edit belongs' : 'saved edits belong'} to a block this
-							letter no longer has — kept from another track's template, most likely. They change
-							nothing while they sit here.
+							{meOrphans.length + meOrphanAdds.length}
+							{meOrphans.length + meOrphanAdds.length === 1 ? 'saved change is' : 'saved changes are'}
+							anchored to a block this letter no longer has — kept from another track's template,
+							most likely. They change nothing while they sit here.
 							<button type="button" class="me-link" onclick={dropOrphans}>Clear them</button>
 						</span>
 					</div>
@@ -779,6 +849,52 @@
 									></textarea>
 								{/if}
 							</div>
+
+							<!-- Blocks added under this one, then the control that adds
+							     another. Rendered here rather than from the server's block
+							     list so a block just added appears without a round trip. -->
+							{#each addsAfter(b.key) as a (a.id)}
+								<div class="me-block me-added">
+									<div class="me-block-head">
+										<span class="me-badge me-badge-new">Added</span>
+										<select
+											class="me-kind-select"
+											value={a.kind}
+											onchange={(e) => updateAdd(a.id, { kind: e.currentTarget.value as LetterAddition['kind'] })}
+										>
+											{#each ADD_KINDS as k (k.value)}
+												<option value={k.value}>{k.label}</option>
+											{/each}
+										</select>
+										{#if a.kind === 'clause'}
+											<input
+												class="me-marker"
+												value={a.marker}
+												placeholder="11."
+												maxlength="12"
+												aria-label="Clause number"
+												oninput={(e) => updateAdd(a.id, { marker: e.currentTarget.value })}
+											/>
+										{/if}
+										<span style="flex:1"></span>
+										<button type="button" class="me-link" onclick={() => removeAdd(a.id)}>Remove</button>
+									</div>
+									<textarea
+										class="kra-textarea me-textarea"
+										rows={Math.min(8, Math.max(2, Math.ceil(a.text.length / 78)))}
+										placeholder="What this block should say…"
+										value={a.text}
+										oninput={(e) => updateAdd(a.id, { text: e.currentTarget.value })}
+									></textarea>
+								</div>
+							{/each}
+
+							<button
+								type="button"
+								class="me-add-here"
+								onclick={() => addBlockAfter(b, addsAfter(b.key))}
+								title="Add a new block here"
+							>+ Add below</button>
 						{/each}
 					{/each}
 				</div>
@@ -2041,6 +2157,13 @@
 						<input type="hidden" name="manualEditKey" value={key} />
 						<input type="hidden" name="manualEditText" value={text} />
 					{/each}
+					{#each manualAdditions as a (a.id)}
+						<input type="hidden" name="manualAddId" value={a.id} />
+						<input type="hidden" name="manualAddAfter" value={a.afterKey} />
+						<input type="hidden" name="manualAddKind" value={a.kind} />
+						<input type="hidden" name="manualAddMarker" value={a.marker} />
+						<input type="hidden" name="manualAddText" value={a.text} />
+					{/each}
 				{/if}
 
 				<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
@@ -2671,6 +2794,49 @@
 		margin-top: 3px;
 		text-decoration: line-through;
 		opacity: 0.65;
+	}
+	.me-block.me-added {
+		border-color: var(--ae-verdant);
+		background: color-mix(in srgb, var(--ae-verdant) 7%, transparent);
+	}
+	.me-badge-new {
+		border-color: var(--ae-verdant);
+		color: var(--ae-verdant);
+	}
+	.me-kind-select,
+	.me-marker {
+		font-family: inherit;
+		font-size: 11px;
+		padding: 2px 6px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--ae-text-2);
+	}
+	.me-marker {
+		width: 58px;
+	}
+	/* Sits between two blocks and stays quiet until hovered: there is one of
+	   these after every block in the letter, so at full strength the list would
+	   read as a column of buttons with the letter squeezed between them. */
+	.me-add-here {
+		align-self: flex-start;
+		margin: -2px 0 0 2px;
+		padding: 1px 0;
+		background: none;
+		border: 0;
+		font: inherit;
+		font-size: 10.5px;
+		font-weight: 600;
+		color: var(--ae-muted);
+		opacity: 0.55;
+		cursor: pointer;
+		transition: opacity 0.12s ease, color 0.12s ease;
+	}
+	.me-add-here:hover,
+	.me-add-here:focus-visible {
+		opacity: 1;
+		color: var(--ae-verdant);
 	}
 	.me-link {
 		background: none;

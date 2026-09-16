@@ -1183,14 +1183,19 @@ ${brandSignoff(brand)}`,
 		// erase a super admin's edits the next time anyone saved an unrelated
 		// field — the saved list is carried forward instead.
 		const existing = await OfferLetter.findOne({ candidateId: params.id }).lean();
-		const savedEdits = offerLetterInputFromDraft(existing).manualEdits;
+		const saved = offerLetterInputFromDraft(existing);
 		const isSuperAdmin = locals.admin?.role === 'super_admin';
-		if (!isSuperAdmin) input.manualEdits = savedEdits;
+		if (!isSuperAdmin) {
+			input.manualEdits = saved.manualEdits;
+			input.manualAdditions = saved.manualAdditions;
+		}
 
 		// Signed by whoever last changed the wording, so a letter that no longer
 		// matches the template can be traced to a person without reading the
-		// audit log. Only stamped when the edits actually changed.
-		const editsChanged = JSON.stringify(savedEdits) !== JSON.stringify(input.manualEdits);
+		// audit log. Only stamped when the wording actually changed.
+		const editsChanged =
+			JSON.stringify(saved.manualEdits) !== JSON.stringify(input.manualEdits) ||
+			JSON.stringify(saved.manualAdditions) !== JSON.stringify(input.manualAdditions);
 		const stamp = editsChanged
 			? { manualEditsBy: locals.admin!.email, manualEditsAt: new Date() }
 			: {};
@@ -1206,8 +1211,8 @@ ${brandSignoff(brand)}`,
 				candidateId: params.id,
 				actor: locals.admin!.email,
 				action: 'offer_letter_manually_edited',
-				oldValue: `${savedEdits.length} edited blocks`,
-				newValue: `${input.manualEdits.length} edited blocks`,
+				oldValue: `${saved.manualEdits.length} edited, ${saved.manualAdditions.length} added`,
+				newValue: `${input.manualEdits.length} edited, ${input.manualAdditions.length} added`,
 				ip: getClientAddress()
 			});
 		}

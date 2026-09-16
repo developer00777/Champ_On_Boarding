@@ -8,9 +8,12 @@
 // never do.
 import {
 	computeAnnexureTotals,
+	isManualAdditionKind,
+	MAX_MANUAL_ADDITIONS,
 	MAX_MANUAL_EDITS,
 	MAX_MANUAL_EDIT_CHARS,
 	type AnnexureExtra,
+	type ManualAddition,
 	type ManualEdit,
 	type OfferLetterInput
 } from './fields';
@@ -59,6 +62,40 @@ function manualEditRows(form: FormData): ManualEdit[] {
 		seen.add(key);
 		rows.push({ key, text: (texts[i] ?? '').slice(0, MAX_MANUAL_EDIT_CHARS) });
 		if (rows.length >= MAX_MANUAL_EDITS) break;
+	}
+	return rows;
+}
+
+/** The blocks the super admin added, posted as five repeated fields paired by
+ *  position — the same shape as the annexure's extra rows and the overrides
+ *  above. A row with no anchor, no id, or an unrecognised kind is dropped: it
+ *  has nowhere to render, so keeping it would only be a stale row that never
+ *  appears in the letter or the editor.
+ *
+ *  Subject to the same role rule as the overrides: only a super admin may add
+ *  to a letter, and both call sites substitute the saved list for anyone
+ *  else's post. */
+function manualAdditionRows(form: FormData): ManualAddition[] {
+	const ids = form.getAll('manualAddId').map((v) => String(v ?? '').trim());
+	const afters = form.getAll('manualAddAfter').map((v) => String(v ?? '').trim());
+	const kinds = form.getAll('manualAddKind').map((v) => String(v ?? '').trim());
+	const markers = form.getAll('manualAddMarker').map((v) => String(v ?? '').trim());
+	const texts = form.getAll('manualAddText').map((v) => String(v ?? ''));
+	const seen = new Set<string>();
+	const rows: ManualAddition[] = [];
+	for (const [i, id] of ids.entries()) {
+		const afterKey = afters[i] ?? '';
+		const kind = kinds[i] ?? 'para';
+		if (!id || !afterKey || seen.has(id) || !isManualAdditionKind(kind)) continue;
+		seen.add(id);
+		rows.push({
+			id,
+			afterKey,
+			kind,
+			marker: (markers[i] ?? '').slice(0, 12),
+			text: (texts[i] ?? '').slice(0, MAX_MANUAL_EDIT_CHARS)
+		});
+		if (rows.length >= MAX_MANUAL_ADDITIONS) break;
 	}
 	return rows;
 }
@@ -132,7 +169,8 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 			internCriteria: text('internCriteria'),
 			paymentClause: text('paymentClause'),
 			compensationAnnexure,
-			manualEdits: manualEditRows(form)
+			manualEdits: manualEditRows(form),
+			manualAdditions: manualAdditionRows(form)
 		}
 	};
 }

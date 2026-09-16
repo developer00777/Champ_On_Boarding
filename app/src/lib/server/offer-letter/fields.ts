@@ -60,11 +60,46 @@ export interface ManualEdit {
 	text: string;
 }
 
+/** A block a super admin added to the letter, anchored to the block it follows.
+ *  Anchored rather than positioned by index so that inserting a clause into the
+ *  template later cannot shuffle someone's addition to a different place in
+ *  their letter — the same reasoning that makes overrides key-addressed. */
+export interface ManualAddition {
+	/** Stable per addition, so the editor can track a row it has not saved yet. */
+	id: string;
+	/** Key of the rendered block this one is drawn after. An addition whose
+	 *  anchor this letter does not draw is dormant, and the editor surfaces it. */
+	afterKey: string;
+	kind: ManualAdditionKind;
+	/** Clause number/letter as it should print ("11.", "n)"). Clauses only. */
+	marker: string;
+	text: string;
+}
+
+/** What an added block can be. Deliberately the shapes the letters already use,
+ *  so an addition is indistinguishable from template wording on the page. */
+export const MANUAL_ADDITION_KINDS = ['para', 'clause', 'bullet', 'subheading'] as const;
+export type ManualAdditionKind = (typeof MANUAL_ADDITION_KINDS)[number];
+
+export const MANUAL_ADDITION_KIND_LABELS: Record<ManualAdditionKind, string> = {
+	para: 'Paragraph',
+	clause: 'Numbered clause',
+	bullet: 'Bullet',
+	subheading: 'Heading'
+};
+
+export function isManualAdditionKind(v: string): v is ManualAdditionKind {
+	return (MANUAL_ADDITION_KINDS as readonly string[]).includes(v);
+}
+
 /** Caps on the stored overrides. A letter has ~60 editable blocks, so 200
  *  leaves room for keys kept from other tracks' templates; the length cap is
  *  well past the longest clause any of the three letters carries. */
 export const MAX_MANUAL_EDITS = 200;
 export const MAX_MANUAL_EDIT_CHARS = 4000;
+/** Additions are whole new clauses, so a lower cap: past a few dozen the letter
+ *  is not the template with exceptions any more, and wants its own template. */
+export const MAX_MANUAL_ADDITIONS = 50;
 
 /** Overrides keyed for lookup, dropping anything blank-keyed or over-long. The
  *  renderer takes this shape; everything else stores and passes the list. */
@@ -121,6 +156,9 @@ export interface OfferLetterInput {
 	 *  case, and this exists for the offer that has to say something the
 	 *  template does not. See MANUAL EDITS in pdf.ts. */
 	manualEdits: ManualEdit[];
+	/** Super-admin-only blocks added to the letter, each anchored after an
+	 *  existing one. Empty for almost every letter. */
+	manualAdditions: ManualAddition[];
 }
 
 /** The four criteria the signed internship agreements carry. Used to pre-fill
@@ -139,7 +177,7 @@ export const DEFAULT_CONSULTANT_PAYMENT_CLAUSE =
 	'You shall be paid as Total sum of {amount}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.';
 
 /** Fields every letter needs, whatever the track. */
-const REQUIRED_ALL_TRACKS: Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure' | 'manualEdits'>> = [
+const REQUIRED_ALL_TRACKS: Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure' | 'manualEdits' | 'manualAdditions'>> = [
 	'jobTitle',
 	'department',
 	'reportingManager',
@@ -156,7 +194,7 @@ const REQUIRED_ALL_TRACKS: Array<Exclude<keyof OfferLetterInput, 'compensationAn
  *  the admin form shows. Required-ness must stay track-aware: a field the
  *  recruiter cannot see must never block sending, and one the letter quotes must
  *  never be silently blank. */
-export function requiredOfferLetterFields(track: Track): Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure' | 'manualEdits'>> {
+export function requiredOfferLetterFields(track: Track): Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure' | 'manualEdits' | 'manualAdditions'>> {
 	switch (track) {
 		// The internship agreement quotes an end date, and terminates "without any
 		// notice" — so it needs endDate and has no notice period at all.
@@ -195,7 +233,8 @@ export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> =
 	// Never required (requiredOfferLetterFields never returns this key — the
 	// annexure is opt-in), but every OfferLetterInput key needs a label entry.
 	compensationAnnexure: 'Compensation annexure',
-	manualEdits: 'Manual edits'
+	manualEdits: 'Manual edits',
+	manualAdditions: 'Added blocks'
 };
 
 export function missingOfferLetterFields(input: OfferLetterInput, track: Track): string[] {
@@ -261,6 +300,25 @@ function manualEdits(raw: unknown): ManualEdit[] {
 		.filter((e) => e.key.trim());
 }
 
+/** Same subdocument copy as `manualEdits`, for the added blocks. A row with no
+ *  anchor or an unknown kind is dropped: it could only be a stale write, and a
+ *  block with nowhere to go would never render anyway. */
+function manualAdditions(raw: unknown): ManualAddition[] {
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.map((r) => {
+			const a = r as Partial<Record<keyof ManualAddition, string>>;
+			return {
+				id: a.id ?? '',
+				afterKey: a.afterKey ?? '',
+				kind: (a.kind ?? 'para') as ManualAdditionKind,
+				marker: a.marker ?? '',
+				text: a.text ?? ''
+			};
+		})
+		.filter((a) => a.id.trim() && a.afterKey.trim() && isManualAdditionKind(a.kind));
+}
+
 export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLetterInput {
 	// Migrated rows lead, so a carried-forward component keeps its old position
 	// above anything HR added by hand.
@@ -304,7 +362,8 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 			extraVariable: extras(draft?.compensationAnnexure?.extraVariable),
 			extraNonCash: extras(draft?.compensationAnnexure?.extraNonCash)
 		},
-		manualEdits: manualEdits(draft?.manualEdits)
+		manualEdits: manualEdits(draft?.manualEdits),
+		manualAdditions: manualAdditions(draft?.manualAdditions)
 	};
 }
 

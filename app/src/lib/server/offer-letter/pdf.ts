@@ -24,6 +24,7 @@ import {
 	computeAnnexureTotals,
 	manualEditMap
 } from './fields';
+import type { ManualAddition } from './fields';
 import type { CandidateDoc } from '$lib/server/db/schema';
 import { CONSULTANT_LETTER_TRACKS, type Track } from '$lib/shared/matrix';
 
@@ -197,6 +198,11 @@ interface Ctx {
 	/** 1-based page the cursor is currently on, so a captured block can tell the
 	 *  editor which page of the letter it belongs to. */
 	pageNo: number;
+	/** Blocks the super admin added, each anchored after an existing block. */
+	additions: ManualAddition[];
+	/** The last editable block drawn. Additions anchored to it are flushed when
+	 *  the next block begins — see `flushAdditions`. */
+	lastKey: string | null;
 }
 
 // ── manual edits ─────────────────────────────────────────────────────────────
@@ -231,6 +237,10 @@ export interface LetterBlock {
 	overridden: boolean;
 	/** The override is present but empty: the block was dropped from the letter. */
 	removed: boolean;
+	/** This block is not in the template — a super admin added it. */
+	added?: boolean;
+	/** Added blocks only: the key of the block this one follows. */
+	afterKey?: string;
 }
 
 /** Resolves one block's text and records it. Returns null when a super admin
@@ -243,12 +253,72 @@ function editable(
 	defaultText: string,
 	marker?: string
 ): string | null {
+	// Anything inserted after the previous block is drawn as this one begins:
+	// by now the previous block has finished laying itself out, and this one has
+	// not started, which is exactly the gap between them.
+	flushAdditions(ctx);
+	ctx.lastKey = key;
 	const override = ctx.overrides[key];
 	const overridden = override !== undefined && override !== defaultText;
 	const text = overridden ? override : defaultText;
 	const removed = overridden && !text.trim();
 	ctx.blocks.push({ key, kind, marker, page: ctx.pageNo, defaultText, text, overridden, removed });
 	return removed ? null : text;
+}
+
+/** Draws every block anchored after the last one drawn, then forgets it — so a
+ *  second call is a no-op and the additions cannot be drawn twice. Called as
+ *  each block begins, and once more when the letter ends, which is what carries
+ *  a block added after the very last paragraph.
+ *
+ *  A block whose anchor this letter never draws is simply never flushed. That
+ *  is deliberate: it belongs to another track's template, and inventing a place
+ *  for it would put a clause somewhere nobody chose. The editor lists those
+ *  separately instead. */
+function flushAdditions(ctx: Ctx) {
+	const after = ctx.lastKey;
+	if (!after) return;
+	// Cleared before drawing: the primitives below are called without a key, so
+	// they will not re-enter editable(), but this makes that guarantee local.
+	ctx.lastKey = null;
+	for (const add of ctx.additions) {
+		if (add.afterKey === after) drawAddition(ctx, add);
+	}
+}
+
+/** Draws one added block in the shape its author chose, and records it in the
+ *  block list so the editor shows it in place alongside the template's own. */
+function drawAddition(ctx: Ctx, add: ManualAddition) {
+	const marker = add.marker.trim();
+	ctx.blocks.push({
+		key: `add:${add.id}`,
+		kind: add.kind,
+		marker: marker || undefined,
+		page: ctx.pageNo,
+		// An added block has no template wording to fall back to, so Reset means
+		// delete it — which is why the editor offers Remove rather than Reset.
+		defaultText: '',
+		text: add.text,
+		overridden: true,
+		removed: false,
+		added: true,
+		afterKey: add.afterKey
+	});
+	if (!add.text.trim()) return;
+	switch (add.kind) {
+		case 'clause':
+			clause(ctx, marker, add.text);
+			break;
+		case 'bullet':
+			bullet(ctx, add.text);
+			break;
+		case 'subheading':
+			subHeading(ctx, add.text);
+			break;
+		default:
+			para(ctx, add.text);
+			break;
+	}
 }
 
 const BLACK = rgb(0.13, 0.13, 0.13);
@@ -1609,6 +1679,8 @@ export async function renderOfferLetter(
 					: 1,
 		employerSignature,
 		overrides: manualEditMap(offer.manualEdits ?? []),
+		additions: offer.manualAdditions ?? [],
+		lastKey: null,
 		blocks: [],
 		// newPage() bumps this, so the first page comes out as 1.
 		pageNo: 0
@@ -1643,6 +1715,10 @@ export async function renderOfferLetter(
 			renderCompensationAnnexure(ctx, c, offer, ctx.companyName);
 		}
 	}
+
+	// Carries a block added after the letter's final paragraph, which no later
+	// block would otherwise flush.
+	flushAdditions(ctx);
 
 	return { bytes: await doc.save(), blocks: ctx.blocks };
 }
