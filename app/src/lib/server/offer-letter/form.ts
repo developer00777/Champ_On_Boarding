@@ -6,7 +6,14 @@
 // parsed the form separately, a preview could show something the letter that
 // eventually goes out does not say — which is the one thing a preview must
 // never do.
-import { computeAnnexureTotals, type AnnexureExtra, type OfferLetterInput } from './fields';
+import {
+	computeAnnexureTotals,
+	MAX_MANUAL_EDITS,
+	MAX_MANUAL_EDIT_CHARS,
+	type AnnexureExtra,
+	type ManualEdit,
+	type OfferLetterInput
+} from './fields';
 import { isoToDDMMYYYY } from '$lib/shared/dates';
 
 const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
@@ -27,6 +34,33 @@ function extraRows(form: FormData, name: string): AnnexureExtra[] {
 		.map((label, i) => ({ label, pm: amounts[i] ?? '' }))
 		.filter((r) => r.label)
 		.slice(0, 30);
+}
+
+/** The super admin's hand-edits to the letter's wording, posted the same way
+ *  the annexure's extra rows are: one repeated `manualEditKey` / `manualEditText`
+ *  pair per override, paired by position.
+ *
+ *  Unknown keys are kept rather than validated against the current template --
+ *  an override for a block this track's letter does not draw (HR switched the
+ *  track, or the annexure page is toggled off) is dormant, not wrong, and
+ *  silently dropping it would lose a deliberate edit the moment someone saves
+ *  an unrelated field. The editor offers to clear the dormant ones instead.
+ *
+ *  Callers must not trust this on its own: only a super admin may hand-edit a
+ *  letter, and both call sites substitute the saved list for a lesser role's
+ *  post (see saveOfferLetter and the preview endpoint). */
+function manualEditRows(form: FormData): ManualEdit[] {
+	const keys = form.getAll('manualEditKey').map((v) => String(v ?? '').trim());
+	const texts = form.getAll('manualEditText').map((v) => String(v ?? ''));
+	const seen = new Set<string>();
+	const rows: ManualEdit[] = [];
+	for (const [i, key] of keys.entries()) {
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		rows.push({ key, text: (texts[i] ?? '').slice(0, MAX_MANUAL_EDIT_CHARS) });
+		if (rows.length >= MAX_MANUAL_EDITS) break;
+	}
+	return rows;
 }
 
 export async function offerLetterInputFromForm(form: FormData): Promise<OfferLetterFormResult> {
@@ -97,7 +131,8 @@ export async function offerLetterInputFromForm(form: FormData): Promise<OfferLet
 			keyResponsibilities: text('keyResponsibilities'),
 			internCriteria: text('internCriteria'),
 			paymentClause: text('paymentClause'),
-			compensationAnnexure
+			compensationAnnexure,
+			manualEdits: manualEditRows(form)
 		}
 	};
 }

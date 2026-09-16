@@ -133,6 +133,137 @@
 		}
 	}
 
+	// ── Manual edits (super admin only) ───────────────────────────────────────
+	// The escape hatch for the offer that has to say something the fields above
+	// cannot express: every block the renderer draws carries a stable key, and an
+	// override replaces that block's text — or drops it, when left empty.
+	//
+	// The edits live here and ride along as hidden fields on the offer form, so
+	// Save persists them and Preview renders them by the very same path as every
+	// other field. There is deliberately no separate save: a letter whose wording
+	// was stored by one route and previewed by another could disagree with
+	// itself, which is the one thing this form must never do.
+	type LetterBlock = {
+		key: string;
+		kind: 'heading' | 'subheading' | 'para' | 'clause' | 'bullet' | 'caption';
+		marker?: string;
+		page: number;
+		defaultText: string;
+		text: string;
+		overridden: boolean;
+		removed: boolean;
+	};
+
+	const editsToMap = (list: Array<{ key: string; text: string }>) =>
+		Object.fromEntries(list.map((e) => [e.key, e.text]));
+
+	// Seeded the way the annexure is, and resynced on the same terms: after a
+	// save, and when the page switches to another candidate.
+	let manualEdits = $state<Record<string, string>>(
+		untrack(() => editsToMap(data.offerLetter.manualEdits ?? []))
+	);
+	$effect(() => {
+		manualEdits = editsToMap(ol.manualEdits ?? []);
+	});
+	const manualEditCount = $derived(Object.keys(manualEdits).length);
+
+	let meOpen = $state(false);
+	let meLoading = $state(false);
+	let meError: string | null = $state(null);
+	let meBlocks: LetterBlock[] = $state([]);
+	let meOrphans: string[] = $state([]);
+	/** The modal's working copy — Cancel has to leave the form untouched, so
+	 *  nothing is written back to `manualEdits` until Apply. */
+	let meDraft: Record<string, string> = $state({});
+
+	/** Opens the editor on the letter as it reads *right now*: the block list is
+	 *  built by rendering the posted form, so a job title typed a moment ago
+	 *  already appears in the paragraph that quotes it. */
+	async function openManualEdits() {
+		if (!offerForm || meLoading) return;
+		meLoading = true;
+		meError = null;
+		meBlocks = [];
+		meOrphans = [];
+		meDraft = { ...manualEdits };
+		meOpen = true;
+		try {
+			const res = await fetch(`/admin/candidates/${c.id}/offer-letter/blocks`, {
+				method: 'POST',
+				body: new FormData(offerForm)
+			});
+			if (!res.ok) {
+				meError =
+					res.status === 403
+						? 'Only a super admin can hand-edit an offer letter.'
+						: `Could not read the letter (${res.status}). Try saving first.`;
+				return;
+			}
+			const body = (await res.json()) as { blocks: LetterBlock[]; orphans: string[] };
+			meBlocks = body.blocks;
+			meOrphans = body.orphans;
+		} catch {
+			meError = 'Could not read the letter — check your connection and try again.';
+		} finally {
+			meLoading = false;
+		}
+	}
+
+	/** An override equal to the template's own text is not an override — storing
+	 *  it would pin that block to today's wording, so the letter would silently
+	 *  stop tracking a later change to the template. Typing the default back in
+	 *  therefore clears the edit. */
+	function setBlock(b: LetterBlock, value: string) {
+		if (value === b.defaultText) delete meDraft[b.key];
+		else meDraft[b.key] = value;
+		meDraft = { ...meDraft };
+	}
+	function resetBlock(b: LetterBlock) {
+		delete meDraft[b.key];
+		meDraft = { ...meDraft };
+	}
+	/** Empty text means "leave this block out of the letter" — see `editable` in
+	 *  offer-letter/pdf.ts. */
+	function removeBlock(b: LetterBlock) {
+		meDraft[b.key] = '';
+		meDraft = { ...meDraft };
+	}
+	function applyManualEdits() {
+		manualEdits = { ...meDraft };
+		meOpen = false;
+	}
+	function clearAllManualEdits() {
+		meDraft = {};
+	}
+	function dropOrphans() {
+		for (const key of meOrphans) delete meDraft[key];
+		meDraft = { ...meDraft };
+		meOrphans = [];
+	}
+
+	const meDirty = $derived(JSON.stringify(meDraft) !== JSON.stringify(manualEdits));
+	const meEditedCount = $derived(Object.keys(meDraft).length);
+
+	function blockLabel(b: LetterBlock): string {
+		if (b.kind === 'clause') return b.marker?.trim() ? `Clause ${b.marker.replace(/[.)]$/, '')}` : 'Clause';
+		if (b.kind === 'heading') return 'Title';
+		if (b.kind === 'subheading') return b.marker?.trim() ? `Heading ${b.marker.replace(/[.)]$/, '')}` : 'Heading';
+		if (b.kind === 'bullet') return 'Bullet';
+		if (b.kind === 'caption') return 'Signature';
+		return 'Paragraph';
+	}
+
+	/** Blocks grouped into the page they landed on, so the editor reads in the
+	 *  same order as the printed letter. */
+	const mePages = $derived(
+		meBlocks.reduce<Array<{ page: number; blocks: LetterBlock[] }>>((acc, b) => {
+			const last = acc[acc.length - 1];
+			if (last && last.page === b.page) last.blocks.push(b);
+			else acc.push({ page: b.page, blocks: [b] });
+			return acc;
+		}, [])
+	);
+
 	/** Consultant and contract share the Consultant Agreement, so they take its
 	 *  clause-3/4/5 inputs and its monthly compensation reading — and skip the
 	 *  appointment letter's probation/confirmation notice fields. */
@@ -556,6 +687,125 @@
 
 <!-- IT/VPN mail confirm — the mail rendered as IT will receive it, with the
      recipient list and a warning for any column that would go out blank. -->
+<!-- ── Manual edits (super admin only) ──────────────────────────────────────
+     Lists every block this candidate's letter actually draws, in printed order,
+     with the template's own text as the starting point. Deliberately outside the
+     offer <form>: a textarea nested in it would post itself on Save. -->
+{#if meOpen}
+	<div
+		class="it-modal-overlay"
+		role="button"
+		tabindex="-1"
+		onclick={() => (meOpen = false)}
+		onkeydown={(e) => e.key === 'Escape' && (meOpen = false)}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -- click-catcher only, stops the overlay's dismiss-on-click from firing; not itself interactive -->
+		<div
+			class="it-modal me-modal"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="me-title"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="it-modal-head">
+				<div>
+					<div class="it-modal-eyebrow">Super admin only</div>
+					<h2 id="me-title">Manual edits</h2>
+				</div>
+				<button class="it-modal-x" type="button" onclick={() => (meOpen = false)} aria-label="Close">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+				</button>
+			</div>
+
+			<p class="me-intro">
+				Every part of {c.fullName || c.email}'s letter, in the order it prints. Edit any block to
+				change what that letter says — this candidate's only. Clearing a block's text leaves it out
+				of the letter altogether. Wrap text in <code>**stars**</code> to set it bold.
+			</p>
+
+			{#if meError}
+				<p class="error" style="margin:0 0 10px">{meError}</p>
+			{/if}
+
+			{#if meLoading}
+				<p class="muted" style="font-size:12px">Reading the letter…</p>
+			{:else if meBlocks.length}
+				{#if meOrphans.length}
+					<div class="it-modal-warn">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0Z"/></svg>
+						<span>
+							{meOrphans.length}
+							{meOrphans.length === 1 ? 'saved edit belongs' : 'saved edits belong'} to a block this
+							letter no longer has — kept from another track's template, most likely. They change
+							nothing while they sit here.
+							<button type="button" class="me-link" onclick={dropOrphans}>Clear them</button>
+						</span>
+					</div>
+				{/if}
+
+				<div class="me-list">
+					{#each mePages as group (group.page)}
+						<div class="me-page">Page {group.page}</div>
+						{#each group.blocks as b (b.key)}
+							{@const edited = b.key in meDraft}
+							{@const removed = edited && !meDraft[b.key].trim()}
+							<div class="me-block" class:me-edited={edited} class:me-removed={removed}>
+								<div class="me-block-head">
+									<span class="me-kind">{blockLabel(b)}</span>
+									{#if removed}
+										<span class="me-badge me-badge-out">Left out</span>
+									{:else if edited}
+										<span class="me-badge">Edited</span>
+									{/if}
+									<span style="flex:1"></span>
+									{#if edited}
+										<button type="button" class="me-link" onclick={() => resetBlock(b)}>Reset</button>
+									{/if}
+									{#if !removed}
+										<button type="button" class="me-link" onclick={() => removeBlock(b)}>Leave out</button>
+									{/if}
+								</div>
+								{#if removed}
+									<p class="me-removed-note">
+										Left out of the letter. <span class="me-orig">{b.defaultText}</span>
+									</p>
+								{:else}
+									<textarea
+										class="kra-textarea me-textarea"
+										rows={Math.min(8, Math.max(2, Math.ceil((meDraft[b.key] ?? b.defaultText).length / 78)))}
+										value={meDraft[b.key] ?? b.defaultText}
+										oninput={(e) => setBlock(b, e.currentTarget.value)}
+									></textarea>
+								{/if}
+							</div>
+						{/each}
+					{/each}
+				</div>
+			{:else if !meError}
+				<p class="muted" style="font-size:12px">This letter has no editable text yet — fill in the fields above first.</p>
+			{/if}
+
+			<div class="it-modal-actions">
+				{#if meEditedCount}
+					<button type="button" class="me-link me-link-danger" onclick={clearAllManualEdits}>
+						Reset all {meEditedCount}
+					</button>
+				{/if}
+				<span style="flex:1"></span>
+				<button class="btn small ghost" type="button" onclick={() => (meOpen = false)}>Cancel</button>
+				<button class="btn small teal" type="button" disabled={!meDirty} onclick={applyManualEdits}>
+					{meDirty ? 'Apply' : 'No changes'}
+				</button>
+			</div>
+			<p class="me-foot">
+				Apply puts the edits on the form — they reach the letter when you <strong>Save</strong>, and
+				Preview shows them straight away.
+			</p>
+		</div>
+	</div>
+{/if}
+
 {#if itPreview}
 	<div
 		class="it-modal-overlay"
@@ -1374,6 +1624,11 @@
 			<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
 				<div class="eyebrow">Offer letter</div>
 				<div style="flex:1"></div>
+				{#if manualEditCount}
+					<span class="pill gold" title="This letter's wording has been hand-edited">
+						{manualEditCount} HAND-EDITED
+					</span>
+				{/if}
 				{#if ol.status === 'sent'}
 					<span class="pill teal">SENT{ol.sentAt ? ' · ' + new Date(ol.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span>
 				{:else}
@@ -1776,6 +2031,18 @@
 						</div>
 					{/if}
 
+				{#if data.isSuperAdmin}
+					<!-- The manual edits ride along as ordinary form fields, so Save
+					     persists them and Preview renders them through exactly the same
+					     parse as every other field on this form. Rendered only for a
+					     super admin: for anyone else the server carries the saved edits
+					     forward rather than reading them from the post. -->
+					{#each Object.entries(manualEdits) as [key, text] (key)}
+						<input type="hidden" name="manualEditKey" value={key} />
+						<input type="hidden" name="manualEditText" value={text} />
+					{/each}
+				{/if}
+
 				<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
 					<button class="btn small">Save</button>
 					<button
@@ -1786,6 +2053,19 @@
 					>
 						{previewing ? 'Building preview…' : 'Preview'}
 					</button>
+					{#if data.isSuperAdmin}
+						<!-- Hand-editing the letter's own terms is a super admin's call, so
+						     the button is theirs alone; the endpoint behind it, the save
+						     action and the preview all re-check the role server-side. -->
+						<button
+							type="button"
+							class="btn ghost small"
+							onclick={openManualEdits}
+							disabled={meLoading}
+						>
+							{meLoading ? 'Opening…' : 'Manual edits'}{manualEditCount ? ` · ${manualEditCount}` : ''}
+						</button>
+					{/if}
 					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download PDF</a>
 					{#if previewError}
 						<span class="error" style="margin:0">{previewError}</span>
@@ -2292,6 +2572,133 @@
 		/* The mail body paints its own light background; keep it that way so the
 		   preview matches an inbox rather than the admin theme. */
 		background: #f2f4f7;
+	}
+	/* ── Manual edits dialog ───────────────────────────────────────────────── */
+	.me-modal {
+		max-width: 860px;
+	}
+	.me-intro {
+		margin: 0 0 12px;
+		font-size: 12px;
+		line-height: 1.55;
+		color: var(--ae-muted);
+	}
+	.me-intro code {
+		font-family: var(--ae-font-mono);
+		font-size: 11px;
+		padding: 1px 4px;
+		border-radius: 4px;
+		background: var(--ae-line);
+	}
+	/* The list is the dialog's body: it takes the room the header and footer
+	   leave, and scrolls on its own so the actions stay reachable. */
+	.me-list {
+		flex: 1;
+		overflow-y: auto;
+		min-height: 180px;
+		padding-right: 4px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.me-page {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		margin-top: 6px;
+		padding: 5px 0 4px;
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+		background: var(--ae-modal-base, rgba(13, 16, 26, 0.94));
+		border-bottom: 1px solid var(--ae-line);
+	}
+	.me-block {
+		border: 1px solid var(--ae-line);
+		border-radius: 9px;
+		padding: 8px 10px 10px;
+	}
+	.me-block.me-edited {
+		border-color: var(--ae-amber);
+		background: color-mix(in srgb, var(--ae-amber) 7%, transparent);
+	}
+	.me-block.me-removed {
+		opacity: 0.72;
+	}
+	.me-block-head {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin-bottom: 5px;
+	}
+	.me-kind {
+		font-family: var(--ae-font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+	}
+	.me-badge {
+		font-size: 9.5px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 1px 6px;
+		border-radius: 999px;
+		border: 1px solid var(--ae-amber);
+		color: var(--ae-amber);
+	}
+	.me-badge-out {
+		border-color: var(--ae-muted);
+		color: var(--ae-muted);
+	}
+	.me-textarea {
+		width: 100%;
+		font-size: 12px;
+		line-height: 1.5;
+	}
+	.me-removed-note {
+		margin: 0;
+		font-size: 11.5px;
+		color: var(--ae-muted);
+	}
+	.me-orig {
+		display: block;
+		margin-top: 3px;
+		text-decoration: line-through;
+		opacity: 0.65;
+	}
+	.me-link {
+		background: none;
+		border: 0;
+		padding: 0;
+		font: inherit;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--ae-text-2);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+	.me-link:hover {
+		color: var(--ae-text);
+	}
+	.me-link-danger {
+		color: var(--ae-muted);
+	}
+	.me-foot {
+		margin: 8px 0 0;
+		font-size: 11px;
+		color: var(--ae-muted);
+	}
+	@media (max-width: 560px) {
+		.me-list {
+			min-height: 140px;
+		}
 	}
 	.it-modal-actions {
 		display: flex;

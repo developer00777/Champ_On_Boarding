@@ -48,6 +48,36 @@ export const COMPENSATION_LABEL_BY_TRACK: Record<Track, string> = Object.fromEnt
 	TRACKS.map((t) => [t, COMPENSATION_FIELD_BY_TRACK[t].label])
 ) as Record<Track, string>;
 
+/** One super-admin hand-edit to the letter: the text that replaces a single
+ *  rendered block, addressed by the stable key that block carries in the
+ *  renderer (see `editable()` in pdf.ts). An empty `text` removes the block
+ *  from the letter entirely rather than drawing a blank line.
+ *
+ *  Stored as a list rather than a map because the keys are dotted
+ *  (`app.clause.5`) and Mongo rejects dots in document field names. */
+export interface ManualEdit {
+	key: string;
+	text: string;
+}
+
+/** Caps on the stored overrides. A letter has ~60 editable blocks, so 200
+ *  leaves room for keys kept from other tracks' templates; the length cap is
+ *  well past the longest clause any of the three letters carries. */
+export const MAX_MANUAL_EDITS = 200;
+export const MAX_MANUAL_EDIT_CHARS = 4000;
+
+/** Overrides keyed for lookup, dropping anything blank-keyed or over-long. The
+ *  renderer takes this shape; everything else stores and passes the list. */
+export function manualEditMap(edits: ManualEdit[]): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const e of edits.slice(0, MAX_MANUAL_EDITS)) {
+		const key = e.key?.trim();
+		if (!key) continue;
+		out[key] = String(e.text ?? '').slice(0, MAX_MANUAL_EDIT_CHARS);
+	}
+	return out;
+}
+
 export interface OfferLetterInput {
 	jobTitle: string;
 	department: string;
@@ -86,6 +116,11 @@ export interface OfferLetterInput {
 	paymentClause: string;
 	/** Offer-of-appointment tracks only: the page-4 compensation annexure. */
 	compensationAnnexure: CompensationAnnexure;
+	/** Super-admin-only hand-edits to the letter's own wording, one per rendered
+	 *  block. Empty for almost every letter: the fields above cover the normal
+	 *  case, and this exists for the offer that has to say something the
+	 *  template does not. See MANUAL EDITS in pdf.ts. */
+	manualEdits: ManualEdit[];
 }
 
 /** The four criteria the signed internship agreements carry. Used to pre-fill
@@ -104,7 +139,7 @@ export const DEFAULT_CONSULTANT_PAYMENT_CLAUSE =
 	'You shall be paid as Total sum of {amount}/- per month which is subject to standard deduction as per the State and Govt Policy and TDS certificate will be given on timely basis.';
 
 /** Fields every letter needs, whatever the track. */
-const REQUIRED_ALL_TRACKS: Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure'>> = [
+const REQUIRED_ALL_TRACKS: Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure' | 'manualEdits'>> = [
 	'jobTitle',
 	'department',
 	'reportingManager',
@@ -121,7 +156,7 @@ const REQUIRED_ALL_TRACKS: Array<Exclude<keyof OfferLetterInput, 'compensationAn
  *  the admin form shows. Required-ness must stay track-aware: a field the
  *  recruiter cannot see must never block sending, and one the letter quotes must
  *  never be silently blank. */
-export function requiredOfferLetterFields(track: Track): Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure'>> {
+export function requiredOfferLetterFields(track: Track): Array<Exclude<keyof OfferLetterInput, 'compensationAnnexure' | 'manualEdits'>> {
 	switch (track) {
 		// The internship agreement quotes an end date, and terminates "without any
 		// notice" — so it needs endDate and has no notice period at all.
@@ -159,7 +194,8 @@ export const OFFER_LETTER_FIELD_LABELS: Record<keyof OfferLetterInput, string> =
 	paymentClause: 'Payment clause',
 	// Never required (requiredOfferLetterFields never returns this key — the
 	// annexure is opt-in), but every OfferLetterInput key needs a label entry.
-	compensationAnnexure: 'Compensation annexure'
+	compensationAnnexure: 'Compensation annexure',
+	manualEdits: 'Manual edits'
 };
 
 export function missingOfferLetterFields(input: OfferLetterInput, track: Track): string[] {
@@ -213,6 +249,18 @@ function migrateRetiredCashRows(annexure: unknown, existing: AnnexureExtra[]): A
 	return carried;
 }
 
+/** Same subdocument-to-plain-object copy as `extras`, for the stored manual
+ *  edits. A row with no key is dropped: it can only be a stale write. */
+function manualEdits(raw: unknown): ManualEdit[] {
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.map((r) => {
+			const e = r as { key?: string | null; text?: string | null };
+			return { key: e.key ?? '', text: e.text ?? '' };
+		})
+		.filter((e) => e.key.trim());
+}
+
 export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLetterInput {
 	// Migrated rows lead, so a carried-forward component keeps its old position
 	// above anything HR added by hand.
@@ -255,7 +303,8 @@ export function offerLetterInputFromDraft(draft: OfferLetterDoc | null): OfferLe
 			extraCash: cash,
 			extraVariable: extras(draft?.compensationAnnexure?.extraVariable),
 			extraNonCash: extras(draft?.compensationAnnexure?.extraNonCash)
-		}
+		},
+		manualEdits: manualEdits(draft?.manualEdits)
 	};
 }
 

@@ -1178,7 +1178,39 @@ ${brandSignoff(brand)}`,
 		if (!parsed.ok) return fail(400, { message: parsed.error });
 		const input: OfferLetterInput = parsed.input;
 
-		await OfferLetter.findOneAndUpdate({ candidateId: params.id }, { $set: input }, { upsert: true });
+		// Hand-edited wording is super-admin-only. An hr_admin's form carries no
+		// manual-edit fields, so taking the parse at face value would quietly
+		// erase a super admin's edits the next time anyone saved an unrelated
+		// field — the saved list is carried forward instead.
+		const existing = await OfferLetter.findOne({ candidateId: params.id }).lean();
+		const savedEdits = offerLetterInputFromDraft(existing).manualEdits;
+		const isSuperAdmin = locals.admin?.role === 'super_admin';
+		if (!isSuperAdmin) input.manualEdits = savedEdits;
+
+		// Signed by whoever last changed the wording, so a letter that no longer
+		// matches the template can be traced to a person without reading the
+		// audit log. Only stamped when the edits actually changed.
+		const editsChanged = JSON.stringify(savedEdits) !== JSON.stringify(input.manualEdits);
+		const stamp = editsChanged
+			? { manualEditsBy: locals.admin!.email, manualEditsAt: new Date() }
+			: {};
+
+		await OfferLetter.findOneAndUpdate(
+			{ candidateId: params.id },
+			{ $set: { ...input, ...stamp } },
+			{ upsert: true }
+		);
+
+		if (editsChanged) {
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'offer_letter_manually_edited',
+				oldValue: `${savedEdits.length} edited blocks`,
+				newValue: `${input.manualEdits.length} edited blocks`,
+				ip: getClientAddress()
+			});
+		}
 
 		// Department and the IT mail's Team Name are the same fact typed into two
 		// forms, so filling either one fills the other. Only when the target is

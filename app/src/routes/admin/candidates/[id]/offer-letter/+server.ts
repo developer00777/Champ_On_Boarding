@@ -74,6 +74,18 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 	const parsed = await offerLetterInputFromForm(await request.formData());
 	if (!parsed.ok) error(400, parsed.error);
 
+	// Hand-edited wording is a super-admin power, so for anyone else the letter
+	// is previewed with the edits already on file rather than whatever the
+	// posted form carries. Both directions matter: a lesser role must not be
+	// able to preview terms they could not save, and must not be shown a letter
+	// stripped of edits that would go out if they sent it. The form they post
+	// has no manual-edit fields at all, so without this their preview would
+	// silently drop a super admin's changes.
+	if (locals.admin.role !== 'super_admin') {
+		const draft = await OfferLetter.findOne({ candidateId: params.id }).lean();
+		parsed.input.manualEdits = offerLetterInputFromDraft(draft).manualEdits;
+	}
+
 	await audit({
 		candidateId: params.id,
 		actor: locals.admin!.email,

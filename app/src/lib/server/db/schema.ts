@@ -391,6 +391,18 @@ const offerLetterSchema = new Schema(
 			extraVariable: { type: [{ label: String, pm: String }], default: [] },
 			extraNonCash: { type: [{ label: String, pm: String }], default: [] }
 		},
+		/** Super-admin-only hand-edits to the letter's own wording: `key` names a
+		 *  rendered block (a clause, a paragraph, a heading) and `text` replaces
+		 *  it; an empty `text` drops that block from the letter. Stored as a list
+		 *  because the keys are dotted (`app.clause.5`) and Mongo rejects dots in
+		 *  field names. Almost always empty — the fields above cover the normal
+		 *  letter, this covers the offer that has to say something else. */
+		manualEdits: { type: [{ key: String, text: String }], default: [] },
+		/** Who last hand-edited the wording, and when. A letter that no longer
+		 *  matches the template is worth being able to trace back to a person
+		 *  without reading the audit log. */
+		manualEditsBy: { type: String, default: null },
+		manualEditsAt: { type: Date, default: null },
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }

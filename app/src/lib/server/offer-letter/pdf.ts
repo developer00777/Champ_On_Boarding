@@ -21,7 +21,8 @@ import {
 	EMPLOYMENT_TYPE_LABELS,
 	DEFAULT_INTERN_CRITERIA,
 	DEFAULT_CONSULTANT_PAYMENT_CLAUSE,
-	computeAnnexureTotals
+	computeAnnexureTotals,
+	manualEditMap
 } from './fields';
 import type { CandidateDoc } from '$lib/server/db/schema';
 import { CONSULTANT_LETTER_TRACKS, type Track } from '$lib/shared/matrix';
@@ -186,6 +187,68 @@ interface Ctx {
 	 *  so it can stamp the image instead of a blank rule. Null when HR hasn't
 	 *  uploaded one, so those columns fall back to a blank line as before. */
 	employerSignature: { image: PDFImage; date: string } | null;
+	/** MANUAL EDITS — the super admin's replacement text, keyed by block (see
+	 *  `editable` below). Empty for all but a handful of letters. */
+	overrides: Record<string, string>;
+	/** Every editable block this render drew, in document order, with both the
+	 *  text the template produced and the text that actually went on the page.
+	 *  Filled on every render, read only by the manual-edit editor. */
+	blocks: LetterBlock[];
+	/** 1-based page the cursor is currently on, so a captured block can tell the
+	 *  editor which page of the letter it belongs to. */
+	pageNo: number;
+}
+
+// ── manual edits ─────────────────────────────────────────────────────────────
+//
+// Every piece of fixed wording in the three letters is drawn through one of the
+// primitives below, and each of those calls carries a stable `key`. A super
+// admin can replace the text behind any key for one candidate — the escape
+// hatch for the offer that has to say something the template does not, without
+// anyone editing this file or the letter being rebuilt by hand in Word.
+//
+// The same render both applies the overrides and records what it drew, so the
+// editor can only ever offer blocks the letter really contains, showing the
+// exact default text for this candidate (names, dates and figures already
+// substituted). There is no second copy of the letter's wording to drift.
+//
+// Keys are stable strings, never positions: inserting a clause must not hand
+// clause 6's override to clause 7. Renaming one orphans its override, which the
+// editor surfaces rather than applying to the wrong paragraph.
+
+export type BlockKind = 'heading' | 'subheading' | 'para' | 'clause' | 'bullet' | 'caption';
+
+export interface LetterBlock {
+	key: string;
+	kind: BlockKind;
+	/** Clause number/letter as printed ("5.", "b)"), for labelling in the editor. */
+	marker?: string;
+	page: number;
+	/** What the template would have drawn for this candidate. */
+	defaultText: string;
+	/** What was actually drawn — the override when there is one. */
+	text: string;
+	overridden: boolean;
+	/** The override is present but empty: the block was dropped from the letter. */
+	removed: boolean;
+}
+
+/** Resolves one block's text and records it. Returns null when a super admin
+ *  has overridden the block with empty text, which means "leave this out of the
+ *  letter" — every caller that can drop a block treats null as skip. */
+function editable(
+	ctx: Ctx,
+	key: string,
+	kind: BlockKind,
+	defaultText: string,
+	marker?: string
+): string | null {
+	const override = ctx.overrides[key];
+	const overridden = override !== undefined && override !== defaultText;
+	const text = overridden ? override : defaultText;
+	const removed = overridden && !text.trim();
+	ctx.blocks.push({ key, kind, marker, page: ctx.pageNo, defaultText, text, overridden, removed });
+	return removed ? null : text;
 }
 
 const BLACK = rgb(0.13, 0.13, 0.13);
@@ -389,6 +452,7 @@ function newPage(ctx: Ctx) {
 	drawChrome(ctx, page);
 	ctx.page = page;
 	ctx.y = ctx.topY;
+	ctx.pageNo += 1;
 }
 
 /** Ensure `need` pts of vertical space remain; else start a new page. */
@@ -510,12 +574,18 @@ function drawRichLine(
 	});
 }
 
-/** Draw a paragraph (optionally indented), wrapping + paging as needed. */
+/** Draw a paragraph (optionally indented), wrapping + paging as needed.
+ *  `key` makes the paragraph hand-editable by a super admin — see MANUAL EDITS. */
 function para(
 	ctx: Ctx,
 	text: string,
-	opts: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; indent?: number; gapAfter?: number; lineGap?: number } = {}
+	opts: { key?: string; size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; indent?: number; gapAfter?: number; lineGap?: number } = {}
 ) {
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'para', text);
+		if (edited === null) return;
+		text = edited;
+	}
 	const size = opts.size ?? ctx.bodySize;
 	const font = opts.font ?? ctx.fontR;
 	const color = opts.color ?? BLACK;
@@ -531,7 +601,17 @@ function para(
 }
 
 /** A numbered/lettered clause: marker in the gutter, text hanging-indented. */
-function clause(ctx: Ctx, marker: string, text: string, opts: { size?: number; gapAfter?: number } = {}) {
+function clause(
+	ctx: Ctx,
+	marker: string,
+	text: string,
+	opts: { key?: string; size?: number; gapAfter?: number } = {}
+) {
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'clause', text, marker);
+		if (edited === null) return;
+		text = edited;
+	}
 	const size = opts.size ?? ctx.bodySize;
 	const lineGap = leadingFor(size);
 	const gutter = ctx.fontR.widthOfTextAtSize(marker + ' ', size) + 2;
@@ -552,7 +632,12 @@ function clause(ctx: Ctx, marker: string, text: string, opts: { size?: number; g
 }
 
 /** Bullet point (hanging indent under a dash). */
-function bullet(ctx: Ctx, text: string, opts: { size?: number; indent?: number } = {}) {
+function bullet(ctx: Ctx, text: string, opts: { key?: string; size?: number; indent?: number } = {}) {
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'bullet', text);
+		if (edited === null) return;
+		text = edited;
+	}
 	const size = opts.size ?? ctx.bodySize;
 	const lineGap = leadingFor(size);
 	const indent = opts.indent ?? 16;
@@ -572,7 +657,12 @@ function bullet(ctx: Ctx, text: string, opts: { size?: number; indent?: number }
 }
 
 /** Centered, underlined section heading. */
-function heading(ctx: Ctx, text: string, opts: { size?: number } = {}) {
+function heading(ctx: Ctx, text: string, opts: { key?: string; size?: number } = {}) {
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'heading', text);
+		if (edited === null) return;
+		text = edited;
+	}
 	const size = opts.size ?? 12;
 	ensure(ctx, size + 14);
 	const t = sanitize(text);
@@ -585,7 +675,12 @@ function heading(ctx: Ctx, text: string, opts: { size?: number } = {}) {
 }
 
 /** Left bold sub-heading. */
-function subHeading(ctx: Ctx, text: string, opts: { size?: number; gapAfter?: number } = {}) {
+function subHeading(ctx: Ctx, text: string, opts: { key?: string; size?: number; gapAfter?: number } = {}) {
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'subheading', text);
+		if (edited === null) return;
+		text = edited;
+	}
 	// Track the body size (+0.5 to sit just above it) rather than a fixed 10pt,
 	// which read as smaller than the intern letter's 11pt body text.
 	const size = opts.size ?? ctx.bodySize + 0.5;
@@ -601,8 +696,15 @@ function subHeading(ctx: Ctx, text: string, opts: { size?: number; gapAfter?: nu
 function signatureLine(
 	ctx: Ctx,
 	caption: string,
-	opts: { width?: number; bold?: boolean; employerSignature?: { image: PDFImage; date: string } } = {}
+	opts: { key?: string; width?: number; bold?: boolean; employerSignature?: { image: PDFImage; date: string } } = {}
 ) {
+	// A blanked-out override drops the whole block — rule and caption together,
+	// so removing a sign-off never leaves a naked line on the page.
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'caption', caption);
+		if (edited === null) return;
+		caption = edited;
+	}
 	const width = opts.width ?? 200;
 	const above = 14 * ctx.blockGap; // room to actually sign
 	ensure(ctx, above + 18);
@@ -641,7 +743,12 @@ function pageBreak(ctx: Ctx) {
 
 /** Right-aligned rule + centred caption, e.g. the "Intern Signature" the
  *  internship agreement repeats mid-document so each page carries a sign-off. */
-function signatureLineRight(ctx: Ctx, caption: string, opts: { width?: number } = {}) {
+function signatureLineRight(ctx: Ctx, caption: string, opts: { key?: string; width?: number } = {}) {
+	if (opts.key) {
+		const edited = editable(ctx, opts.key, 'caption', caption);
+		if (edited === null) return;
+		caption = edited;
+	}
 	const width = opts.width ?? 170;
 	const above = 14 * ctx.blockGap;
 	ensure(ctx, above + 20);
@@ -668,8 +775,18 @@ function signatureColumns(
 	ctx: Ctx,
 	left: string,
 	right: string,
-	opts: { dateRow?: boolean; employerSignature?: { image: PDFImage; date: string } } = {}
+	opts: {
+		keyLeft?: string;
+		keyRight?: string;
+		dateRow?: boolean;
+		employerSignature?: { image: PDFImage; date: string };
+	} = {}
 ) {
+	// Both captions are editable, but neither is removable: the two columns are
+	// one block, and dropping a caption alone would leave a rule labelled by the
+	// column beside it. A blanked override just leaves that caption empty.
+	if (opts.keyLeft) left = editable(ctx, opts.keyLeft, 'caption', left) ?? '';
+	if (opts.keyRight) right = editable(ctx, opts.keyRight, 'caption', right) ?? '';
 	const colW = 170;
 	const leftX = ctx.M;
 	const rightX = ctx.M + ctx.CW - colW;
@@ -931,18 +1048,18 @@ function renderOfferOfAppointment(
 ) {
 	drawApplicantHeader(ctx, { name: c.name, contact: c.contact, email: c.email, date: today() });
 
-	heading(ctx, 'OFFER OF APPOINTMENT');
+	heading(ctx, 'OFFER OF APPOINTMENT', { key: 'app.title' });
 	gap(ctx, 4);
 
-	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8 });
+	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8, key: 'app.salutation' });
 
 	para(
 		ctx,
 		`Further to your recent interview and its results, we are pleased to offer you an employment with our organization ${company} as "**${o.jobTitle || '____________'}**" with "subject to the following terms and conditions".`,
-		{ gapAfter: 8 }
+		{ gapAfter: 8, key: 'app.intro' }
 	);
 
-	subHeading(ctx, `The starting date of your employment will be no later than ${o.joiningDate || '____________'}`, { gapAfter: 8 });
+	subHeading(ctx, `The starting date of your employment will be no later than ${o.joiningDate || '____________'}`, { gapAfter: 8, key: 'app.startDate' });
 
 	const ctc = o.ctcAmount ? formatMoney(o.ctcAmount) : '____________';
 	// The real letters quote an independent monthly take-home alongside annual
@@ -953,37 +1070,38 @@ function renderOfferOfAppointment(
 		'1.',
 		monthly
 			? `Your Total Cost To Company per Annum is ${ctc}/- out of which your monthly compensation is ${monthly}/- inclusive of Standard statutory deductions. *Refer Annexure*`
-			: `Your Total Cost To Company per Annum is ${ctc}/- inclusive of Standard statutory deductions. *Refer Annexure*`
+			: `Your Total Cost To Company per Annum is ${ctc}/- inclusive of Standard statutory deductions. *Refer Annexure*`,
+		{ key: 'app.clause.1' }
 	);
-	clause(ctx, '2.', `Statutory deductions and other standard benefits from the Company are as per the Rules and regulations.`);
-	clause(ctx, '3.', `All rewards and increments will be based purely on your performance on the job and your Contribution to the company and subject to Company Rules and regulations as mentioned in company HRIS portal and Intranet.`);
-	clause(ctx, '4.', `You will be required to observe the rules and regulations applicable to all employees of the Company. You will not engage in any trade or profession or undertaken employment, full or part-time, while in the services of the Company.`);
-	clause(ctx, '5.', `You will on probation period of 6 months, after which you will be due for the confirmation. During this probation period, you required to give a notice period of ${o.noticePeriod || '30 days'} in the event of your resigning from the services of the company in normal circumstances but if training provided you are entitled to follow company process. However the notice period will be ${o.confirmedNoticePeriod?.trim() || '60 days'} after confirmation. Further ${company} can terminate this employment by serving you either by one-month notice or a month salary in lieu of notice, during the period of employment.`);
-	clause(ctx, '6.', `In addition to holding all confidential information as a key member of our organization, you will not directly or indirectly engage in services with any of our competitors or start your own consultancy of similar nature during your tenure of employment or two years after leaving the company.`);
-	clause(ctx, '7.', `You are entitled for Leave as per the rules and regulations of the company.`);
-	clause(ctx, '8.', `You will have to work as per the scheduled time allotted to you except, Holidays. You will have to be flexible with your timings depending upon the company's requirements.`);
-	clause(ctx, '9.', `During the term of your employment you are expected to adhere to the service conditions of the company that are in existence and framed by the company from time to time.`);
-	clause(ctx, '10.', `The retirement of all members is 58 years.`);
+	clause(ctx, '2.', `Statutory deductions and other standard benefits from the Company are as per the Rules and regulations.`, { key: 'app.clause.2' });
+	clause(ctx, '3.', `All rewards and increments will be based purely on your performance on the job and your Contribution to the company and subject to Company Rules and regulations as mentioned in company HRIS portal and Intranet.`, { key: 'app.clause.3' });
+	clause(ctx, '4.', `You will be required to observe the rules and regulations applicable to all employees of the Company. You will not engage in any trade or profession or undertaken employment, full or part-time, while in the services of the Company.`, { key: 'app.clause.4' });
+	clause(ctx, '5.', `You will on probation period of 6 months, after which you will be due for the confirmation. During this probation period, you required to give a notice period of ${o.noticePeriod || '30 days'} in the event of your resigning from the services of the company in normal circumstances but if training provided you are entitled to follow company process. However the notice period will be ${o.confirmedNoticePeriod?.trim() || '60 days'} after confirmation. Further ${company} can terminate this employment by serving you either by one-month notice or a month salary in lieu of notice, during the period of employment.`, { key: 'app.clause.5' });
+	clause(ctx, '6.', `In addition to holding all confidential information as a key member of our organization, you will not directly or indirectly engage in services with any of our competitors or start your own consultancy of similar nature during your tenure of employment or two years after leaving the company.`, { key: 'app.clause.6' });
+	clause(ctx, '7.', `You are entitled for Leave as per the rules and regulations of the company.`, { key: 'app.clause.7' });
+	clause(ctx, '8.', `You will have to work as per the scheduled time allotted to you except, Holidays. You will have to be flexible with your timings depending upon the company's requirements.`, { key: 'app.clause.8' });
+	clause(ctx, '9.', `During the term of your employment you are expected to adhere to the service conditions of the company that are in existence and framed by the company from time to time.`, { key: 'app.clause.9' });
+	clause(ctx, '10.', `The retirement of all members is 58 years.`, { key: 'app.clause.10' });
 
 	// The signed reference breaks here: page 1 closes on clause 10.
 	if (pinned) pageBreak(ctx);
 
-	clause(ctx, '11.', `You are requested to sign the EMPLOYMENT COMMITMENT AGREEMENT at the time of joining the Company and also by signing this Letter of offer you agree to be the part of ${company} for the period of two years.`);
-	clause(ctx, '12.', `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, Autonomy and growth among all members of the Strategic family. As a new entrant, we would like you to whole-heartedly contribute in this process.`, { gapAfter: 8 });
+	clause(ctx, '11.', `You are requested to sign the EMPLOYMENT COMMITMENT AGREEMENT at the time of joining the Company and also by signing this Letter of offer you agree to be the part of ${company} for the period of two years.`, { key: 'app.clause.11' });
+	clause(ctx, '12.', `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, Autonomy and growth among all members of the Strategic family. As a new entrant, we would like you to whole-heartedly contribute in this process.`, { gapAfter: 8, key: 'app.clause.12' });
 
-	para(ctx, `As a token of acceptance of the above terms and conditions, you are requested to sign a copy of this letter and return to us.`, { gapAfter: 6 });
-	para(ctx, `Wish you a long and enjoyable career with ${company}.`, { gapAfter: 16 });
+	para(ctx, `As a token of acceptance of the above terms and conditions, you are requested to sign a copy of this letter and return to us.`, { gapAfter: 6, key: 'app.acceptanceRequest' });
+	para(ctx, `Wish you a long and enjoyable career with ${company}.`, { gapAfter: 16, key: 'app.wish' });
 
 	// Employer signature + candidate acceptance: one indivisible block (~150pt).
 	keepTogether(ctx, 150, () => {
-		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4 });
-		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
+		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 4, key: 'app.forCompany' });
+		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true, key: 'app.sig.authorized' });
 
 		gap(ctx, 10);
-		para(ctx, `I hereby accept the above-mentioned terms and conditions`, { gapAfter: 14 });
-		para(ctx, `Name:`, { gapAfter: 14 });
-		para(ctx, `Signature:`, { gapAfter: 14 });
-		para(ctx, `Date:`, { gapAfter: 0 });
+		para(ctx, `I hereby accept the above-mentioned terms and conditions`, { gapAfter: 14, key: 'app.accept.terms' });
+		para(ctx, `Name:`, { gapAfter: 14, key: 'app.accept.name' });
+		para(ctx, `Signature:`, { gapAfter: 14, key: 'app.accept.signature' });
+		para(ctx, `Date:`, { gapAfter: 0, key: 'app.accept.date' });
 	});
 
 	if (!pinned) return;
@@ -994,18 +1112,23 @@ function renderOfferOfAppointment(
 	// deliberately omitted and this follows the acceptance directly.
 	pageBreak(ctx);
 
-	para(ctx, `You are required to submit to us the following at the time of your joining.`, { gapAfter: 4 });
+	para(ctx, `You are required to submit to us the following at the time of your joining.`, { gapAfter: 4, key: 'app.docs.intro' });
 	para(ctx, `(ALL DOCUMENTS ARE COMPULSORY-Get originals for verification at the time of joining)`, {
 		font: ctx.fontB,
-		gapAfter: 12
+		gapAfter: 12,
+		key: 'app.docs.compulsory'
 	});
-	for (const doc of JOINING_DOCUMENTS) bullet(ctx, doc);
+	// Keyed by position in JOINING_DOCUMENTS, which is a fixed constant in this
+	// file — reordering that list would re-point these overrides, so add to the
+	// end of it rather than inserting into the middle.
+	JOINING_DOCUMENTS.forEach((doc, i) => bullet(ctx, doc, { key: `app.docs.item.${i + 1}` }));
 	gap(ctx, 18);
 
 	// Both parties counter-sign this page in the reference.
 	signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
 		dateRow: true,
-		employerSignature: ctx.employerSignature ?? undefined
+		employerSignature: ctx.employerSignature ?? undefined,
+		keyLeft: 'app.docs.sigEmployee', keyRight: 'app.docs.sigEmployer'
 	});
 }
 
@@ -1028,7 +1151,7 @@ function renderCompensationAnnexure(
 
 	// The page clause 1 points at with "*Refer Annexure*". Titled like every other
 	// section of the letter, so the sheet does not open on a bare grid.
-	heading(ctx, 'ANNEXURE - COMPENSATION STRUCTURE');
+	heading(ctx, 'ANNEXURE - COMPENSATION STRUCTURE', { key: 'annex.title' });
 	gap(ctx, 6);
 
 	const totals = computeAnnexureTotals(o.compensationAnnexure);
@@ -1103,7 +1226,8 @@ function renderCompensationAnnexure(
 	keepTogether(ctx, 14 * ctx.blockGap + 12 + 36 * ctx.blockGap + 12, () => {
 		signatureColumns(ctx, 'Employee Acceptance Signature', 'Employer Representative Signature', {
 			dateRow: true,
-			employerSignature: ctx.employerSignature ?? undefined
+			employerSignature: ctx.employerSignature ?? undefined,
+			keyLeft: 'annex.sigEmployee', keyRight: 'annex.sigEmployer'
 		});
 	});
 }
@@ -1123,7 +1247,7 @@ function renderInternship(
 		place, date: today(), internLabels: true
 	});
 
-	heading(ctx, 'INTERNSHIP JOINING AGREEMENT');
+	heading(ctx, 'INTERNSHIP JOINING AGREEMENT', { key: 'intern.title' });
 	gap(ctx, 4);
 
 	const start = o.joiningDate || '____________';
@@ -1136,35 +1260,36 @@ function renderInternship(
 	para(
 		ctx,
 		`With reference to your application we would like to congratulate you on being selected for internship with ${company}, based at ${place} as "**${o.jobTitle || 'Trainee'}**". Your internship is scheduled to start effective from ${start} to ${end}.`,
-		{ gapAfter: 8 }
+		{ gapAfter: 8, key: 'intern.intro' }
 	);
 
-	subHeading(ctx, 'Terms and conditions of the internship Program.', { gapAfter: 8 });
+	subHeading(ctx, 'Terms and conditions of the internship Program.', { gapAfter: 8, key: 'intern.termsHeading' });
 
 	clause(
 		ctx,
 		'1.',
 		stipendWords
 			? `As intern you will be paid ${stipend}/- per month (Rupees-${stipendWords} only), which is including Statutory deductions if any.`
-			: `As intern you will be paid ${stipend}/- per month, which is including Statutory deductions if any.`
+			: `As intern you will be paid ${stipend}/- per month, which is including Statutory deductions if any.`,
+		{ key: 'intern.clause.1' }
 	);
-	clause(ctx, '2.', `You are expected to operate with the highest degree of initiative, economy, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not no time do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without notice.`);
-	clause(ctx, '3.', `During the internship program intern is abide by the company working hours, shifts and holidays based on the project allotted.`);
-	clause(ctx, '4.', `During the course of Internship, you shall not accept any other employment, either full-time or part-time, either for remuneration or otherwise.`);
-	clause(ctx, '5.', `Internship program can be terminated based on the company policy and procedure or based on code of the intern during the internship by without giving any notice to the Intern or by one day Updation with or without pay.`);
-	clause(ctx, '6.', `You are responsible for your own accommodation and commuting office place.`, { gapAfter: 10 });
+	clause(ctx, '2.', `You are expected to operate with the highest degree of initiative, economy, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not no time do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without notice.`, { key: 'intern.clause.2' });
+	clause(ctx, '3.', `During the internship program intern is abide by the company working hours, shifts and holidays based on the project allotted.`, { key: 'intern.clause.3' });
+	clause(ctx, '4.', `During the course of Internship, you shall not accept any other employment, either full-time or part-time, either for remuneration or otherwise.`, { key: 'intern.clause.4' });
+	clause(ctx, '5.', `Internship program can be terminated based on the company policy and procedure or based on code of the intern during the internship by without giving any notice to the Intern or by one day Updation with or without pay.`, { key: 'intern.clause.5' });
+	clause(ctx, '6.', `You are responsible for your own accommodation and commuting office place.`, { gapAfter: 10, key: 'intern.clause.6' });
 
-	signatureLineRight(ctx, 'Intern Signature');
+	signatureLineRight(ctx, 'Intern Signature', { key: 'intern.sig.page1' });
 
 	// The signed original breaks here: page 1 closes on clause 6 + the intern's
 	// signature, so each page stands alone as a signing unit.
 	pageBreak(ctx);
 
 	// NDA clause 7
-	subHeading(ctx, `7.  Non-Disclosure Agreement during the Internship with ${company}.`, { gapAfter: 6 });
-	clause(ctx, 'a.', `During the course of your Internship with ${company} you will have access to confidential information about ${company}, its clients, its business transactions, and associated companies. You shall not during your course of internship or having ceased to be in the Internship of ${company}, disclose such confidential/proprietary information to any third party and/or any unauthorized person. All notes and memoranda pertaining to ${company} secrets and confidential/proprietary information made by or acquired by you during the course of your Internship shall at all times remain the property of ${company}.`);
-	clause(ctx, 'b.', `You are obliged to sign a Non-disclosure agreement specific to a particular client as and when required by ${company}.`);
-	clause(ctx, 'c.', `Prior to joining ${company}, you will be free from any contractual restrictions preventing you from accepting this offer or starting work on your Internship.`, { gapAfter: 8 });
+	subHeading(ctx, `7.  Non-Disclosure Agreement during the Internship with ${company}.`, { gapAfter: 6, key: 'intern.nda.heading' });
+	clause(ctx, 'a.', `During the course of your Internship with ${company} you will have access to confidential information about ${company}, its clients, its business transactions, and associated companies. You shall not during your course of internship or having ceased to be in the Internship of ${company}, disclose such confidential/proprietary information to any third party and/or any unauthorized person. All notes and memoranda pertaining to ${company} secrets and confidential/proprietary information made by or acquired by you during the course of your Internship shall at all times remain the property of ${company}.`, { key: 'intern.nda.a' });
+	clause(ctx, 'b.', `You are obliged to sign a Non-disclosure agreement specific to a particular client as and when required by ${company}.`, { key: 'intern.nda.b' });
+	clause(ctx, 'c.', `Prior to joining ${company}, you will be free from any contractual restrictions preventing you from accepting this offer or starting work on your Internship.`, { gapAfter: 8, key: 'intern.nda.c' });
 
 	// Intern agreement. Recruiter-editable criteria; blank → the standard four.
 	const criteria = (o.internCriteria?.trim() ? o.internCriteria : DEFAULT_INTERN_CRITERIA)
@@ -1172,6 +1297,14 @@ function renderInternship(
 		.map((l) => l.trim())
 		.filter(Boolean);
 	const internAgreementText = `I ${c.name} acknowledge that I have been given a unique opportunity to gain valuable professional experience. I will be able to fulfil the Intern Profile described in a timely and professional manner. I also acknowledge that this internship is to be considered as a professional experience and that my performance will be evaluated based upon the following criteria:`;
+
+	// Both blocks are resolved up front rather than inside the keepTogether
+	// below, because the height measured next has to be the height of the text
+	// that actually gets drawn — a hand-edited paragraph two lines longer than
+	// the template's would otherwise orphan a criterion onto the next page,
+	// which is the exact thing that measurement exists to prevent.
+	const agreementHeading = editable(ctx, 'intern.agreement.heading', 'subheading', 'Intern Agreement:');
+	const agreementText = editable(ctx, 'intern.agreement.text', 'para', internAgreementText);
 
 	// Measure the heading + paragraph + every bullet so the list never orphans a
 	// criterion onto the next page. Measured, not guessed: recruiters can add or
@@ -1183,42 +1316,42 @@ function renderInternship(
 		0
 	);
 	const internAgreementNeed =
-		ctx.bodySize + 6 + // "Intern Agreement:" sub-heading
-		wrap(ctx, internAgreementText, ctx.fontR, ctx.bodySize, ctx.CW).length * lineH +
+		(agreementHeading === null ? 0 : ctx.bodySize + 6) + // "Intern Agreement:" sub-heading
+		(agreementText === null ? 0 : wrap(ctx, agreementText, ctx.fontR, ctx.bodySize, ctx.CW).length * lineH) +
 		bulletLines * lineH +
 		criteria.length * 3 +
 		6;
 
 	keepTogether(ctx, internAgreementNeed, () => {
-		subHeading(ctx, 'Intern Agreement:', { gapAfter: 6 });
-		para(ctx, internAgreementText, { gapAfter: 6 });
+		if (agreementHeading !== null) subHeading(ctx, agreementHeading, { gapAfter: 6 });
+		if (agreementText !== null) para(ctx, agreementText, { gapAfter: 6 });
 		for (const cr of criteria) bullet(ctx, cr);
 	});
 	gap(ctx, 6);
 
 	// Mentor agreement
-	subHeading(ctx, 'Mentor Agreement', { gapAfter: 6 });
+	subHeading(ctx, 'Mentor Agreement', { gapAfter: 6, key: 'intern.mentor.heading' });
 	const mentor = o.reportingManager || '____________';
-	para(ctx, `I ${mentor} agree to mentor intern ${c.name} at ${company}. I acknowledge that this will be a professional experience for the intern, and agree to provide learning assistance and supervision throughout the internship. I agree to consult with both the intern and the internship coordinator before making any changes to the work plan.`, { gapAfter: 8 });
+	para(ctx, `I ${mentor} agree to mentor intern ${c.name} at ${company}. I acknowledge that this will be a professional experience for the intern, and agree to provide learning assistance and supervision throughout the internship. I agree to consult with both the intern and the internship coordinator before making any changes to the work plan.`, { gapAfter: 8, key: 'intern.mentor.text' });
 
-	signatureLineRight(ctx, 'Intern Signature');
+	signatureLineRight(ctx, 'Intern Signature', { key: 'intern.sig.page2' });
 	gap(ctx, 6);
 
 	// Acceptance — the original's page 3, opening on "For <company>".
 	pageBreak(ctx);
 
-	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 6 });
-	para(ctx, `If you accept the above terms and conditions of service, please signify your acceptance on the duplicate copy of the internship letter provided to you and report for duty as indicated above.`, { gapAfter: 6 });
-	para(ctx, `I am sure that you will find your Internship with ${company} a great challenge and I look forward to a long and mutually beneficial association.`, { gapAfter: 6 });
-	para(ctx, `Again, congratulations and we look forward to working with you.`, { gapAfter: 12 });
+	para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 6, key: 'intern.forCompany' });
+	para(ctx, `If you accept the above terms and conditions of service, please signify your acceptance on the duplicate copy of the internship letter provided to you and report for duty as indicated above.`, { gapAfter: 6, key: 'intern.accept.report' });
+	para(ctx, `I am sure that you will find your Internship with ${company} a great challenge and I look forward to a long and mutually beneficial association.`, { gapAfter: 6, key: 'intern.accept.challenge' });
+	para(ctx, `Again, congratulations and we look forward to working with you.`, { gapAfter: 12, key: 'intern.accept.congrats' });
 
 	// The signed letters carry the whole acceptance block — both signature grids,
 	// the date row, and the company counter-signature — on a page of its own.
 	keepTogether(ctx, 330, () => {
-		subHeading(ctx, 'Acceptance Signature:', { gapAfter: 10 });
-		signatureColumns(ctx, 'Intern Name', 'Mentor Name');
+		subHeading(ctx, 'Acceptance Signature:', { gapAfter: 10, key: 'intern.accept.heading' });
+		signatureColumns(ctx, 'Intern Name', 'Mentor Name', { keyLeft: 'intern.sig.internName', keyRight: 'intern.sig.mentorName' });
 		gap(ctx, 10);
-		signatureColumns(ctx, 'Intern Signature', 'Mentor Signature', { dateRow: true });
+		signatureColumns(ctx, 'Intern Signature', 'Mentor Signature', { dateRow: true, keyLeft: 'intern.sig.internSign', keyRight: 'intern.sig.mentorSign' });
 		gap(ctx, 6);
 
 		// The company's own sign-off. Captioned "Employer Representative
@@ -1226,17 +1359,18 @@ function renderInternship(
 		// Name/Signature rules it used to carry, so the same block means the same
 		// thing in every letter — and it stamps the uploaded signature and dates
 		// itself when HR has one on file.
-		para(ctx, `For ${company}:`, { font: ctx.fontB, gapAfter: 10 });
+		para(ctx, `For ${company}:`, { font: ctx.fontB, gapAfter: 10, key: 'intern.sig.forCompany' });
 		signatureLine(ctx, 'Employer Representative Signature', {
 			width: 230,
 			bold: true,
-			employerSignature: ctx.employerSignature ?? undefined
+			employerSignature: ctx.employerSignature ?? undefined,
+			key: 'intern.sig.employer'
 		});
-		para(ctx, `Name: ${o.signatoryName || '____________________'}`, { gapAfter: 8 });
+		para(ctx, `Name: ${o.signatoryName || '____________________'}`, { gapAfter: 8, key: 'intern.sig.name' });
 		para(
 			ctx,
 			`Date: ${ctx.employerSignature ? ctx.employerSignature.date : '____________________'}`,
-			{ gapAfter: 0 }
+			{ gapAfter: 0, key: 'intern.sig.date' }
 		);
 	});
 }
@@ -1256,34 +1390,46 @@ function renderConsultant(
 ) {
 	drawApplicantHeader(ctx, { name: c.name, contact: c.contact, email: c.email, date: today() });
 
-	heading(ctx, title);
+	heading(ctx, title, { key: 'con.title' });
 	gap(ctx, 4);
 
-	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8 });
+	para(ctx, `Dear ${c.name},`, { font: ctx.fontB, gapAfter: 8, key: 'con.salutation' });
 	para(
 		ctx,
 		`With reference to your application and the subsequent discussions you had with us, we are pleased to offer you the position of "**${o.jobTitle || '____________'}**" on contractual assignment with us on the following terms and conditions:`,
-		{ gapAfter: 8 }
+		{ gapAfter: 8, key: 'con.intro' }
 	);
 
-	subHeading(ctx, 'Terms and Conditions of the employment:', { gapAfter: 8 });
+	subHeading(ctx, 'Terms and Conditions of the employment:', { gapAfter: 8, key: 'con.termsHeading' });
 
-	clause(ctx, '1.', `This assignment will be effective from ${o.joiningDate || '____________'}.`);
-	clause(ctx, '2.', `Your posting will be at our Corporate Office which is allocated based on the project need i.e., presently at ${company}${o.officeLocation ? ' - ' + o.officeLocation : ''}. However, during your contract period you may be stationed / located / posted / transferred by us to any other location of our Organization, as may be necessary for the implementation of the Project requirement.`);
+	clause(ctx, '1.', `This assignment will be effective from ${o.joiningDate || '____________'}.`, { key: 'con.clause.1' });
+	clause(ctx, '2.', `Your posting will be at our Corporate Office which is allocated based on the project need i.e., presently at ${company}${o.officeLocation ? ' - ' + o.officeLocation : ''}. However, during your contract period you may be stationed / located / posted / transferred by us to any other location of our Organization, as may be necessary for the implementation of the Project requirement.`, { key: 'con.clause.2' });
 
 	// Clause 3 — per-person weekly expectation
 	if (o.weeklyExpectation.trim()) {
-		clause(ctx, '3.', `You are expected to Maintain ${o.weeklyExpectation.trim()}.`);
+		clause(ctx, '3.', `You are expected to Maintain ${o.weeklyExpectation.trim()}.`, { key: 'con.clause.3' });
 	} else {
-		clause(ctx, '3.', `You are expected to maintain the agreed weekly deliverables as discussed.`);
+		clause(ctx, '3.', `You are expected to maintain the agreed weekly deliverables as discussed.`, { key: 'con.clause.3' });
 	}
 
 	// Clause 4 — Key Responsibilities (manually entered, one bullet per line)
 	const kras = o.keyResponsibilities.split('\n').map((l) => l.trim()).filter(Boolean);
-	ensure(ctx, 20);
-	ctx.page.drawText('4.', { x: ctx.M, y: ctx.y, font: ctx.fontR, size: 9.5, color: BLACK });
-	ctx.page.drawText(sanitize('As discussed, here you can find Key Responsibilities:'), { x: ctx.M + 16, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
-	ctx.y -= 15;
+	// Drawn by hand rather than through clause(), so the override is resolved
+	// here. Blanking it drops the heading and leaves the bullets, which is what
+	// removing a heading should mean.
+	const kraHeading = editable(
+		ctx,
+		'con.clause.4.heading',
+		'subheading',
+		'As discussed, here you can find Key Responsibilities:',
+		'4.'
+	);
+	if (kraHeading !== null) {
+		ensure(ctx, 20);
+		ctx.page.drawText('4.', { x: ctx.M, y: ctx.y, font: ctx.fontR, size: 9.5, color: BLACK });
+		ctx.page.drawText(sanitize(kraHeading), { x: ctx.M + 16, y: ctx.y, font: ctx.fontB, size: 9.5, color: BLACK });
+		ctx.y -= 15;
+	}
 	if (kras.length) {
 		for (const k of kras) bullet(ctx, k);
 	} else {
@@ -1299,68 +1445,72 @@ function renderConsultant(
 		/\{amount\}/g,
 		fee
 	);
-	clause(ctx, '5.', paymentText);
-	clause(ctx, '6.', `This offer is valid and effective only after verification of your Personal and Professional Background besides your criminal background verification.`);
-	clause(ctx, '7.', `Your salary shall be processed against the receipt of your monthly Report and performance reports duly approved by the authorized signatory and submitted to the HR Department.`);
-	clause(ctx, '8.', `Absent from work:`);
-	clause(ctx, '', `(1) If you remain absent from work, without any reasonable explanation, for more than two consecutive days, it will be presumed that you are no longer interested in working for the Company and have abandoned its services, There by terminating your contract of service without any notice. In such case, you will not be entitled to any compensation from the Company.`);
-	clause(ctx, '9.', `Notice Period: During your contract period, you are required to give a notice period of ${o.noticePeriod || '15 days'} in the event of your resigning from the services of the company. Further ${company} can terminate your employment based on the Clients' input and based on projects' requirements at any given Point.`);
-	clause(ctx, '10.', `Code of conduct: You are expected to operate with the highest degree of initiative, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any prior notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without any prior notice.`);
-	clause(ctx, '11.', `Confidentiality: The Employee will not, during or at any time after the termination of your employment, disclose to any person or persons (except to senior Employees of the Company) nor use for your own benefit any confidential information that you may receive or obtain in relation to the affairs of the Company or its Clients.`);
-	clause(ctx, '12.', `Termination of Employment: Company has the right to terminate the employment if it finds its employee indulging in the following without any prior notice or warning, pertaining to immediate termination.`);
-	clause(ctx, 'a)', `Breach of company rules and regulations.`);
-	clause(ctx, 'b)', `Having indulged in any activity which is illegal, against public interest or company or the project which employee is allotted.`);
-	clause(ctx, 'c)', `Creating or getting associated with illegal groups or causing damage to Company or Clients' reputation and work place.`);
-	clause(ctx, 'd)', `Found in any criminal or any other activity as specified by the state and central laws or found guilty of any laws or acts.`);
-	clause(ctx, 'e)', `Strikes or protest against company or its clients or any project related personnel's.`);
-	clause(ctx, 'f)', `Publishing, talking or posing anything negative statement about the Company Or its clients or any officials related to this project in public or social or any other open platforms.`);
-	clause(ctx, 'g)', `Being absent from the work without intimation or Updation for two (2) consecutive scheduled working days.`);
-	clause(ctx, 'h)', `If failed to perform as expected and trained by the project allotted and role as prescribed by Department or Reporting Authority.`);
-	clause(ctx, 'i)', `If we find any employee with Unconstructive or Unethical Behavior with your reporting head or Co-Workers/Company Staff or with Customers.`);
-	clause(ctx, 'j)', `If we receive any negative feedback from respective Reporting Officer/In charge or negative feedback from Customers.`);
-	clause(ctx, 'k)', `If we found you being associated with any Unauthorized Association or Political Parties or if they form any Employee Union Committees.`);
-	clause(ctx, 'l)', `Employee should not start a similar business till 12 months from the date of resigning, if contract is active for more than 12 months.`);
-	clause(ctx, 'm)', `Should not share any important information or stock information to others or Competitor or other vendors.`, { gapAfter: 8 });
+	clause(ctx, '5.', paymentText, { key: 'con.clause.5' });
+	clause(ctx, '6.', `This offer is valid and effective only after verification of your Personal and Professional Background besides your criminal background verification.`, { key: 'con.clause.6' });
+	clause(ctx, '7.', `Your salary shall be processed against the receipt of your monthly Report and performance reports duly approved by the authorized signatory and submitted to the HR Department.`, { key: 'con.clause.7' });
+	clause(ctx, '8.', `Absent from work:`, { key: 'con.clause.8' });
+	clause(ctx, '', `(1) If you remain absent from work, without any reasonable explanation, for more than two consecutive days, it will be presumed that you are no longer interested in working for the Company and have abandoned its services, There by terminating your contract of service without any notice. In such case, you will not be entitled to any compensation from the Company.`, { key: 'con.clause.8.1' });
+	clause(ctx, '9.', `Notice Period: During your contract period, you are required to give a notice period of ${o.noticePeriod || '15 days'} in the event of your resigning from the services of the company. Further ${company} can terminate your employment based on the Clients' input and based on projects' requirements at any given Point.`, { key: 'con.clause.9' });
+	clause(ctx, '10.', `Code of conduct: You are expected to operate with the highest degree of initiative, efficiency and responsibility, you will at all times act bearing in mind the best interests of the company and will not do or say anything which compromises the company's goals or reputations. The company's standards of conduct and value system will be explained to you. These should be complied with at all times. If at any time you are found violating these standards of conduct or value systems, termination of services may be given without any prior notice. Further, if at any time it is found that you have made any false statement or produced false documents, your services are liable to be terminated without any prior notice.`, { key: 'con.clause.10' });
+	clause(ctx, '11.', `Confidentiality: The Employee will not, during or at any time after the termination of your employment, disclose to any person or persons (except to senior Employees of the Company) nor use for your own benefit any confidential information that you may receive or obtain in relation to the affairs of the Company or its Clients.`, { key: 'con.clause.11' });
+	clause(ctx, '12.', `Termination of Employment: Company has the right to terminate the employment if it finds its employee indulging in the following without any prior notice or warning, pertaining to immediate termination.`, { key: 'con.clause.12' });
+	clause(ctx, 'a)', `Breach of company rules and regulations.`, { key: 'con.clause.12.a' });
+	clause(ctx, 'b)', `Having indulged in any activity which is illegal, against public interest or company or the project which employee is allotted.`, { key: 'con.clause.12.b' });
+	clause(ctx, 'c)', `Creating or getting associated with illegal groups or causing damage to Company or Clients' reputation and work place.`, { key: 'con.clause.12.c' });
+	clause(ctx, 'd)', `Found in any criminal or any other activity as specified by the state and central laws or found guilty of any laws or acts.`, { key: 'con.clause.12.d' });
+	clause(ctx, 'e)', `Strikes or protest against company or its clients or any project related personnel's.`, { key: 'con.clause.12.e' });
+	clause(ctx, 'f)', `Publishing, talking or posing anything negative statement about the Company Or its clients or any officials related to this project in public or social or any other open platforms.`, { key: 'con.clause.12.f' });
+	clause(ctx, 'g)', `Being absent from the work without intimation or Updation for two (2) consecutive scheduled working days.`, { key: 'con.clause.12.g' });
+	clause(ctx, 'h)', `If failed to perform as expected and trained by the project allotted and role as prescribed by Department or Reporting Authority.`, { key: 'con.clause.12.h' });
+	clause(ctx, 'i)', `If we find any employee with Unconstructive or Unethical Behavior with your reporting head or Co-Workers/Company Staff or with Customers.`, { key: 'con.clause.12.i' });
+	clause(ctx, 'j)', `If we receive any negative feedback from respective Reporting Officer/In charge or negative feedback from Customers.`, { key: 'con.clause.12.j' });
+	clause(ctx, 'k)', `If we found you being associated with any Unauthorized Association or Political Parties or if they form any Employee Union Committees.`, { key: 'con.clause.12.k' });
+	clause(ctx, 'l)', `Employee should not start a similar business till 12 months from the date of resigning, if contract is active for more than 12 months.`, { key: 'con.clause.12.l' });
+	clause(ctx, 'm)', `Should not share any important information or stock information to others or Competitor or other vendors.`, { gapAfter: 8, key: 'con.clause.12.m' });
 
-	subHeading(ctx, '12. General Conditions of Work: You will be bound by the following:', { gapAfter: 6 });
-	bullet(ctx, `Age limit for employment is 58 Years; any employee above 58 Years will be given notice to resign immediately without any prior notice.`);
-	bullet(ctx, `You will have no objection to working extra hours in the morning and or the evening according to the requirements of the job;`);
-	bullet(ctx, `You will carry out your duties with diligence and loyalty at all times, keeping the Company's interest paramount;`);
-	bullet(ctx, `You shall not at any circumstances either directly or indirectly, receive or accept for your own or on behalf of any commission, rebate, discount or profit from any person, company, or firm having business transactions with ${company} and the project allocated.`);
-	bullet(ctx, `During your employment you will be bound by the Company's Rules and Regulations framed and enforced from time to time. The company reserves the right to amend or alter the said Rules and Regulations at its discretion, without any notice thereof, and these will be deemed as Rules and Regulations in terms of your employment;`);
-	bullet(ctx, `The Company shall verify the facts stated by you in your resume submitted during the interview process. If any of the facts stated there in are found to be false, your services will be terminated immediately without any notice or any compensation in lieu of the notice period:`);
-	bullet(ctx, `This letter is governed by and shall be construed in accordance with the laws of Karnataka, and both parties to this letter shall submit to the exclusive jurisdiction of the Karnataka Courts. This letter contains the entire understanding between the parties and supersedes all previous agreements and /or arrangements relating to employment with ${company} if any. Any amendment or modification to this letter shall be made in writing and signed by both the parties.`);
-	bullet(ctx, `The terms and conditions of service are confidential and may not disclose to or discussed with anyone.`);
-	bullet(ctx, `You will be required to observe the rules and regulations applicable to all employees of the company.`);
-	bullet(ctx, `As being on Contract you are not entitled for any Gratuity or any other statutory obligations for the company.`);
-	bullet(ctx, `The Parties acknowledge that this Agreement is non-exclusive and that either Party will be free, during and after the Term, to engage or contract with third parties for the provision of services similar to the Services.`);
-	bullet(ctx, `You will keep us informed of any changes in your residential address, your family status or any other personal particulars relevant to your employment, as and when the change may occur.`);
+	subHeading(ctx, '12. General Conditions of Work: You will be bound by the following:', { gapAfter: 6, key: 'con.general.heading' });
+	bullet(ctx, `Age limit for employment is 58 Years; any employee above 58 Years will be given notice to resign immediately without any prior notice.`, { key: 'con.general.1' });
+	bullet(ctx, `You will have no objection to working extra hours in the morning and or the evening according to the requirements of the job;`, { key: 'con.general.2' });
+	bullet(ctx, `You will carry out your duties with diligence and loyalty at all times, keeping the Company's interest paramount;`, { key: 'con.general.3' });
+	bullet(ctx, `You shall not at any circumstances either directly or indirectly, receive or accept for your own or on behalf of any commission, rebate, discount or profit from any person, company, or firm having business transactions with ${company} and the project allocated.`, { key: 'con.general.4' });
+	bullet(ctx, `During your employment you will be bound by the Company's Rules and Regulations framed and enforced from time to time. The company reserves the right to amend or alter the said Rules and Regulations at its discretion, without any notice thereof, and these will be deemed as Rules and Regulations in terms of your employment;`, { key: 'con.general.5' });
+	bullet(ctx, `The Company shall verify the facts stated by you in your resume submitted during the interview process. If any of the facts stated there in are found to be false, your services will be terminated immediately without any notice or any compensation in lieu of the notice period:`, { key: 'con.general.6' });
+	bullet(ctx, `This letter is governed by and shall be construed in accordance with the laws of Karnataka, and both parties to this letter shall submit to the exclusive jurisdiction of the Karnataka Courts. This letter contains the entire understanding between the parties and supersedes all previous agreements and /or arrangements relating to employment with ${company} if any. Any amendment or modification to this letter shall be made in writing and signed by both the parties.`, { key: 'con.general.7' });
+	bullet(ctx, `The terms and conditions of service are confidential and may not disclose to or discussed with anyone.`, { key: 'con.general.8' });
+	bullet(ctx, `You will be required to observe the rules and regulations applicable to all employees of the company.`, { key: 'con.general.9' });
+	bullet(ctx, `As being on Contract you are not entitled for any Gratuity or any other statutory obligations for the company.`, { key: 'con.general.10' });
+	bullet(ctx, `The Parties acknowledge that this Agreement is non-exclusive and that either Party will be free, during and after the Term, to engage or contract with third parties for the provision of services similar to the Services.`, { key: 'con.general.11' });
+	bullet(ctx, `You will keep us informed of any changes in your residential address, your family status or any other personal particulars relevant to your employment, as and when the change may occur.`, { key: 'con.general.12' });
 	gap(ctx, 8);
 
-	subHeading(ctx, 'Acceptance:', { gapAfter: 6 });
-	para(ctx, `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, autonomy and growth among all members of the ${company} family. As a new entrant, we would like you to wholeheartedly contribute in this process.`, { gapAfter: 6 });
-	para(ctx, `This letter constitutes the complete understanding between you and the company regarding terms of employment with the company. This supersedes any and all other agreements, either written or oral, between you and the company regarding your employment. Any modification of this agreement will be effective only if it is in writing signed by both the parties. Any arbitration arising out of this contract will be held between employee and employer at Bangalore Head Office with company nominated person on one to one basis.`, { gapAfter: 6 });
-	para(ctx, `I am sure that you will find your employment with ${company} a great challenge and we look forward to a long and mutually beneficial association.`, { gapAfter: 14 });
+	subHeading(ctx, 'Acceptance:', { gapAfter: 6, key: 'con.accept.heading' });
+	para(ctx, `We are consciously endeavoring to build an atmosphere of trust, openness, responsiveness, autonomy and growth among all members of the ${company} family. As a new entrant, we would like you to wholeheartedly contribute in this process.`, { gapAfter: 6, key: 'con.accept.trust' });
+	para(ctx, `This letter constitutes the complete understanding between you and the company regarding terms of employment with the company. This supersedes any and all other agreements, either written or oral, between you and the company regarding your employment. Any modification of this agreement will be effective only if it is in writing signed by both the parties. Any arbitration arising out of this contract will be held between employee and employer at Bangalore Head Office with company nominated person on one to one basis.`, { gapAfter: 6, key: 'con.accept.complete' });
+	para(ctx, `I am sure that you will find your employment with ${company} a great challenge and we look forward to a long and mutually beneficial association.`, { gapAfter: 14, key: 'con.accept.challenge' });
 
 	keepTogether(ctx, 190, () => {
-		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 10 });
-		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true });
-		para(ctx, `Date:`, { gapAfter: 12 });
+		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 10, key: 'con.forCompany' });
+		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true, key: 'con.sig.authorized' });
+		para(ctx, `Date:`, { gapAfter: 12, key: 'con.sig.date' });
 
-		para(ctx, `I have read, understood and accepted the above: I understand that the terms and conditions are pre - conditions to my being offered employment with the company. I am under no obligation or duress to accept these terms and conditions of employment. I accept them of my own free choice and will.`, { gapAfter: 14 });
-		para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14 });
-		para(ctx, `Signature:`, { font: ctx.fontB, gapAfter: 0 });
+		para(ctx, `I have read, understood and accepted the above: I understand that the terms and conditions are pre - conditions to my being offered employment with the company. I am under no obligation or duress to accept these terms and conditions of employment. I accept them of my own free choice and will.`, { gapAfter: 14, key: 'con.accept.read' });
+		para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14, key: 'con.accept.name' });
+		para(ctx, `Signature:`, { font: ctx.fontB, gapAfter: 0, key: 'con.accept.signature' });
 	});
 }
 
 // ── entry point ──────────────────────────────────────────────────────────────
 
-export async function generateOfferLetterPdf(
+/** Renders the letter and hands back both the PDF and the list of editable
+ *  blocks it drew. One render answers both questions, which is what keeps the
+ *  manual-edit editor honest: it can only offer blocks this letter actually
+ *  contains, with the default text this candidate's letter actually says. */
+export async function renderOfferLetter(
 	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress' | 'track'> & { mobile?: string | null },
 	companyName: string,
 	offer: OfferLetterInput,
 	brand: BrandTheme
-): Promise<Uint8Array> {
+): Promise<{ bytes: Uint8Array; blocks: LetterBlock[] }> {
 	const doc = await PDFDocument.create();
 	doc.registerFontkit(fontkit);
 	doc.setTitle(`Offer Letter - ${candidate.fullName ?? candidate.email}`);
@@ -1457,7 +1607,11 @@ export async function generateOfferLetterPdf(
 				: APPOINTMENT_PINNED_TRACKS.has(track)
 					? APPOINTMENT_BLOCK_GAP
 					: 1,
-		employerSignature
+		employerSignature,
+		overrides: manualEditMap(offer.manualEdits ?? []),
+		blocks: [],
+		// newPage() bumps this, so the first page comes out as 1.
+		pageNo: 0
 	};
 
 	// First page
@@ -1490,7 +1644,17 @@ export async function generateOfferLetterPdf(
 		}
 	}
 
-	return doc.save();
+	return { bytes: await doc.save(), blocks: ctx.blocks };
+}
+
+/** The PDF alone — what every caller that just wants the letter uses. */
+export async function generateOfferLetterPdf(
+	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress' | 'track'> & { mobile?: string | null },
+	companyName: string,
+	offer: OfferLetterInput,
+	brand: BrandTheme
+): Promise<Uint8Array> {
+	return (await renderOfferLetter(candidate, companyName, offer, brand)).bytes;
 }
 
 // Re-export so existing imports of EMPLOYMENT_TYPE_LABELS via this module still work.
