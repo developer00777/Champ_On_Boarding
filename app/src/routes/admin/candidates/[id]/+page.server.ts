@@ -401,7 +401,27 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		offerLetter: {
 			...offerLetterInputFromDraft(offerLetter),
 			status: offerLetter?.status ?? 'draft',
-			sentAt: offerLetter?.sentAt?.toISOString() ?? null
+			sentAt: offerLetter?.sentAt?.toISOString() ?? null,
+			/** The directly-uploaded letter, when there is one — it replaces the
+			 *  generated letter everywhere, so the card leads with it. */
+			uploaded: offerLetter?.uploadedLetter?.fileId
+				? {
+						filename: offerLetter.uploadedLetter.filename ?? 'offer-letter.pdf',
+						sizeBytes: offerLetter.uploadedLetter.sizeBytes ?? 0,
+						pages: offerLetter.uploadedLetter.pages ?? 1,
+						uploadedBy: offerLetter.uploadedLetter.uploadedBy ?? '',
+						uploadedAt: offerLetter.uploadedLetter.uploadedAt?.toISOString() ?? null,
+						signature: {
+							page: offerLetter.uploadedLetter.signature?.page ?? 1,
+							x: offerLetter.uploadedLetter.signature?.x ?? 56,
+							y: offerLetter.uploadedLetter.signature?.y ?? 140,
+							width: offerLetter.uploadedLetter.signature?.width ?? 130,
+							detected: offerLetter.uploadedLetter.signature?.detected ?? false,
+							anchorText: offerLetter.uploadedLetter.signature?.anchorText ?? '',
+							enabled: offerLetter.uploadedLetter.signature?.enabled ?? true
+						}
+					}
+				: null
 		},
 		onboardingLink,
 		/** HR's own reference uploads — optional, and separate from the candidate's
@@ -1298,7 +1318,11 @@ ${brandSignoff(brand)}`,
 		const draft = await OfferLetter.findOne({ candidateId: params.id });
 		const draftInput = offerLetterInputFromDraft(draft);
 		const track = candidate.track as Track;
-		if (!draft || !isOfferLetterComplete(draftInput, track)) {
+		// A directly-uploaded letter is already written, so the form's required
+		// fields do not gate sending it: they describe a letter this candidate is
+		// not getting. What must exist is the upload.
+		const hasUpload = !!draft?.uploadedLetter?.fileId;
+		if (!draft || (!hasUpload && !isOfferLetterComplete(draftInput, track))) {
 			return fail(400, {
 				offerLetterError: true,
 				message: `Fill in all offer letter fields before sending (missing: ${missingOfferLetterFields(draftInput, track).join(', ')}).`

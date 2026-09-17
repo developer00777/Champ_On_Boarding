@@ -14,9 +14,16 @@ import {
 	LETTER_TYPE_BY_TRACK
 } from '$lib/server/offer-letter/fields';
 import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
+import { getGridFSBytes } from '$lib/server/storage';
+import { stampUploadedLetter } from '$lib/server/offer-letter/uploaded';
 
 export function offerLetterReadyToSend(draft: OfferLetterDoc | null, track: Track): boolean {
-	return !!draft && isOfferLetterComplete(offerLetterInputFromDraft(draft), track);
+	if (!draft) return false;
+	// A directly-uploaded letter is already written, so the form's required
+	// fields no longer gate sending it — they describe a letter this candidate
+	// is not getting. The upload itself is the thing that has to exist.
+	if (draft.uploadedLetter?.fileId) return true;
+	return isOfferLetterComplete(offerLetterInputFromDraft(draft), track);
 }
 
 async function buildOfferLetterPdfAttachment(
@@ -26,7 +33,15 @@ async function buildOfferLetterPdfAttachment(
 	brand: BrandTheme
 ) {
 	const input = offerLetterInputFromDraft(draft);
-	const pdfBytes = await generateOfferLetterPdf(candidate, companyName, input, brand);
+	// The letter HR uploaded, signed, is what goes out — the generated one is
+	// not rendered at all when there is an upload to send.
+	const pdfBytes = draft.uploadedLetter?.fileId
+		? await stampUploadedLetter(
+				await getGridFSBytes(draft.uploadedLetter.fileId),
+				draft.uploadedLetter.signature ?? null,
+				input.signatoryImageBase64
+			)
+		: await generateOfferLetterPdf(candidate, companyName, input, brand);
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
 	return { filename: `${safeName}_offer_letter.pdf`, content: Buffer.from(pdfBytes) };
 }

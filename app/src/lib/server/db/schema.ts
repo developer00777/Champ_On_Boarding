@@ -411,6 +411,34 @@ const offerLetterSchema = new Schema(
 		 *  without reading the audit log. */
 		manualEditsBy: { type: String, default: null },
 		manualEditsAt: { type: Date, default: null },
+		/** DIRECT UPLOAD — a finished letter HR wrote themselves, which takes the
+		 *  place of the generated one for this candidate: preview, download and
+		 *  the emailed attachment all serve it instead. Null means the letter is
+		 *  generated from the fields above, which is the normal case.
+		 *
+		 *  `fileId` is the upload exactly as received and is never rewritten; the
+		 *  signature is stamped on at read time from `signature` below, so it can
+		 *  be re-placed for free and the original is always recoverable. */
+		uploadedLetter: {
+			fileId: { type: Schema.Types.ObjectId, default: null },
+			filename: { type: String, default: null },
+			sizeBytes: { type: Number, default: null },
+			pages: { type: Number, default: null },
+			uploadedBy: { type: String, default: null },
+			uploadedAt: { type: Date, default: null },
+			/** Where to stamp the employer signature, in PDF points from the
+			 *  bottom-left of the page. Found by reading the letter's own text on
+			 *  upload (see offer-letter/uploaded.ts), then adjustable by hand. */
+			signature: {
+				page: { type: Number, default: 1 },
+				x: { type: Number, default: 56 },
+				y: { type: Number, default: 140 },
+				width: { type: Number, default: 130 },
+				detected: { type: Boolean, default: false },
+				anchorText: { type: String, default: '' },
+				enabled: { type: Boolean, default: true }
+			}
+		},
 		status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
 		sentAt: { type: Date, default: null },
 		sentBy: { type: Schema.Types.ObjectId, ref: 'Admin', default: null }

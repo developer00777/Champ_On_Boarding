@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import {
@@ -306,6 +306,281 @@
 		meAdds = meAdds.filter((a) => a.id !== id);
 	}
 	const addsAfter = (key: string) => meAdds.filter((a) => a.afterKey === key);
+
+	// ── Direct upload ─────────────────────────────────────────────────────────
+	// The letter HR wrote themselves. Uploading one replaces the generated letter
+	// for this candidate everywhere — preview, download and the emailed
+	// attachment all serve the upload instead.
+	//
+	// The signature is not burnt into the stored file. The editor below renders
+	// the uploaded PDF to a canvas and floats the signature over it, so dragging
+	// it is only a coordinate change and the server stamps it on at read time.
+	// That keeps the original recoverable, and lets the placement be corrected
+	// after someone has looked at the letter — which is when placement problems
+	// actually show up.
+	type UploadedSig = {
+		page: number;
+		x: number;
+		y: number;
+		width: number;
+		detected: boolean;
+		anchorText: string;
+		enabled: boolean;
+	};
+	type UploadedLetter = {
+		filename: string;
+		sizeBytes: number;
+		pages: number;
+		uploadedBy: string;
+		uploadedAt: string | null;
+		signature: UploadedSig;
+	};
+
+	let uploaded = $state<UploadedLetter | null>(untrack(() => data.offerLetter.uploaded ?? null));
+	$effect(() => {
+		uploaded = ol.uploaded ?? null;
+	});
+
+	let duOpen = $state(false);
+	let duBusy = $state(false);
+	let duError: string | null = $state(null);
+	let duSig = $state<UploadedSig | null>(null);
+	let duCanvas: HTMLCanvasElement | null = $state(null);
+	let duStage: HTMLDivElement | null = $state(null);
+	/** Page size in PDF points and the canvas scale, which together convert
+	 *  between where the signature is stored and where it is drawn. */
+	let duPage = $state({ w: 595.28, h: 841.89 });
+	let duScale = $state(1);
+	let duRendering = $state(false);
+	let duSaved = $state(false);
+	/** The raw upload, fetched once and re-rendered from memory as HR flips
+	 *  pages — a 2 MB letter should not be refetched to look at page 3. */
+	let duBytes: ArrayBuffer | null = null;
+
+	const sigImage = $derived(ol.signatoryImageBase64 ?? '');
+	/** Natural aspect ratio of the signature image, so the draggable overlay is
+	 *  the shape the server will actually stamp rather than a guess. */
+	let sigAspect = $state(3.2);
+	// Annotated, not inferred: the drag handlers assign duSig and read this to
+	// clamp against the page edge, so leaving it to inference makes the two
+	// depend on each other and TypeScript gives up with `never`.
+	const duSigHeight: number = $derived(duSig ? duSig.width / sigAspect : 0);
+	const duDirty = $derived(
+		!!duSig && !!uploaded && JSON.stringify(duSig) !== JSON.stringify(uploaded.signature)
+	);
+
+	async function openDirectUpload() {
+		duOpen = true;
+		duError = null;
+		duSaved = false;
+		duSig = uploaded ? { ...uploaded.signature } : null;
+		duBytes = null;
+		if (uploaded) await loadUploadedPdf();
+	}
+
+	function measureSignature() {
+		if (!sigImage) return;
+		const img = new Image();
+		img.onload = () => {
+			if (img.naturalWidth && img.naturalHeight) sigAspect = img.naturalWidth / img.naturalHeight;
+		};
+		img.src = sigImage;
+	}
+
+	async function loadUploadedPdf() {
+		duRendering = true;
+		duError = null;
+		try {
+			// ?raw=1: the stamped copy would show the signature twice — once burnt
+			// into the page, once as the thing being dragged.
+			const res = await fetch(`/admin/candidates/${c.id}/offer-letter/uploaded?raw=1`);
+			if (!res.ok) throw new Error(String(res.status));
+			duBytes = await res.arrayBuffer();
+			measureSignature();
+			await renderUploadedPage();
+		} catch {
+			duError = 'Could not open the uploaded letter.';
+			duRendering = false;
+		}
+	}
+
+	/** Renders the current page to the canvas. pdfjs is imported here rather than
+	 *  at module scope so it never loads for the ninety-nine candidates whose
+	 *  letter is generated, and never during SSR, where it has no DOM. */
+	async function renderUploadedPage() {
+		if (!duBytes || !duSig) return;
+		duRendering = true;
+		try {
+			const pdfjs = await import('pdfjs-dist');
+			const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+			pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+
+			// pdfjs transfers the buffer it is handed, so it gets a copy and the
+			// original stays renderable for the next page flip.
+			const doc = await pdfjs.getDocument({ data: new Uint8Array(duBytes.slice(0)) }).promise;
+			const page = await doc.getPage(Math.min(duSig.page, doc.numPages));
+			const base = page.getViewport({ scale: 1 });
+			duPage = { w: base.width, h: base.height };
+			const stageWidth = duStage?.clientWidth || 560;
+			duScale = stageWidth / base.width;
+			const viewport = page.getViewport({ scale: duScale });
+
+			await tick();
+			const canvas = duCanvas;
+			const ctx = canvas?.getContext('2d');
+			if (!canvas || !ctx) return;
+			canvas.width = Math.floor(viewport.width);
+			canvas.height = Math.floor(viewport.height);
+			await page.render({ canvasContext: ctx, viewport }).promise;
+			await doc.destroy();
+		} catch {
+			// The placement editor is the nicety, not the feature: the letter still
+			// uploaded, still previews through the Preview button, and still sends.
+			duError =
+				'Could not draw the letter here — the position can still be saved, and Preview shows the result.';
+		} finally {
+			duRendering = false;
+		}
+	}
+
+	async function onLetterChosen(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		duBusy = true;
+		duError = null;
+		duSaved = false;
+		try {
+			const body = new FormData();
+			body.append('file', file);
+			const res = await fetch(`/admin/candidates/${c.id}/offer-letter/uploaded`, {
+				method: 'POST',
+				body
+			});
+			if (!res.ok) {
+				const msg = (await res.json().catch(() => null)) as { message?: string } | null;
+				duError = msg?.message ?? `Upload failed (${res.status}).`;
+				return;
+			}
+			uploaded = (await res.json()) as UploadedLetter;
+			duSig = { ...uploaded.signature };
+			duBytes = null;
+			await loadUploadedPdf();
+			await invalidateAll();
+		} catch {
+			duError = 'Upload failed — check your connection and try again.';
+		} finally {
+			duBusy = false;
+			input.value = '';
+		}
+	}
+
+	/** Drag in canvas pixels, store in PDF points. The two y axes run opposite
+	 *  ways — a canvas counts down from the top, a PDF counts up from the bottom
+	 *  — so the conversion flips it and allows for the signature's own height,
+	 *  because the stored point is the image's bottom-left corner. */
+	function startSignatureDrag(e: PointerEvent) {
+		if (!duSig || !duStage) return;
+		e.preventDefault();
+		const target = e.currentTarget as HTMLElement;
+		target.setPointerCapture(e.pointerId);
+		const startX = e.clientX;
+		const startY = e.clientY;
+		const originX = duSig.x;
+		const originY = duSig.y;
+
+		const move = (ev: PointerEvent) => {
+			if (!duSig) return;
+			const dx = (ev.clientX - startX) / duScale;
+			const dy = (ev.clientY - startY) / duScale;
+			duSig = {
+				...duSig,
+				x: Math.max(0, Math.min(originX + dx, duPage.w - duSig.width)),
+				y: Math.max(0, Math.min(originY - dy, duPage.h - duSigHeight))
+			};
+		};
+		const up = (ev: PointerEvent) => {
+			target.releasePointerCapture(ev.pointerId);
+			target.removeEventListener('pointermove', move);
+			target.removeEventListener('pointerup', up);
+		};
+		target.addEventListener('pointermove', move);
+		target.addEventListener('pointerup', up);
+	}
+
+	/** Arrow keys move the signature too: a wet-ink signature needs to line up
+	 *  with a printed rule, and the last two points of that are easier to type
+	 *  than to drag. Shift makes it a coarse move. */
+	function nudgeSignature(e: KeyboardEvent) {
+		if (!duSig) return;
+		const step = e.shiftKey ? 10 : 1;
+		const by: Record<string, [number, number]> = {
+			ArrowLeft: [-step, 0],
+			ArrowRight: [step, 0],
+			ArrowUp: [0, step],
+			ArrowDown: [0, -step]
+		};
+		const d = by[e.key];
+		if (!d) return;
+		e.preventDefault();
+		duSig = {
+			...duSig,
+			x: Math.max(0, Math.min(duSig.x + d[0], duPage.w - duSig.width)),
+			y: Math.max(0, Math.min(duSig.y + d[1], duPage.h - duSigHeight))
+		};
+	}
+
+	async function saveSignaturePlacement() {
+		if (!duSig) return;
+		duBusy = true;
+		duError = null;
+		try {
+			const res = await fetch(`/admin/candidates/${c.id}/offer-letter/uploaded`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(duSig)
+			});
+			if (!res.ok) {
+				duError = `Could not save the signature position (${res.status}).`;
+				return;
+			}
+			const body = (await res.json()) as { signature: UploadedSig };
+			if (uploaded) uploaded = { ...uploaded, signature: body.signature };
+			duSig = { ...body.signature };
+			duSaved = true;
+			await invalidateAll();
+		} catch {
+			duError = 'Could not save the signature position.';
+		} finally {
+			duBusy = false;
+		}
+	}
+
+	async function removeUploadedLetter() {
+		if (!confirm('Remove the uploaded letter? This candidate goes back to the generated one.'))
+			return;
+		duBusy = true;
+		try {
+			await fetch(`/admin/candidates/${c.id}/offer-letter/uploaded`, { method: 'DELETE' });
+			uploaded = null;
+			duSig = null;
+			duBytes = null;
+			duOpen = false;
+			await invalidateAll();
+		} finally {
+			duBusy = false;
+		}
+	}
+
+	async function setSignaturePage(page: number) {
+		if (!duSig) return;
+		duSig = { ...duSig, page };
+		await renderUploadedPage();
+	}
+
+	function prettyBytes(n: number): string {
+		return n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
+	}
 
 	const meDirty = $derived(
 		JSON.stringify(meDraft) !== JSON.stringify(manualEdits) ||
@@ -756,6 +1031,169 @@
 
 <!-- IT/VPN mail confirm — the mail rendered as IT will receive it, with the
      recipient list and a warning for any column that would go out blank. -->
+<!-- ── Direct upload (super admin only) ─────────────────────────────────────
+     Upload a finished letter and it replaces the generated one for this
+     candidate. The signature is not burnt into the stored file: the page is
+     drawn to a canvas here with the signature floating over it, so placing it
+     is a coordinate change and the server stamps it on when the letter is
+     read. Outside the offer <form>, like every other dialog on this page. -->
+{#if duOpen}
+	<div
+		class="it-modal-overlay"
+		role="button"
+		tabindex="-1"
+		onclick={() => (duOpen = false)}
+		onkeydown={(e) => e.key === 'Escape' && (duOpen = false)}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events -- click-catcher only, stops the overlay's dismiss-on-click from firing; not itself interactive -->
+		<div
+			class="it-modal du-modal"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="du-title"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="it-modal-head">
+				<div>
+					<div class="it-modal-eyebrow">Super admin only</div>
+					<h2 id="du-title">Direct upload</h2>
+				</div>
+				<button class="it-modal-x" type="button" onclick={() => (duOpen = false)} aria-label="Close">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+				</button>
+			</div>
+
+			{#if duError}
+				<p class="error" style="margin:0 0 10px">{duError}</p>
+			{/if}
+
+			{#if !uploaded}
+				<p class="me-intro">
+					Upload the finished offer letter for {c.fullName || c.email} and it becomes their letter:
+					Preview, Download and Send all serve it instead of the one built from the fields. The
+					signature on file is stamped on automatically — this reads the letter to find where its
+					signature line is, and you can drag it from there.
+				</p>
+				<label class="du-drop">
+					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+					<span class="du-drop-main">{duBusy ? 'Reading the letter…' : 'Choose a PDF'}</span>
+					<span class="du-drop-sub">PDF only · up to 25 MB</span>
+					<input type="file" accept="application/pdf" onchange={onLetterChosen} disabled={duBusy} />
+				</label>
+			{:else}
+				<div class="it-modal-meta">
+					<div class="it-meta-row"><span class="it-meta-k">File</span><span class="it-meta-v">{uploaded.filename} · {uploaded.pages} {uploaded.pages === 1 ? 'page' : 'pages'} · {prettyBytes(uploaded.sizeBytes)}</span></div>
+					<div class="it-meta-row"><span class="it-meta-k">Uploaded</span><span class="it-meta-v">{uploaded.uploadedBy}{uploaded.uploadedAt ? ' · ' + new Date(uploaded.uploadedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}</span></div>
+				</div>
+
+				{#if !sigImage}
+					<div class="it-modal-warn">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0Z"/></svg>
+						<span>No signature image is on file, so this letter will go out unsigned. Add one under
+							<strong>Signature image</strong> on the offer form, then reopen this.</span>
+					</div>
+				{:else if duSig?.detected}
+					<p class="du-found">
+						Signature line found — <span class="du-anchor">“{duSig.anchorText}”</span>. Drag it if it
+						needs nudging, or use the arrow keys.
+					</p>
+				{:else if duSig}
+					<p class="du-found du-notfound">
+						No signature line recognised in this letter, so it is parked at the foot of the last page.
+						Drag it where it belongs.
+					</p>
+				{/if}
+
+				<div class="du-body">
+					<div class="du-stage" bind:this={duStage}>
+						<canvas bind:this={duCanvas} class="du-canvas"></canvas>
+						{#if duRendering}
+							<div class="du-loading">Drawing page…</div>
+						{/if}
+						{#if duSig && sigImage && duSig.enabled}
+							<!-- Positioned from the stored PDF point, which is the image's
+							     bottom-left corner, so the top is measured from the far side
+							     of the page. -->
+							<div
+								class="du-sig"
+								style="left:{duSig.x * duScale}px; top:{(duPage.h - duSig.y - duSigHeight) * duScale}px; width:{duSig.width * duScale}px;"
+								onpointerdown={startSignatureDrag}
+								onkeydown={nudgeSignature}
+								role="button"
+								tabindex="0"
+								aria-label="Signature — drag or use the arrow keys to position"
+							>
+								<img src={sigImage} alt="" draggable="false" />
+							</div>
+						{/if}
+					</div>
+
+					<div class="du-side">
+						{#if duSig}
+							{#if uploaded.pages > 1}
+								<label class="du-control">
+									<span>Page</span>
+									<select value={duSig.page} onchange={(e) => setSignaturePage(Number(e.currentTarget.value))}>
+										{#each Array.from({ length: uploaded.pages }, (_, i) => i + 1) as n (n)}
+											<option value={n}>{n}</option>
+										{/each}
+									</select>
+								</label>
+							{/if}
+							<label class="du-control">
+								<span>Size</span>
+								<input
+									type="range"
+									min="40"
+									max="300"
+									step="5"
+									value={duSig.width}
+									oninput={(e) => (duSig = duSig && { ...duSig, width: Number(e.currentTarget.value) })}
+								/>
+							</label>
+							<label class="du-check">
+								<input
+									type="checkbox"
+									checked={duSig.enabled}
+									onchange={(e) => (duSig = duSig && { ...duSig, enabled: e.currentTarget.checked })}
+								/>
+								<span>Stamp the signature</span>
+							</label>
+							<p class="du-hint">Off if the PDF you uploaded is already signed.</p>
+							<div class="du-coords">x {Math.round(duSig.x)} · y {Math.round(duSig.y)} pt</div>
+						{/if}
+
+						<div class="du-side-actions">
+							<label class="du-replace">
+								Replace PDF
+								<input type="file" accept="application/pdf" onchange={onLetterChosen} disabled={duBusy} />
+							</label>
+							<a class="me-link" href="/admin/candidates/{c.id}/offer-letter/uploaded" target="_blank" rel="noopener">Open signed PDF</a>
+							<button type="button" class="me-link me-link-danger" onclick={removeUploadedLetter} disabled={duBusy}>
+								Remove upload
+							</button>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<div class="it-modal-actions">
+				{#if duSaved && !duDirty}
+					<span class="saved-chip" style="margin:0">Signature placed ✓</span>
+				{/if}
+				<span style="flex:1"></span>
+				<button class="btn small ghost" type="button" onclick={() => (duOpen = false)}>Close</button>
+				{#if uploaded}
+					<button class="btn small teal" type="button" disabled={!duDirty || duBusy} onclick={saveSignaturePlacement}>
+						{duBusy ? 'Saving…' : duDirty ? 'Save position' : 'Saved'}
+					</button>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
 <!-- ── Manual edits (super admin only) ──────────────────────────────────────
      Lists every block this candidate's letter actually draws, in printed order,
      with the template's own text as the starting point. Deliberately outside the
@@ -1740,6 +2178,11 @@
 			<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
 				<div class="eyebrow">Offer letter</div>
 				<div style="flex:1"></div>
+				{#if uploaded}
+					<span class="pill purple" title="A directly-uploaded letter replaces the generated one">
+						UPLOADED
+					</span>
+				{/if}
 				{#if manualEditCount}
 					<span class="pill gold" title="This letter's wording has been hand-edited">
 						{manualEditCount} HAND-EDITED
@@ -1751,10 +2194,20 @@
 					<span class="pill">DRAFT</span>
 				{/if}
 			</div>
-			<p class="muted" style="font-size:11.5px;margin:0 0 14px">
-				Name, address and company are pulled in automatically. Fill in the rest, then download or send it as
-				an attachment on {c.fullName || c.email}'s onboarding email.
-			</p>
+			{#if uploaded}
+				<div class="du-banner">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+					<span>
+						This candidate gets the uploaded letter <strong>{uploaded.filename}</strong>, not the one
+						built from the fields below. Preview, Download and Send all serve it.
+					</span>
+				</div>
+			{:else}
+				<p class="muted" style="font-size:11.5px;margin:0 0 14px">
+					Name, address and company are pulled in automatically. Fill in the rest, then download or send it as
+					an attachment on {c.fullName || c.email}'s onboarding email.
+				</p>
+			{/if}
 			{#if (form as { offerLetterError?: true; message?: string } | undefined)?.offerLetterError}
 				<p class="error">{(form as { message: string }).message}</p>
 			{/if}
@@ -2177,16 +2630,11 @@
 						{previewing ? 'Building preview…' : 'Preview'}
 					</button>
 					{#if data.isSuperAdmin}
-						<!-- Hand-editing the letter's own terms is a super admin's call, so
-						     the button is theirs alone; the endpoint behind it, the save
-						     action and the preview all re-check the role server-side. -->
-						<button
-							type="button"
-							class="btn ghost small"
-							onclick={openManualEdits}
-							disabled={meLoading}
-						>
-							{meLoading ? 'Opening…' : 'Manual edits'}{manualEditCount ? ` · ${manualEditCount}` : ''}
+						<!-- Replacing the letter wholesale is a super admin's call, so the
+						     button is theirs alone; the upload endpoint, the save action and
+						     the preview all re-check the role server-side. -->
+						<button type="button" class="btn ghost small" onclick={openDirectUpload}>
+							{uploaded ? 'Uploaded letter' : 'Direct upload'}
 						</button>
 					{/if}
 					<a class="btn ghost small" href="/admin/candidates/{c.id}/offer-letter" download>Download PDF</a>
@@ -2696,6 +3144,209 @@
 		   preview matches an inbox rather than the admin theme. */
 		background: #f2f4f7;
 	}
+	/* ── Direct upload dialog ──────────────────────────────────────────────── */
+	.du-banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		margin: 0 0 14px;
+		padding: 9px 11px;
+		border: 1px solid rgba(123, 167, 240, 0.3);
+		background: rgba(123, 167, 240, 0.1);
+		border-radius: 9px;
+		font-size: 11.5px;
+		line-height: 1.5;
+		color: var(--ae-text-2);
+	}
+	.du-banner svg {
+		flex: none;
+		margin-top: 1px;
+		color: var(--ae-azure);
+	}
+	.du-modal {
+		max-width: 940px;
+	}
+	.du-drop {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 28px 20px;
+		border: 1.5px dashed var(--ae-line-strong);
+		border-radius: 12px;
+		cursor: pointer;
+		color: var(--ae-muted);
+		transition: border-color 0.12s ease, color 0.12s ease;
+	}
+	.du-drop:hover {
+		border-color: var(--ae-verdant);
+		color: var(--ae-text-2);
+	}
+	.du-drop input {
+		display: none;
+	}
+	.du-drop-main {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ae-text-2);
+	}
+	.du-drop-sub {
+		font-size: 11px;
+	}
+	.du-found {
+		margin: 10px 0 8px;
+		font-size: 11.5px;
+		line-height: 1.5;
+		color: var(--ae-verdant);
+	}
+	.du-found.du-notfound {
+		color: var(--ae-amber);
+	}
+	.du-anchor {
+		font-family: var(--ae-font-mono);
+		font-size: 11px;
+	}
+	/* The page and its controls sit side by side, and stack on a narrow screen
+	   so the page never gets squeezed to a thumbnail. */
+	.du-body {
+		flex: 1;
+		display: flex;
+		gap: 14px;
+		min-height: 0;
+		overflow-y: auto;
+	}
+	.du-stage {
+		position: relative;
+		flex: 1;
+		min-width: 0;
+		align-self: flex-start;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 8px;
+		overflow: hidden;
+		/* The page paints its own white; keep it that way so the letter reads as
+		   paper rather than as part of the admin theme. */
+		background: #fff;
+		line-height: 0;
+	}
+	.du-canvas {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+	.du-loading {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		font-size: 11.5px;
+		line-height: 1.4;
+		color: var(--ae-muted);
+		background: rgba(255, 255, 255, 0.72);
+	}
+	/* The draggable signature. Outlined only on hover/focus: it has to read as
+	   part of the letter to be judged as part of the letter. */
+	.du-sig {
+		position: absolute;
+		cursor: grab;
+		touch-action: none;
+		border: 1px dashed transparent;
+		border-radius: 2px;
+	}
+	.du-sig:hover,
+	.du-sig:focus-visible {
+		border-color: var(--ae-verdant);
+		outline: none;
+	}
+	.du-sig:active {
+		cursor: grabbing;
+	}
+	.du-sig img {
+		display: block;
+		width: 100%;
+		height: auto;
+		pointer-events: none;
+		user-select: none;
+	}
+	.du-side {
+		flex: none;
+		width: 190px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.du-control {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--ae-muted);
+	}
+	.du-control select,
+	.du-control input[type='range'] {
+		width: 100%;
+		font-family: inherit;
+		font-size: 12px;
+		color: var(--ae-text-2);
+	}
+	.du-control select {
+		padding: 5px 7px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 7px;
+		background: transparent;
+	}
+	.du-check {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 11.5px;
+		color: var(--ae-text-2);
+	}
+	.du-hint,
+	.du-coords {
+		margin: -4px 0 0;
+		font-size: 10.5px;
+		color: var(--ae-muted);
+	}
+	.du-coords {
+		font-family: var(--ae-font-mono);
+		margin-top: 2px;
+	}
+	.du-side-actions {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 7px;
+		margin-top: auto;
+		padding-top: 10px;
+		border-top: 1px solid var(--ae-line);
+	}
+	.du-replace {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--ae-text-2);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+	.du-replace input {
+		display: none;
+	}
+	@media (max-width: 720px) {
+		.du-body {
+			flex-direction: column;
+		}
+		.du-side {
+			width: auto;
+		}
+		.du-side-actions {
+			flex-direction: row;
+			flex-wrap: wrap;
+			align-items: center;
+			margin-top: 4px;
+		}
+	}
+
 	/* ── Manual edits dialog ───────────────────────────────────────────────── */
 	.me-modal {
 		max-width: 860px;

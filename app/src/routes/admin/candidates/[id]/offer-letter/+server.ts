@@ -6,6 +6,27 @@ import { offerLetterInputFromDraft } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
 import { brandBySlug } from '$lib/shared/brands';
+import { getGridFSBytes } from '$lib/server/storage';
+import { stampUploadedLetter } from '$lib/server/offer-letter/uploaded';
+import type { ObjectId } from 'mongodb';
+
+/** A directly-uploaded letter replaces the generated one wholesale, so both the
+ *  download and the preview serve it instead of rendering. Returns null when
+ *  this candidate's letter is generated, which is the normal case. */
+async function uploadedLetterBytes(draft: unknown): Promise<Uint8Array | null> {
+	const d = draft as {
+		uploadedLetter?: { fileId?: ObjectId | null; signature?: never };
+		signatoryImageBase64?: string | null;
+	} | null;
+	const fileId = d?.uploadedLetter?.fileId;
+	if (!fileId) return null;
+	const raw = await getGridFSBytes(fileId);
+	return stampUploadedLetter(
+		raw,
+		d?.uploadedLetter?.signature ?? null,
+		d?.signatoryImageBase64 ?? ''
+	);
+}
 
 /** getClientAddress() throws outright when ADDRESS_HEADER names a header the
  *  request does not carry — which is every request that does not come through a
@@ -39,7 +60,8 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 	});
 
 	const input = offerLetterInputFromDraft(draft);
-	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
+	const uploaded = await uploadedLetterBytes(draft);
+	const pdfBytes = uploaded ?? (await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand));
 	// Copy into a standalone ArrayBuffer — an unambiguous BodyInit that both
 	// TypeScript and every JS runtime treat as binary (never JSON-serialised).
 	const body = pdfBytes.slice().buffer;
@@ -71,6 +93,12 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 	const company = await Company.findById(candidate.companyId).lean();
 	const brand = brandBySlug(company?.brandSlug ?? undefined);
 
+	// An uploaded letter is the letter: the form's fields do not compose with it,
+	// so the preview shows the upload rather than rendering something the
+	// candidate would never receive.
+	const uploadedDraft = await OfferLetter.findOne({ candidateId: params.id }).lean();
+	const uploaded = await uploadedLetterBytes(uploadedDraft);
+
 	const parsed = await offerLetterInputFromForm(await request.formData());
 	if (!parsed.ok) error(400, parsed.error);
 
@@ -96,7 +124,8 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 		ip: clientIp(getClientAddress)
 	});
 
-	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', parsed.input, brand);
+	const pdfBytes =
+		uploaded ?? (await generateOfferLetterPdf(candidate, company?.name ?? '', parsed.input, brand));
 	const safeName = (candidate.fullName ?? candidate.email)
 		.replace(/[^a-zA-Z0-9 ]/g, '')
 		.trim()
