@@ -1432,8 +1432,13 @@
 {#if !data.isSuperAdmin}
 	<div class="readonly-banner">
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+		<!-- Lists what HR can actually do. It used to name only approvals and the
+		     offer letter, which read as the complete list and had HR believing the
+		     employee code and its mails were out of their hands — they are
+		     requireApprover, not super-admin-only, and always have been. A banner
+		     that undersells the role is the same problem as one that oversells it. -->
 		{data.isApprover
-			? 'HR access — you can approve candidates and manage the offer letter. Other edits require a super admin login.'
+			? 'HR access — you can approve candidates, manage the offer letter, and assign and announce the employee code. Other edits require a super admin login.'
 			: 'View-only — editing candidate records requires a super admin login.'}
 		Running the OCR cross-check is open to everyone.
 	</div>
