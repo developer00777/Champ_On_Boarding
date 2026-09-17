@@ -29,10 +29,16 @@ export const load: PageServerLoad = async ({ url }) => {
 		Candidate.countDocuments()
 	]);
 	const offerLetters = await OfferLetter.find({ candidateId: { $in: docs.map((c) => c._id) } })
-		.select('candidateId joiningDate')
+		.select('candidateId joiningDate status sentAt')
 		.lean();
 	const joiningDateByCandidateId = new Map(
 		offerLetters.map((o) => [String(o.candidateId), o.joiningDate ?? null])
+	);
+	// Whether the letter has gone out is the question the list gets asked most
+	// often after "have they been approved", and answering it meant opening each
+	// record in turn. It rides along on the join that was already happening.
+	const offerSentByCandidateId = new Map(
+		offerLetters.map((o) => [String(o.candidateId), o.status === 'sent'])
 	);
 
 	return {
@@ -51,7 +57,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				company: company?.name ?? '',
 				createdAt: (c as { createdAt: Date }).createdAt.toISOString(),
 				submittedAt: c.submittedAt?.toISOString() ?? null,
-				joiningDate: joiningDateByCandidateId.get(String(c._id)) ?? null
+				joiningDate: joiningDateByCandidateId.get(String(c._id)) ?? null,
+				offerLetterSent: offerSentByCandidateId.get(String(c._id)) ?? false
 			};
 		}),
 		total,

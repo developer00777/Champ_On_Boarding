@@ -2664,11 +2664,24 @@
 				}}
 			>
 				<fieldset class="rbac" disabled={!data.isApprover}>
-					<button class="btn teal">Send offer letter</button>
+					<button class="btn teal">{ol.status === 'sent' ? 'Resend offer letter' : 'Send offer letter'}</button>
 				</fieldset>
 			</form>
-			{#if form?.offerLetterSent}
-				<p class="saved-chip" style="margin-top:8px">Offer letter sent ✓</p>
+			<!-- Sent is a fact about the record, not a reaction to the click that
+			     sent it: the old chip came from `form` and vanished on the next
+			     navigation, so anyone arriving later could not tell whether the
+			     letter had gone out without opening the audit log. This reads the
+			     draft's own status, so it is there every time the page is. -->
+			{#if ol.status === 'sent'}
+				<p class="sent-note">
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12.5l5 5L20 6.5" /></svg>
+					<span>
+						Offer letter sent to <strong>{c.email}</strong>{ol.sentAt
+							? ' on ' + new Date(ol.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+							: ''}.
+						{#if form?.offerLetterSent}Just now.{:else}Sending again replaces it with a fresh copy.{/if}
+					</span>
+				</p>
 			{/if}
 		</section>
 
@@ -3735,6 +3748,14 @@
 		font-weight: 600;
 		text-align: right;
 		max-width: 60%;
+		/* A profile URL or a long address has no spaces to break at, so without
+		   these it ignored max-width and ran out past the edge of the card.
+		   min-width:0 lets the flex item shrink below its content; break-anywhere
+		   gives the browser permission to break mid-token when there is no
+		   kinder place to do it. */
+		min-width: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.fedit {
 		font-size: 13px;
@@ -3764,6 +3785,24 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 10px 12px;
+	}
+	.sent-note {
+		display: flex;
+		align-items: flex-start;
+		gap: 7px;
+		margin: 10px 0 0;
+		padding: 8px 11px;
+		border: 1px solid rgba(62, 207, 154, 0.32);
+		background: rgba(62, 207, 154, 0.08);
+		border-radius: 9px;
+		font-size: 11.5px;
+		line-height: 1.5;
+		color: var(--ae-text-2);
+	}
+	.sent-note svg {
+		flex: none;
+		margin-top: 2px;
+		color: var(--ae-verdant);
 	}
 	.offer-field {
 		display: flex;

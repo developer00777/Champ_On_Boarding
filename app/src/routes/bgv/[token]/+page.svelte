@@ -164,7 +164,9 @@
 		align-items: center;
 	}
 	.flabel { font-size: 12px; color: #777; margin-bottom: 3px; }
-	.fvalue { font-size: 14px; font-weight: 600; }
+	/* Same reasoning as the admin card: a declared value with no spaces in it
+	   (a long company name, an email) would otherwise run past the edge. */
+	.fvalue { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
 	.req { color: #e8033a; }
 	input:not([type='radio']), textarea {
 		width: 100%;

@@ -158,6 +158,9 @@
 					{:else if c.hiringDecision === 'rejected'}
 						<span class="pill red decision-pill">REJECTED</span>
 					{/if}
+					{#if c.offerLetterSent}
+						<span class="pill purple decision-pill" title="The offer letter has been emailed to this candidate">OFFER SENT</span>
+					{/if}
 				</div>
 				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{c.joiningDate ?? '—'}</div>
 				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{when(c.createdAt)}</div>
