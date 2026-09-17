@@ -129,6 +129,12 @@
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.2" /><path d="M6 20a6 6 0 0 1 12 0" /></svg>
 					Team
 				</a>
+				<!-- The page that decides who may use every other page, so it is the
+				     one link that must never appear for anyone but a super admin. -->
+				<a href="/admin/access" class="navitem" class:on={active('/admin/access')}>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="7" height="6" rx="1.6" /><rect x="13" y="15" width="7" height="6" rx="1.6" /><rect x="4" y="15" width="7" height="6" rx="1.6" /><path d="M7.5 9v3.5h9V15M7.5 12.5V15" /></svg>
+					Access &amp; org
+				</a>
 			{/if}
 			<a href="/admin/export" class="navitem" data-sveltekit-preload-data="off">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></svg>

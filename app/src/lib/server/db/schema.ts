@@ -24,8 +24,46 @@ const adminSchema = new Schema(
 	{
 		email: { type: String, required: true, unique: true },
 		passwordHash: { type: String, required: true },
-		role: { type: String, enum: ['hr_admin', 'super_admin', 'finance_team'], required: true },
-		status: { type: String, enum: ['active', 'disabled'], default: 'active' }
+		// Still the field every guard in the app reads. The access studio treats
+		// it as "which preset seeded this person's grants", and the legacy three
+		// stay valid so nothing breaks while the two models overlap.
+		role: {
+			type: String,
+			enum: ['hr_admin', 'super_admin', 'finance_team', 'hr_manager', 'hr_exec', 'recruiter', 'it_coord', 'finance', 'auditor'],
+			required: true
+		},
+		status: { type: String, enum: ['active', 'disabled'], default: 'active' },
+
+		// ── access studio (/admin/access) ───────────────────────────────────
+		// Authored here, not yet enforced: the guards still read `role`. See the
+		// header of lib/shared/access.ts for why that switch is its own change.
+		/** Display name and job title, so the studio can show a person rather
+		 *  than an email address. Optional — older logins have neither. */
+		name: { type: String, default: null },
+		title: { type: String, default: null },
+		/** Per-capability overrides on top of the preset. Stored as a list, not a
+		 *  map: capability keys carry dots (`offer.draft`) and Mongo field names
+		 *  treat those as paths. Absent capability = follow the preset, which is
+		 *  the point — changing a preset should move everyone who has not been
+		 *  customised. */
+		grants: { type: [{ cap: String, level: String }], default: [] },
+		/** Capabilities this person may start but not finish alone: the action
+		 *  routes to `reportsTo` for a second signature. Same list-not-map
+		 *  reasoning as `grants`. */
+		checkers: { type: [String], default: [] },
+		/** Scope. 'all' is stored literally rather than expanded to every slug,
+		 *  so a thirteenth entity is automatically in scope for whoever had
+		 *  'all' rather than silently out of it. */
+		entities: { type: Schema.Types.Mixed, default: 'all' },
+		tracks: { type: Schema.Types.Mixed, default: 'all' },
+		population: { type: String, enum: ['own', 'team', 'tree', 'entity', 'all'], default: 'entity' },
+		/** Drives both team/tree scope and where sign-offs route. Null is the top
+		 *  of the chart. Cycles are rejected at write time. */
+		reportsTo: { type: Schema.Types.ObjectId, ref: 'Admin', default: null },
+		/** Time-bound access for contractors and stand-ins. A past date means no
+		 *  capabilities, not a disabled login: the person can still sign in and
+		 *  see that their access lapsed. */
+		accessExpiresAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
 );
