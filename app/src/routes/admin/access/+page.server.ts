@@ -79,7 +79,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 			email: a.email,
 			name: (a.name as string | null) ?? a.email.split('@')[0],
 			title: (a.title as string | null) ?? '',
-			preset: PRESETS[a.role] ? a.role : 'hr_admin',
+			// The studio's own preset if one has been chosen, otherwise the role the
+			// app is actually enforcing — so an untouched person opens on the truth.
+			preset: PRESETS[(a.accessPreset as string) ?? a.role] ? ((a.accessPreset as string) ?? a.role) : 'hr_admin',
 			status: (a.status as 'active' | 'disabled') ?? 'active',
 			grants: grantsToObject(a.grants),
 			checkers: checkersToObject(a.checkers),
@@ -178,7 +180,11 @@ export const actions: Actions = {
 
 			await Admin.findByIdAndUpdate(p.id, {
 				$set: {
-					role: p.preset,
+					// accessPreset, never role. Writing role here would take effect
+					// immediately against guards that only recognise the legacy three,
+					// so moving someone to "HR manager" on a page that says it is not
+					// enforcing anything would silently lock them out of the whole app.
+					accessPreset: p.preset,
 					status: p.status === 'disabled' ? 'disabled' : 'active',
 					grants,
 					checkers,
@@ -195,7 +201,7 @@ export const actions: Actions = {
 				actor: locals.admin!.email,
 				action: 'access_updated',
 				field: before.email,
-				oldValue: `${before.role} · ${Array.isArray(before.grants) ? before.grants.length : 0} overrides`,
+				oldValue: `${(before.accessPreset as string) ?? before.role} · ${Array.isArray(before.grants) ? before.grants.length : 0} overrides`,
 				newValue: `${PRESETS[p.preset].name} · ${grants.length} override${grants.length === 1 ? '' : 's'}${checkers.length ? ` · ${checkers.length} routed for sign-off` : ''}${p.status === 'disabled' ? ' · login disabled' : ''}`,
 				ip: getClientAddress()
 			});

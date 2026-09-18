@@ -24,9 +24,14 @@ const adminSchema = new Schema(
 	{
 		email: { type: String, required: true, unique: true },
 		passwordHash: { type: String, required: true },
-		// Still the field every guard in the app reads. The access studio treats
-		// it as "which preset seeded this person's grants", and the legacy three
-		// stay valid so nothing breaks while the two models overlap.
+		// The field every guard in the app reads, and the ONLY thing that decides
+		// access today. The access studio must not write it: while enforcement
+		// still checks for 'super_admin'/'hr_admin', storing a new preset name
+		// here would fail every guard at once and lock the person out of the app
+		// they were only being reorganised in. The studio writes accessPreset.
+		//
+		// The enum stays wide so a row already carrying a studio preset can still
+		// be read and repaired rather than failing validation on every save.
 		role: {
 			type: String,
 			enum: ['hr_admin', 'super_admin', 'finance_team', 'hr_manager', 'hr_exec', 'recruiter', 'it_coord', 'finance', 'auditor'],
@@ -41,6 +46,10 @@ const adminSchema = new Schema(
 		 *  than an email address. Optional — older logins have neither. */
 		name: { type: String, default: null },
 		title: { type: String, default: null },
+		/** Which preset the access studio has this person on. Deliberately not
+		 *  `role`: until the guards read from the access model, `role` is live
+		 *  access and this is a plan for it. Null means "whatever role says". */
+		accessPreset: { type: String, default: null },
 		/** Per-capability overrides on top of the preset. Stored as a list, not a
 		 *  map: capability keys carry dots (`offer.draft`) and Mongo field names
 		 *  treat those as paths. Absent capability = follow the preset, which is

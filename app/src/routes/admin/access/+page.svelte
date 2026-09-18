@@ -251,8 +251,10 @@
 
 <div class="note">
 	<strong>Authoring only, for now.</strong> Every capability below is mapped to the real routes and actions it
-	governs, but the app still decides access from the three fixed roles. Applying changes records the intent and
-	the audit entry; switching the guards over to read from here is its own change.
+	governs, but the app still decides access from the three fixed roles it has always used. Applying saves the
+	plan and writes an audit entry — it does not change what anyone can do today, and deliberately cannot: a
+	preset saved here never overwrites the role the guards read, so nobody gets locked out of the live app by a
+	reorganisation. The one exception is <b>Login enabled</b>, which takes effect immediately.
 </div>
 
 {#if form?.applied}

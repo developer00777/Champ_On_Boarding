@@ -1222,7 +1222,17 @@ ${brandSignoff(brand)}`,
 
 		await OfferLetter.findOneAndUpdate(
 			{ candidateId: params.id },
-			{ $set: { ...input, ...stamp } },
+			{
+				$set: {
+					...input,
+					// The schema's enum has no empty member, and $set does not run
+					// validators, so a blank employment type used to be written as ''
+					// and only blew up later, when something validated the whole
+					// document. Blank means "not chosen", which is null.
+					employmentType: input.employmentType || null,
+					...stamp
+				}
+			},
 			{ upsert: true }
 		);
 
@@ -1347,10 +1357,19 @@ ${brandSignoff(brand)}`,
 			});
 		}
 
-		draft.status = 'sent';
-		draft.sentAt = new Date();
-		draft.sentBy = locals.admin!.id;
-		await draft.save();
+		// A targeted update, not draft.save(). save() validates the whole document,
+		// so one unrelated legacy field — a draft carrying employmentType '' from
+		// before blanks were stored as null — threw here, AFTER the candidate had
+		// already received the letter. The draft then stayed 'draft', so the next
+		// attempt emailed them again and failed again the same way.
+		//
+		// Recording what already happened must not be able to fail on the validity
+		// of something else. Anything genuinely wrong with the draft has to stop
+		// the send before the mail goes, not after.
+		await OfferLetter.updateOne(
+			{ _id: draft._id },
+			{ $set: { status: 'sent', sentAt: new Date(), sentBy: locals.admin!.id } }
+		);
 
 		await audit({
 			candidateId: params.id,
