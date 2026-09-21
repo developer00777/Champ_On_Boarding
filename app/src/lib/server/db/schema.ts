@@ -836,7 +836,20 @@ const exitSchema = new Schema(
 		},
 
 		// ── Payroll / F&F (SOP step 8) — HR's own entry ──────────────────────
+		/** What HR last forwarded to the payroll team, so the card can say when it
+		 *  went and stop anyone wondering whether it did. */
+		payrollDispatch: {
+			sentAt: { type: Date, default: null },
+			sentTo: { type: String, default: null },
+			sentBy: { type: String, default: null },
+			docKeys: { type: [String], default: [] },
+			fileIds: { type: [Schema.Types.ObjectId], default: [] }
+		},
 		fnf: {
+			/** Supplied by payroll on their clearance page, not typed by HR — see
+			 *  FNF_PAYROLL_FIELDS in shared/offboarding.ts. */
+			submittedByPayrollAt: { type: Date, default: null },
+			submittedByPayrollName: { type: String, default: null },
 			salaryDueFrom: { type: String, default: null },
 			salaryDueTo: { type: String, default: null },
 			leaveBalanceDays: { type: String, default: null },

@@ -165,16 +165,16 @@
 						{#each data.rows as row}
 							<div class="row">
 								<div class="rlabel">{row.label}</div>
+								<!-- Shown only when a declaration actually exists. It used to fall
+								     back to "not answered yet", which made sense while someone was
+								     expected to fill it in; now that this side is the only place the
+								     position is recorded, that line would sit there for ever telling
+								     an approver to wait for an answer nobody is going to give. -->
 								{#if row.employeeSaid}
 									<p class="declared" class:pending={row.employeeSaidValue === 'pending'}>
 										<span class="dtag">Employee says</span>
 										<span class="dval">{row.employeeSaid}</span>
 										{#if row.employeeNote}<span class="dnote">— {row.employeeNote}</span>{/if}
-									</p>
-								{:else if data.employeeDeclaresSection}
-									<p class="declared unanswered">
-										<span class="dtag">Employee says</span>
-										<span class="dval">not answered yet</span>
 									</p>
 								{/if}
 								<div class="ropts">
@@ -224,6 +224,36 @@
 								<input name="approverDesignation" value={data.clearance.approverDesignation} />
 							</label>
 						</div>
+						{#if data.collectsFnf}
+							<!-- Payroll only. These figures used to be relayed to HR by mail and
+							     re-typed into the portal; a settlement somebody gets paid should
+							     not pass through a transcription step. Entered here, read back
+							     everywhere else. -->
+							<div class="fnf">
+								<div class="fnf-h">Full &amp; final settlement</div>
+								<p class="fnf-sub">
+									Your figures go straight onto the exit record and the settlement statement.
+									Leave anything you do not hold blank.
+								</p>
+								<div class="fnf-grid">
+									{#each data.fnfFields as f (f.key)}
+										<label class="f">
+											<span>{f.label}</span>
+											{#if f.date}
+												<input type="date" name={f.key} value={f.value} />
+											{:else}
+												<input
+													name={f.key}
+													value={f.value}
+													inputmode={f.money ? 'decimal' : undefined}
+													placeholder={f.money ? 'e.g. 1,42,300' : ''}
+												/>
+											{/if}
+										</label>
+									{/each}
+								</div>
+							</div>
+						{/if}
 						<div class="qblock">
 							<div class="qlabel">Overall, for {data.departmentLabel} <b class="req">*</b></div>
 							<div class="radios">
@@ -421,10 +451,6 @@
 	.declared.pending .dval {
 		color: #b42318;
 	}
-	.declared.unanswered {
-		opacity: 0.55;
-		font-style: italic;
-	}
 	.dnote {
 		opacity: 0.8;
 	}
@@ -611,6 +637,36 @@
 	@media (max-width: 560px) {
 		.card {
 			padding: 22px 18px 24px;
+		}
+	}
+
+	/* Payroll's settlement block — see collectsFnf. */
+	.fnf {
+		border: 1px solid #d9d9e3;
+		border-radius: 10px;
+		padding: 12px 14px 14px;
+		margin-bottom: 14px;
+		background: #fbfbfd;
+	}
+	.fnf-h {
+		font-size: 13px;
+		font-weight: 600;
+		color: #1b1b25;
+	}
+	.fnf-sub {
+		margin: 4px 0 12px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: #5d6270;
+	}
+	.fnf-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+		gap: 10px 14px;
+	}
+	@media (max-width: 560px) {
+		.fnf-grid {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

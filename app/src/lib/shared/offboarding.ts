@@ -176,6 +176,38 @@ export const NDC_SECTIONS: NdcSection[] = [
 
 export const NDC_SECTION_BY_DEPT = new Map(NDC_SECTIONS.map((s) => [s.dept, s]));
 
+/** The full & final figures, and who supplies them.
+ *
+ *  These are payroll's numbers, not HR's: HR was re-keying a settlement it had
+ *  been told over mail, which is a transcription step that can only introduce
+ *  errors into a figure somebody gets paid. Payroll now enters them on the
+ *  clearance page they already have to visit to sign the exit off, and HR reads
+ *  them back.
+ *
+ *  `date: true` fields are backed by a date input and stored DD/MM/YYYY like
+ *  every other date in this module. */
+export const FNF_PAYROLL_FIELDS = [
+	{ key: 'salaryDueFrom', label: 'Salary due from', date: true },
+	{ key: 'salaryDueTo', label: 'Salary due to', date: true },
+	{ key: 'leaveBalanceDays', label: 'Leave balance (days)' },
+	{ key: 'leaveEncashmentAmount', label: 'Leave encashment', money: true },
+	{ key: 'noticePayRecovery', label: 'Notice pay recovery', money: true },
+	{ key: 'assetRecovery', label: 'Asset recovery', money: true },
+	{ key: 'otherDeductions', label: 'Other deductions', money: true },
+	{ key: 'netAmount', label: 'Net F&F payable', money: true },
+	{ key: 'settlementDate', label: 'Settlement date', date: true },
+	{ key: 'approvedBy', label: 'Approved by' }
+] as const;
+
+export const FNF_PAYROLL_KEYS = FNF_PAYROLL_FIELDS.map((f) => f.key) as readonly string[];
+export const FNF_PAYROLL_DATE_KEYS = new Set(
+	FNF_PAYROLL_FIELDS.filter((f) => 'date' in f && f.date).map((f) => f.key)
+);
+
+/** What HR still owns on that card: the statutory follow-ups, which are HR's
+ *  filings rather than payroll's arithmetic. */
+export const FNF_HR_FIELDS = ['pfDateOfExit', 'pfRemarks', 'taxationRemarks'] as const;
+
 /** The sections the employee self-declares, in printed order — what the exit
  *  form renders and what the approver pages cross-check against. */
 export const NDC_EMPLOYEE_SECTIONS: NdcSection[] = NDC_SECTIONS.filter((s) => s.employeeDeclares);

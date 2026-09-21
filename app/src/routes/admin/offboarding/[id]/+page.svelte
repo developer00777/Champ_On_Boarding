@@ -111,17 +111,6 @@
 	const scaleLabel = (scale: readonly { value: string; label: string }[], v: string | null) =>
 		scale.find((s) => s.value === v)?.label ?? '—';
 
-	/** One No-Dues row as the employee left it: their declaration plus whatever
-	 *  note goes with it — the dedicated ndc.* field for the four Employee's-
-	 *  Department rows, the generic notes map for the rest. */
-	function ndcDeclared(key: string, noteField?: string): string {
-		const declared = (e.ndc?.rows ?? {})[key];
-		if (!declared) return '';
-		const label = NDC_EMPLOYEE_DECLARATION_LABELS[declared] ?? declared;
-		const note = noteField ? e.ndc?.[noteField] : (e.ndc?.rowNotes ?? {})[key];
-		return note ? `${label} — ${note}` : label;
-	}
-
 	// The employee's answers, flattened into the review list HR ticks items from.
 	// `field` is the dotted path the re-request action stores and the mail names.
 	const reviewGroups = $derived([
@@ -267,83 +256,6 @@
 						<button class="btn" disabled={sending['particulars']}>
 							{sending['particulars'] ? 'Saving…' : 'Save particulars'}
 						</button>
-					</div>
-				</fieldset>
-			</form>
-		</section>
-
-		<!-- 1b. No Dues certificate — filled internally, never by the employee -->
-		<section class="card">
-			<div class="sec-head">
-				<span class="section-num">01b</span>
-				<div>
-					<h2>No Dues certificate</h2>
-					<p class="muted">
-						Filled here, not by the employee. The header comes from the particulars above; record
-						the handover position below and each department confirms it on their clearance page.
-					</p>
-				</div>
-				{#if form?.ndcSaved}<span class="saved">Saved ✓</span>{/if}
-			</div>
-
-			<form method="POST" action="?/saveNdcInternal" use:enhance={track('ndc')}>
-				<fieldset class="rbac" disabled={!data.isHr}>
-					<div class="fgrid">
-						<label class="f"><span>Name as per bank</span><input name="nameAsPerBank" value={e.ndc?.nameAsPerBank ?? e.bankAccountName ?? ''} /></label>
-					</div>
-					<div class="fgrid" style="margin-top:10px">
-						<label class="f"><span>Files handed over <small>(soft &amp; hard copies)</small></span><textarea name="filesHandover" rows="2">{e.ndc?.filesHandover ?? ''}</textarea></label>
-						<label class="f"><span>Logins handed over</span><textarea name="loginsHandover" rows="2">{e.ndc?.loginsHandover ?? ''}</textarea></label>
-						<label class="f"><span>Leads &amp; client follow-up</span><textarea name="leadsHandover" rows="2">{e.ndc?.leadsHandover ?? ''}</textarea></label>
-						<label class="f"><span>Other remarks</span><textarea name="deptOthers" rows="2">{e.ndc?.deptOthers ?? ''}</textarea></label>
-					</div>
-
-					{#each data.ndcInternalSections as section}
-						<div class="ndc-block">
-							<div class="ndc-block-head">{section.label}</div>
-							{#each section.rows as row}
-								<div class="ndc-line">
-									<span class="ndc-line-label">{row.label}</span>
-									<div class="ndc-line-opts">
-										{#each data.ndcDeclarations as opt}
-											<label class="ndc-opt">
-												<input type="radio" name={'row_' + row.key} value={opt.value}
-													checked={(e.ndc?.rows ?? {})[row.key] === opt.value} />
-												<span>{opt.label}</span>
-											</label>
-										{/each}
-									</div>
-									{#if !row.noteField}
-										<input class="ndc-line-note" name={'note_' + row.key}
-											placeholder="Remark (optional)"
-											value={(e.ndc?.rowNotes ?? {})[row.key] ?? ''} />
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{/each}
-
-					<div class="ndc-block">
-						<div class="ndc-block-head">Company assets returned</div>
-						{#each data.ndcAssets as a}
-							<div class="ndc-line">
-								<label class="ndc-opt ndc-line-label">
-									<input type="checkbox" name={'asset_' + a.item} checked={a.returned} />
-									<span>{a.item}</span>
-								</label>
-								<input class="ndc-line-note" name={'assetnote_' + a.item}
-									placeholder="Remark (optional)" value={a.note} />
-							</div>
-						{/each}
-					</div>
-
-					<div class="btn-row">
-						<button class="btn teal" disabled={sending['ndc']}>
-							{sending['ndc'] ? 'Saving…' : 'Save No Dues details'}
-						</button>
-						{#if e.ndc?.submittedAt}
-							<span class="muted tiny">Last recorded {stamp(e.ndc.submittedAt)}</span>
-						{/if}
 					</div>
 				</fieldset>
 			</form>
@@ -717,6 +629,67 @@
 			{/if}
 		</section>
 
+		<!-- 4b. Send the paperwork to payroll -->
+		<section class="card">
+			<div class="sec-head">
+				<span class="section-num">04b</span>
+				<div>
+					<h2>Send documents to payroll</h2>
+					<p class="muted">
+						Attaches the chosen documents to one mail. Separate from the employee's handover
+						link: payroll needs the internal papers the employee never sees.
+					</p>
+				</div>
+				{#if form?.payrollSent}<span class="saved">Sent ✓</span>{/if}
+			</div>
+
+			<form method="POST" action="?/sendDocsToPayroll" use:enhance={track('payroll')}>
+				<fieldset class="rbac" disabled={!data.isHr}>
+					<div class="pk-list">
+						{#each data.documents as d (d.key)}
+							<label class="pk-row">
+								<input type="checkbox" name="docKey" value={d.key} checked />
+								<span>{d.label}</span>
+								<span class="pk-tag">generated</span>
+							</label>
+						{/each}
+						{#each data.handoverFiles as f (f.id)}
+							<label class="pk-row">
+								<input type="checkbox" name="fileId" value={f.id} checked />
+								<span>{f.label}</span>
+								<span class="pk-tag">uploaded</span>
+							</label>
+						{/each}
+						{#each data.employeeFiles as f (f.id)}
+							<label class="pk-row">
+								<input type="checkbox" name="fileId" value={f.id} />
+								<span>{f.label}</span>
+								<span class="pk-tag">from employee</span>
+							</label>
+						{/each}
+					</div>
+
+					<label class="f" style="margin-top:12px;max-width:340px">
+						<span>Payroll team email</span>
+						<input name="to" type="email" required value={data.payrollEmail} placeholder="payroll@…" />
+					</label>
+
+					<div class="btn-row">
+						<button class="btn teal" disabled={sending['payroll']}>
+							{sending['payroll'] ? 'Sending…' : 'Send to payroll'}
+						</button>
+						{#if data.payrollDispatch}
+							<span class="muted tiny">
+								Last sent {stamp(data.payrollDispatch.sentAt)} · {data.payrollDispatch.count}
+								{data.payrollDispatch.count === 1 ? 'document' : 'documents'} to
+								{data.payrollDispatch.sentTo}
+							</span>
+						{/if}
+					</div>
+				</fieldset>
+			</form>
+		</section>
+
 		<!-- 5. F&F -->
 		<section class="card">
 			<div class="sec-head">
@@ -732,17 +705,39 @@
 
 			<form method="POST" action="?/saveFnf" use:enhance={track('fnf')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
-					<div class="fgrid">
-						<label class="f"><span>Salary due from</span><input name="salaryDueFrom" type="date" value={e.fnf?.salaryDueFromIso ?? ''} /></label>
-						<label class="f"><span>Salary due to</span><input name="salaryDueTo" type="date" value={e.fnf?.salaryDueToIso ?? ''} /></label>
-						<label class="f"><span>Leave balance (days)</span><input name="leaveBalanceDays" value={e.fnf?.leaveBalanceDays ?? ''} /></label>
-						<label class="f"><span>Leave encashment</span><input name="leaveEncashmentAmount" value={e.fnf?.leaveEncashmentAmount ?? ''} placeholder="e.g. 24,500" /></label>
-						<label class="f"><span>Notice pay recovery</span><input name="noticePayRecovery" value={e.fnf?.noticePayRecovery ?? ''} /></label>
-						<label class="f"><span>Asset recovery</span><input name="assetRecovery" value={e.fnf?.assetRecovery ?? ''} /></label>
-						<label class="f"><span>Other deductions</span><input name="otherDeductions" value={e.fnf?.otherDeductions ?? ''} /></label>
-						<label class="f"><span>Net F&F payable</span><input name="netAmount" value={e.fnf?.netAmount ?? ''} placeholder="e.g. 1,42,300" /></label>
-						<label class="f"><span>Settlement date</span><input name="settlementDate" type="date" value={e.fnf?.settlementDateIso ?? ''} /></label>
-						<label class="f"><span>Approved by</span><input name="approvedBy" value={e.fnf?.approvedBy ?? ''} /></label>
+					<!-- Payroll's figures, read back. They are entered by the payroll team
+					     on the clearance page they already sign the exit off from; HR
+					     re-keying a settlement it was told over mail is a transcription
+					     step, and the only thing a transcription step can add to a figure
+					     somebody gets paid is an error. -->
+					<div class="fnf-read">
+						<div class="fnf-read-h">
+							<span>Full &amp; final figures</span>
+							{#if e.fnf?.submittedByPayrollAt}
+								<span class="fnf-src">
+									from payroll{e.fnf.submittedByPayrollName ? ' — ' + e.fnf.submittedByPayrollName : ''} ·
+									{stamp(e.fnf.submittedByPayrollAt)}
+								</span>
+							{:else}
+								<span class="fnf-src waiting">not submitted yet</span>
+							{/if}
+						</div>
+						{#if e.fnf?.submittedByPayrollAt}
+							<div class="fnf-read-grid">
+								{#each data.fnfPayrollFields as f (f.key)}
+									<div class="fnf-cell">
+										<span class="fnf-k">{f.label}</span>
+										<span class="fnf-v">{f.value || '—'}</span>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="fnf-empty">
+								The payroll team fills these in on their clearance page. If their clearance has
+								not gone out yet, send it from <b>Departmental clearances</b> above; if it has,
+								a reminder from there is the way to chase it.
+							</p>
+						{/if}
 					</div>
 
 					<div class="subblock">
@@ -1436,6 +1431,97 @@
 	.doclink:hover {
 		color: var(--ae-ember-glow);
 	}
+	/* Document picker for the payroll send. Employee uploads start unticked:
+	   they were given to HR, and forwarding them should be a deliberate tick. */
+	.pk-list {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--ae-line);
+		border-radius: 10px;
+		overflow: hidden;
+	}
+	.pk-row {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		padding: 8px 12px;
+		font-size: 12.5px;
+		border-bottom: 1px solid var(--ae-line-soft);
+		cursor: pointer;
+	}
+	.pk-row:last-child {
+		border-bottom: none;
+	}
+	.pk-row:hover {
+		background: var(--ae-hover, rgba(255, 255, 255, 0.04));
+	}
+	.pk-row > span:nth-of-type(1) {
+		flex: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.pk-tag {
+		font-family: var(--ae-font-mono);
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 5px;
+		padding: 1px 5px;
+		flex: none;
+	}
+	.fnf-read {
+		border: 1px solid var(--ae-line);
+		border-radius: 10px;
+		padding: 11px 13px 13px;
+		margin-bottom: 4px;
+	}
+	.fnf-read-h {
+		display: flex;
+		align-items: baseline;
+		gap: 9px;
+		flex-wrap: wrap;
+		margin-bottom: 10px;
+	}
+	.fnf-read-h > span:first-child {
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ae-text-2);
+	}
+	.fnf-src {
+		font-size: 10.5px;
+		color: var(--ae-verdant);
+	}
+	.fnf-src.waiting {
+		color: var(--ae-amber);
+	}
+	.fnf-read-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: 9px 16px;
+	}
+	.fnf-cell {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.fnf-k {
+		font-size: 10.5px;
+		color: var(--ae-muted);
+	}
+	.fnf-v {
+		font-size: 13px;
+		font-weight: 600;
+		overflow-wrap: anywhere;
+	}
+	.fnf-empty {
+		margin: 0;
+		font-size: 11.5px;
+		line-height: 1.55;
+		color: var(--ae-muted);
+	}
 	.ndclist {
 		display: flex;
 		flex-direction: column;
@@ -1479,40 +1565,5 @@
 		width: auto;
 		margin-top: 2px;
 		flex: none;
-	}
-	.ndc-block {
-		border: 1px solid var(--ae-line);
-		border-radius: 10px;
-		margin-top: 12px;
-		overflow: hidden;
-	}
-	.ndc-block-head {
-		font-family: var(--ae-font-mono);
-		font-size: 9.5px;
-		letter-spacing: 0.13em;
-		text-transform: uppercase;
-		color: var(--ae-ember);
-		padding: 8px 12px;
-		background: var(--ae-sub-bg);
-		border-bottom: 1px solid var(--ae-line);
-	}
-	.ndc-line {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 6px 14px;
-		align-items: center;
-		padding: 9px 12px;
-		border-bottom: 1px solid var(--ae-line-soft);
-	}
-	.ndc-line:last-child { border-bottom: none; }
-	.ndc-line-label { font-size: 12.5px; color: var(--ae-text-2); line-height: 1.4; }
-	.ndc-line-opts { display: flex; gap: 10px; flex-wrap: wrap; }
-	.ndc-opt { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ae-muted-2); cursor: pointer; }
-	.ndc-opt input { width: 14px; height: 14px; accent-color: var(--ae-ember); }
-	/* The remark spans both columns so a long note is not squeezed into the
-	   radio column on a narrow screen. */
-	.ndc-line-note { grid-column: 1 / -1; font-size: 12px; }
-	@media (max-width: 720px) {
-		.ndc-line { grid-template-columns: 1fr; }
 	}
 </style>

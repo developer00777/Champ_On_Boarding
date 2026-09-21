@@ -21,13 +21,11 @@ import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import {
 	CLEARANCE_DEPT_LABELS,
-	ASSET_ITEMS,
 	CLOSURE_CHECKLIST_KEYS,
 	EXIT_UPLOAD_DOCS,
 	HANDOVER_DOCS,
-	NDC_EMPLOYEE_DECLARATIONS,
 	NDC_EMPLOYEE_ROW_KEYS,
-	NDC_EMPLOYEE_SECTIONS,
+	FNF_PAYROLL_FIELDS,
 	NDC_SECTIONS,
 	type ClearanceDept
 } from '$lib/shared/offboarding';
@@ -46,7 +44,9 @@ import {
 	serviceLabel,
 	upsertClearances
 } from '$lib/server/offboarding/exit';
-import { availableDocs, loadPdfInput } from '$lib/server/offboarding/documents';
+import { availableDocs, loadPdfInput, renderExitDoc } from '$lib/server/offboarding/documents';
+import { getGridFSBytes } from '$lib/server/storage';
+import { sendMail, brandFromHeader } from '$lib/server/mailer';
 import { noDuesPdf } from '$lib/server/offboarding/pdf';
 import {
 	buildItExitMail,
@@ -106,15 +106,15 @@ const PARTICULAR_FIELDS = {
 	noticePeriod: (v: string) => v
 } as const;
 
-const FNF_FIELDS = [
-	'salaryDueFrom', 'salaryDueTo', 'leaveBalanceDays', 'leaveEncashmentAmount',
-	'noticePayRecovery', 'assetRecovery', 'otherDeductions', 'netAmount',
-	'settlementDate', 'approvedBy', 'pfDateOfExit', 'pfRemarks', 'taxationRemarks'
-] as const;
+/** What HR still fills on the F&F card: the statutory follow-ups. The
+ *  settlement figures are payroll's and arrive from their clearance page — see
+ *  FNF_PAYROLL_FIELDS. Keeping them out of this list is the enforcement: HR
+ *  cannot overwrite a figure it did not calculate. */
+const FNF_FIELDS = ['pfDateOfExit', 'pfRemarks', 'taxationRemarks'] as const;
 
 /** Dates in the F&F block are stored DD/MM/YYYY like every other date here, so
  *  the ones backed by a date input need converting on the way in. */
-const FNF_DATE_FIELDS = new Set(['salaryDueFrom', 'salaryDueTo', 'settlementDate', 'pfDateOfExit']);
+const FNF_DATE_FIELDS = new Set(['pfDateOfExit']);
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const row = await getExit(params.id);
@@ -237,26 +237,27 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			link: exitTokenUrl(clearanceTokens[i])
 		})),
 		clearanceProgress: clearanceProgress(clearances.map((c) => ({ status: String(c.status) }))),
-		// The sections HR records a position against, and the vocabulary they use.
-		// Passed as data rather than imported by the component so the page and
-		// the action are bounded by exactly the same list.
-		ndcInternalSections: NDC_EMPLOYEE_SECTIONS.map((s) => ({
-			dept: s.dept,
-			label: s.label,
-			rows: s.rows.map((r) => ({ key: r.key, label: r.label, noteField: r.noteField ?? null }))
+		/** Where a "send to payroll" would go, and what went last time. The
+		 *  address comes from payroll's own clearance row, so HR is not asked to
+		 *  remember it — and it stays editable for the exit where it differs. */
+		payrollEmail: clearances.find((c) => c.department === 'payroll')?.approverEmail ?? '',
+		payrollDispatch: e.payrollDispatch?.sentAt
+			? {
+					sentAt: (e.payrollDispatch.sentAt as Date).toISOString(),
+					sentTo: e.payrollDispatch.sentTo ?? '',
+					sentBy: e.payrollDispatch.sentBy ?? '',
+					count:
+						((e.payrollDispatch.docKeys as string[])?.length ?? 0) +
+						((e.payrollDispatch.fileIds as unknown[])?.length ?? 0)
+				}
+			: null,
+		// Payroll's settlement, read-only for HR — label and value together so the
+		// card and the clearance form cannot drift apart on either.
+		fnfPayrollFields: FNF_PAYROLL_FIELDS.map((f) => ({
+			key: f.key,
+			label: f.label,
+			value: ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? ''
 		})),
-		ndcDeclarations: NDC_EMPLOYEE_DECLARATIONS.map((d) => ({ value: d.value, label: d.label })),
-		// The SOP's standard asset set with whatever has been recorded merged over
-		// it, so a newly added item appears on an exit already in progress.
-		ndcAssets: (() => {
-			const recorded = new Map(
-				((e.assets ?? []) as Record<string, unknown>[]).map((a) => [String(a.item), a])
-			);
-			return ASSET_ITEMS.map((item) => {
-				const row = recorded.get(item);
-				return { item, returned: !!row?.returned, note: (row?.note as string | null) ?? '' };
-			});
-		})(),
 		ndcSections: NDC_SECTIONS.map((s) => ({
 			dept: s.dept,
 			label: s.label,
@@ -528,65 +529,6 @@ export const actions: Actions = {
 	 *  header (name, employee number, team, reporting to, dates, contact, bank
 	 *  name) comes from the particulars above; this action captures the
 	 *  handover notes and the per-row position the approvers cross-check. */
-	saveNdcInternal: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireHr(locals);
-		if (forbidden) return forbidden;
-		const row = await getExit(params.id);
-		if (!row) return no(404, 'Offboarding record not found.');
-
-		const form = await request.formData();
-		const get = (k: string) => String(form.get(k) ?? '').trim();
-
-		const patch: Record<string, unknown> = {
-			'ndc.nameAsPerBank': get('nameAsPerBank') || null,
-			'ndc.filesHandover': get('filesHandover') || null,
-			'ndc.loginsHandover': get('loginsHandover') || null,
-			'ndc.leadsHandover': get('leadsHandover') || null,
-			'ndc.deptOthers': get('deptOthers') || null
-		};
-
-		// Bounded exactly as the employee form used to bound it: only known row
-		// keys and known declaration values are stored, so a hand-crafted POST
-		// cannot invent a row the certificate will then print.
-		const allowed = new Set<string>(NDC_EMPLOYEE_DECLARATIONS.map((d) => d.value));
-		const rows: Record<string, string> = {};
-		const rowNotes: Record<string, string> = {};
-		for (const section of NDC_EMPLOYEE_SECTIONS) {
-			for (const r of section.rows) {
-				const value = get(`row_${r.key}`);
-				if (allowed.has(value) && NDC_EMPLOYEE_ROW_KEYS.has(r.key)) rows[r.key] = value;
-				// The four Employee's-Department rows keep their note on the
-				// dedicated ndc.* field above, never duplicated into rowNotes.
-				if (!r.noteField) {
-					const note = get(`note_${r.key}`);
-					if (note) rowNotes[r.key] = note;
-				}
-			}
-		}
-		patch['ndc.rows'] = rows;
-		patch['ndc.rowNotes'] = rowNotes;
-		patch['ndc.submittedAt'] = new Date();
-
-		// Company assets print on the certificate itself (see noDuesPdf), so they
-		// are recorded here with the rest of it rather than self-declared.
-		patch.assets = ASSET_ITEMS.map((item) => ({
-			item,
-			returned: form.get(`asset_${item}`) === 'on',
-			note: get(`assetnote_${item}`) || null
-		}));
-
-		await Exit.findByIdAndUpdate(params.id, patch);
-		await audit({
-			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
-			actor: locals.admin!.email,
-			action: 'exit_ndc_recorded',
-			field: 'ndc',
-			newValue: `${Object.keys(rows).length} rows recorded`,
-			ip: getClientAddress()
-		});
-		return { ndcSaved: true };
-	},
-
 	acceptSubmission: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
@@ -867,6 +809,108 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { fnfSaved: true };
+	},
+
+	/** Forward the exit paperwork to the payroll team.
+	 *
+	 *  Separate from the employee's handover link on purpose: payroll needs the
+	 *  internal documents (the exit interview, the signed No Dues) that the
+	 *  employee never sees, and they need them as attachments in a mailbox they
+	 *  already work from rather than behind another portal login.
+	 *
+	 *  HR chooses what goes. Sending everything by default would be easier to
+	 *  build and wrong: some of these documents contain answers given in
+	 *  confidence at an exit interview, and "all of it" should be a decision
+	 *  somebody takes, not the shape of the button. */
+	sendDocsToPayroll: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		const { exit } = row;
+
+		const form = await request.formData();
+		const to = String(form.get('to') ?? '').trim();
+		if (!isValidEmail(to)) return no(400, 'Enter a valid email address for the payroll team.');
+
+		const docKeys = form.getAll('docKey').map((v) => String(v));
+		const fileIds = form.getAll('fileId').map((v) => String(v));
+		if (!docKeys.length && !fileIds.length)
+			return no(400, 'Pick at least one document to send.');
+
+		const input = await loadPdfInput(params.id);
+		if (!input) return no(404, 'Offboarding record not found.');
+
+		// Bounded by what this exit actually offers, so a hand-crafted POST cannot
+		// name a document the record does not have.
+		const allowed = availableDocs(exit as unknown as Record<string, unknown>);
+		const allowedKeys = new Map(allowed.map((d) => [String(d.key), d.key]));
+		const attachments: { filename: string; content: Buffer }[] = [];
+		const sentKeys: string[] = [];
+		for (const key of docKeys) {
+			const typed = allowedKeys.get(key);
+			if (!typed) continue;
+			const rendered = await renderExitDoc(typed, input);
+			if (!rendered) continue;
+			attachments.push({ filename: rendered.filename, content: Buffer.from(rendered.bytes) });
+			sentKeys.push(key);
+		}
+
+		const files = fileIds.length
+			? await ExitDocument.find({ _id: { $in: fileIds }, exitId: params.id }).lean()
+			: [];
+		for (const f of files) {
+			try {
+				const bytes = await getGridFSBytes(f.gridfsId as never);
+				attachments.push({
+					filename: (f.label as string) ?? (f.docType as string),
+					content: Buffer.from(bytes)
+				});
+			} catch {
+				// One unreadable upload must not sink the whole send; the rest still
+				// reach payroll and the result names what went.
+			}
+		}
+
+		if (!attachments.length) return no(400, 'None of those documents could be prepared.');
+
+		const brand = brandBySlug(row.company?.brandSlug ?? undefined);
+		const name = exit.fullName ?? exit.employeeId ?? 'the employee';
+		try {
+			await sendMail(
+				to,
+				`Exit paperwork — ${name}${exit.employeeId ? ` (${exit.employeeId})` : ''}`,
+				`Please find attached the exit paperwork for ${name}.\n\n` +
+					`Last working day: ${exit.lwd ?? '—'}\n` +
+					`Attached: ${attachments.map((a) => a.filename).join(', ')}\n\n` +
+					`Sent from the ChampOnboard portal by ${locals.admin!.email}.`,
+				{ attachments, from: brandFromHeader(brand, 'exit') }
+			);
+		} catch (err) {
+			console.error(`[payroll-dispatch] send failed for exit=${params.id}:`, err);
+			return no(502, 'Could not send to payroll. Check the mail provider and try again.');
+		}
+
+		await Exit.findByIdAndUpdate(params.id, {
+			$set: {
+				'payrollDispatch.sentAt': new Date(),
+				'payrollDispatch.sentTo': to,
+				'payrollDispatch.sentBy': locals.admin!.email,
+				'payrollDispatch.docKeys': sentKeys,
+				'payrollDispatch.fileIds': files.map((f) => f._id)
+			}
+		});
+
+		await audit({
+			candidateId: exit.candidateId ? String(exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_docs_sent_to_payroll',
+			field: to,
+			newValue: attachments.map((a) => a.filename).join(', '),
+			ip: getClientAddress()
+		});
+
+		return { payrollSent: attachments.length };
 	},
 
 	/** SOP 10.7 — the exit-completion checklist. */

@@ -11,6 +11,7 @@ import { ObjectId } from 'mongodb';
 import type { Actions, PageServerLoad } from './$types';
 import { Admin, Exit, ExitClearance, ExitDocument } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
+import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import { baseUrl } from '$lib/server/base-url';
 import { brandBySlug } from '$lib/shared/brands';
 import { deleteFromGridFS, uploadBytesToGridFS } from '$lib/server/storage';
@@ -18,7 +19,10 @@ import {
 	CLEARANCE_DEPT_LABELS,
 	NDC_EMPLOYEE_DECLARATION_LABELS,
 	NDC_SECTION_BY_DEPT,
-	type ClearanceDept
+	type ClearanceDept,
+	ASSET_ITEMS,
+	FNF_PAYROLL_FIELDS,
+	FNF_PAYROLL_DATE_KEYS
 } from '$lib/shared/offboarding';
 import {
 	asRecord,
@@ -101,11 +105,25 @@ export const load: PageServerLoad = async ({ params }) => {
 			leadsHandover: e.ndc?.leadsHandover ?? null,
 			deptOthers: e.ndc?.deptOthers ?? null
 		},
-		assets: (e.assets ?? []).map((a: Record<string, unknown>) => ({
-			item: a.item as string,
-			returned: !!a.returned,
-			note: (a.note as string | null) ?? null
-		})),
+		// The SOP's standard asset set, with whatever has been recorded merged
+		// over it. Built here rather than read straight off the exit because
+		// nothing seeds that list any more: HR used to, on a No Dues form it no
+		// longer fills, and an empty list would silently leave IT and admin with
+		// nothing to tick. A newly added item also appears on an exit already in
+		// progress this way.
+		assets: (() => {
+			const recorded = new Map(
+				((e.assets ?? []) as Record<string, unknown>[]).map((a) => [String(a.item), a])
+			);
+			return ASSET_ITEMS.map((item) => {
+				const row = recorded.get(item);
+				return {
+					item,
+					returned: !!row?.returned,
+					note: ((row?.note as string | null) ?? null) as string | null
+				};
+			});
+		})(),
 		clearance: {
 			approverName: clearance.approverName ?? '',
 			approverDesignation: clearance.approverDesignation ?? '',
@@ -120,7 +138,23 @@ export const load: PageServerLoad = async ({ params }) => {
 		/** Whether this section's rows are ones the employee self-declares. Drives
 		 *  the "not answered yet" prompt: on payroll and finance there is nothing
 		 *  for the employee to have said, so silence there is not an omission. */
-		employeeDeclaresSection: !!section?.employeeDeclares
+		employeeDeclaresSection: !!section?.employeeDeclares,
+		/** Payroll is the only department asked for figures as well as a verdict:
+		 *  the full & final settlement is theirs to state, and HR reads it back
+		 *  rather than re-keying it from an email. */
+		collectsFnf: dept === 'payroll',
+		fnfFields: FNF_PAYROLL_FIELDS.map((f) => ({
+			key: f.key,
+			label: f.label,
+			date: 'date' in f && !!f.date,
+			money: 'money' in f && !!f.money,
+			// Dates are stored DD/MM/YYYY; a date input needs ISO.
+			value: (() => {
+				const raw = ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? '';
+				if (!raw) return '';
+				return 'date' in f && f.date ? (toIsoDate(raw) ?? '') : raw;
+			})()
+		}))
 	};
 };
 
@@ -201,19 +235,41 @@ export const actions: Actions = {
 			// Mongoose subdocuments must be converted before spreading: `...doc`
 			// copies internal document state, not the plain fields, and the
 			// resulting object silently fails to save.
-			const current = ((exit as unknown as Record<string, any>).assets ?? []) as {
-				toObject?: () => Record<string, unknown>;
-			}[];
-			const assets = current.map((raw) => {
-				const a = (raw.toObject ? raw.toObject() : raw) as Record<string, unknown>;
-				if (!form.has(`assetseen_${String(a.item)}`)) return a;
-				return {
-					...a,
-					returned: form.get(`asset_${String(a.item)}`) === 'on',
-					verifiedAt: new Date()
-				};
+			const current = new Map(
+				(((exit as unknown as Record<string, any>).assets ?? []) as {
+					toObject?: () => Record<string, unknown>;
+				}[]).map((raw) => {
+					const a = (raw.toObject ? raw.toObject() : raw) as Record<string, unknown>;
+					return [String(a.item), a];
+				})
+			);
+			// Over the standard set, not over what happens to be stored: on the
+			// first clearance to reach this exit there is nothing stored yet, and
+			// mapping an empty list would quietly discard every tick just made.
+			const assets = ASSET_ITEMS.map((item) => {
+				const a = current.get(item) ?? { item, returned: false, note: null };
+				if (!form.has(`assetseen_${item}`)) return a;
+				return { ...a, item, returned: form.get(`asset_${item}`) === 'on', verifiedAt: new Date() };
 			});
 			await Exit.findByIdAndUpdate(exit._id, { assets });
+		}
+
+		// Payroll states the full & final figures here, on the page they already
+		// have to visit to sign off. Bounded by FNF_PAYROLL_FIELDS so a
+		// hand-crafted POST cannot reach a field this form never showed — the
+		// same rule the NDC rows and the asset list follow.
+		if (clearance.department === 'payroll') {
+			const fnfPatch: Record<string, unknown> = {};
+			for (const f of FNF_PAYROLL_FIELDS) {
+				const raw = get(f.key);
+				fnfPatch[`fnf.${f.key}`] = FNF_PAYROLL_DATE_KEYS.has(f.key)
+					? isoToDDMMYYYY(raw) || null
+					: raw || null;
+			}
+			fnfPatch['fnf.submittedByPayrollAt'] = new Date();
+			fnfPatch['fnf.submittedByPayrollName'] = approverName;
+			fnfPatch['fnf.updatedAt'] = new Date();
+			await Exit.findByIdAndUpdate(exit._id, fnfPatch);
 		}
 
 		if (signatureGridfsId) {
