@@ -23,14 +23,16 @@
 	 *  refresh. Build links rather than posting — this is a read. */
 	function href(patch: Record<string, string>): string {
 		const p = new URLSearchParams();
-		const next = { range: data.range, track: data.track, status: data.status, q: data.q, ...patch };
+		const next = { range: data.range, entity: data.entity, track: data.track, status: data.status, q: data.q, ...patch };
 		for (const [k, v] of Object.entries(next)) if (v && v !== 'all') p.set(k, v);
 		const qs = p.toString();
 		return qs ? `?${qs}` : '?';
 	}
 
 	const filtered = $derived(data.candidates.length);
-	const isFiltered = $derived(data.range !== 'all' || !!data.track || !!data.status || !!data.q);
+	const isFiltered = $derived(
+		data.range !== 'all' || !!data.entity || !!data.track || !!data.status || !!data.q
+	);
 
 	async function fetchCandidateSuggestions(q: string) {
 		const res = await fetch(`/admin/candidates/search?q=${encodeURIComponent(q)}`);
@@ -69,6 +71,21 @@
 		{/each}
 	</div>
 
+	<!-- Entity leads the three: which company someone is joining is the widest
+	     cut of this list, and the one HR reaches for first when a desk only
+	     handles part of the group. -->
+	<div class="filter-select entity-select">
+		<GlassSelect
+			ariaLabel="Entity"
+			value={data.entity ?? ''}
+			options={[
+				{ value: '', label: 'All entities' },
+				...data.entities.map((e: { id: string; name: string }) => ({ value: e.id, label: e.name }))
+			]}
+			onChange={(v) => (window.location.href = href({ entity: v }))}
+		/>
+	</div>
+
 	<div class="filter-select">
 		<GlassSelect
 			ariaLabel="Track"
@@ -97,6 +114,7 @@
 	     inputs carry the active filters so a search doesn't silently drop them. -->
 	<form class="searchbox" method="GET" action="/admin/candidates" role="search" data-sveltekit-noscroll data-sveltekit-keepfocus>
 		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.entity}<input type="hidden" name="entity" value={data.entity} />{/if}
 		{#if data.track}<input type="hidden" name="track" value={data.track} />{/if}
 		{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}
 		<SearchTypeahead
@@ -206,6 +224,11 @@
 		color: var(--ae-ember-glow);
 	}
 	/* Filter dropdowns are content-width, not the full toolbar row. */
+	/* Company names run much longer than "Fresher" or "Awaiting review", so this
+	   one gets more room rather than truncating every entity to an ellipsis. */
+	.entity-select {
+		min-width: 210px;
+	}
 	.filter-select {
 		width: auto;
 		min-width: 150px;
