@@ -2651,6 +2651,37 @@
 				</div>
 				</fieldset>
 			</form>
+			<!-- The letter reached the candidate but the portal did not record it —
+			     the send failed after the mail went out, or it was sent by hand.
+			     Without this the only ways to correct the status were to press Send,
+			     which emails a duplicate to fix a bookkeeping error, or to edit the
+			     database. Super admin only; the audit entry says it was set by hand. -->
+			{#if data.isSuperAdmin && ol.status !== 'sent'}
+				<details class="mark-sent">
+					<summary>Already sent outside the portal?</summary>
+					<form
+						method="POST"
+						action="?/markOfferLetterSent"
+						use:enhance
+						onsubmit={(e) => {
+							if (!confirm('Record this letter as sent? No email goes out.')) e.preventDefault();
+						}}
+					>
+						<p class="muted" style="font-size:11px;margin:0 0 8px">
+							Records it as sent without emailing anything. Give the date it actually went out if
+							you know it.
+						</p>
+						<div class="mark-sent-row">
+							<input type="datetime-local" name="sentAt" aria-label="When it was sent" />
+							<button class="btn ghost small">Record as sent</button>
+						</div>
+					</form>
+				</details>
+			{/if}
+			{#if form?.offerLetterMarkedSent}
+				<p class="saved-chip" style="margin-top:8px">Recorded as sent ✓</p>
+			{/if}
+
 			{#if form?.offerLetterSaved}
 				<p class="saved-chip" style="margin-top:8px">Saved ✓</p>
 			{/if}
@@ -3785,6 +3816,39 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 10px 12px;
+	}
+	.mark-sent {
+		margin-top: 10px;
+		font-size: 11.5px;
+	}
+	.mark-sent summary {
+		cursor: pointer;
+		color: var(--ae-muted);
+		font-size: 11px;
+	}
+	.mark-sent summary:hover {
+		color: var(--ae-text-2);
+	}
+	.mark-sent form {
+		margin-top: 8px;
+		padding: 10px 11px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 9px;
+	}
+	.mark-sent-row {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.mark-sent-row input {
+		font-family: inherit;
+		font-size: 12px;
+		padding: 6px 8px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 7px;
+		background: transparent;
+		color: var(--ae-text-2);
 	}
 	.sent-note {
 		display: flex;

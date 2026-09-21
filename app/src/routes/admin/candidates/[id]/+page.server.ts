@@ -1318,6 +1318,59 @@ ${brandSignoff(brand)}`,
 		return { employeeIdSaved: true, employeeId: employeeId ?? '' };
 	},
 
+	/** Record a letter as already sent, without sending anything.
+	 *
+	 *  For the letter that reached the candidate but did not get recorded: the
+	 *  send 500'd after the mail went out, a letter was sent by hand from
+	 *  somebody's mailbox, or the record was migrated in. Until now the only way
+	 *  to correct the status was to press Send — which emails the candidate a
+	 *  duplicate to fix a bookkeeping error — or to edit the database by hand.
+	 *
+	 *  Super-admin only, and deliberately loud: the audit entry says the status
+	 *  was set by hand and by whom, because "sent" now means two different
+	 *  things and the log should be able to tell them apart. */
+	markOfferLetterSent: async ({ params, request, locals, getClientAddress }) => {
+		if (locals.admin?.role !== 'super_admin')
+			return fail(403, { offerLetterError: true, message: 'Only a super admin can record a letter as sent.' });
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+
+		const draft = await OfferLetter.findOne({ candidateId: params.id });
+		if (!draft)
+			return fail(400, { offerLetterError: true, message: 'There is no offer letter draft on this candidate yet.' });
+		if (draft.status === 'sent')
+			return fail(409, { offerLetterError: true, message: 'This letter is already recorded as sent.' });
+
+		// The date it actually went out, when it is known — the point of this is
+		// to make the record true, and stamping it with today's date would only
+		// swap one wrong fact for another. Blank means now.
+		const typed = String((await request.formData()).get('sentAt') ?? '').trim();
+		const when = typed ? new Date(typed) : new Date();
+		if (isNaN(when.getTime()))
+			return fail(400, { offerLetterError: true, message: 'That date could not be read.' });
+		if (when.getTime() > Date.now() + 60_000)
+			return fail(400, { offerLetterError: true, message: 'That date is in the future.' });
+
+		// A targeted update for the same reason the send path uses one: this must
+		// not fail on the validity of an unrelated legacy field.
+		await OfferLetter.updateOne(
+			{ _id: draft._id },
+			{ $set: { status: 'sent', sentAt: when, sentBy: locals.admin!.id } }
+		);
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'offer_letter_marked_sent_manually',
+			field: 'status',
+			oldValue: 'draft',
+			newValue: `sent (recorded by hand, dated ${when.toISOString()})`,
+			ip: getClientAddress()
+		});
+
+		return { offerLetterMarkedSent: true };
+	},
+
 	sendOfferLetterEmail: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireApprover(locals);
 		if (forbidden) return forbidden;
