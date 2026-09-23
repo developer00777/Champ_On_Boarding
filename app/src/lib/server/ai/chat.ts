@@ -13,7 +13,7 @@ const MODEL = env.OPENROUTER_MODEL ?? 'google/gemini-3.5-flash';
 const TIMEOUT_MS = 45_000;
 /** Tool rounds per question. Four is enough for "catalogue → map → build →
  *  answer", which is the longest legitimate chain the report flow needs. */
-const MAX_STEPS = 4;
+const MAX_STEPS = 6;
 /** Turns of history sent back. The panel is for quick questions, and an
  *  unbounded transcript is unbounded cost. */
 const MAX_HISTORY = 12;
@@ -28,8 +28,12 @@ export interface ChatResult {
 	/** Rendered by the panel as a real table rather than left to the model to
 	 *  retype — a hallucinated number must not be able to look like data. */
 	report?: { title: string; columns: { key: string; label: string }[]; rows: string[][]; truncated: boolean };
-	/** Rendered as a confirmation card with an Apply button. Never applied here. */
-	proposal?: Record<string, unknown>;
+	/** Rendered as confirmation cards with Apply buttons. Never applied here.
+	 *  A list, not one: "give everyone X" is a single question that legitimately
+	 *  produces a proposal per person, and holding only the last one meant the
+	 *  model could truthfully say it had drafted eleven while the panel showed
+	 *  one — the reader applies that and believes the other ten are done. */
+	proposals?: Record<string, unknown>[];
 	usedTools: string[];
 }
 
@@ -46,6 +50,7 @@ function systemPrompt(caller: Caller, toolNames: string[]): string {
 		'- Answer from tool results only. Never state a number, name or date you did not get from a tool.',
 		'- If a tool returns nothing, say nothing matched. Do not fill the gap with a plausible answer.',
 		'- Be brief. These are working colleagues mid-task, not an audience.',
+		'- Write plain sentences. No markdown headings, no bold, no asterisks around words — the panel shows your text as written. A list is one item per line starting with "- ".',
 		'- Indian English, and the vocabulary the portal already uses: candidate, entity, track, offer letter, clearance, full & final.',
 		'- Never output identity numbers, bank details or salary figures. The tools do not return them; do not infer or guess them either.',
 		'',
@@ -123,7 +128,7 @@ export async function chat(
 
 	const usedTools: string[] = [];
 	let report: ChatResult['report'];
-	let proposal: ChatResult['proposal'];
+	const proposals: Record<string, unknown>[] = [];
 
 	for (let step = 0; step < MAX_STEPS; step++) {
 		const msg = await callModel(messages, tools);
@@ -131,7 +136,7 @@ export async function chat(
 
 		const calls = msg.tool_calls ?? [];
 		if (!calls.length) {
-			return { reply: msg.content?.trim() || 'I could not put an answer together for that.', report, proposal, usedTools };
+			return { reply: msg.content?.trim() || 'I could not put an answer together for that.', report, proposals, usedTools };
 		}
 
 		for (const call of calls) {
@@ -158,7 +163,7 @@ export async function chat(
 				};
 			}
 			if (call.function.name === 'propose_access_change' && r?.proposal) {
-				proposal = r.proposal as Record<string, unknown>;
+				proposals.push(r.proposal as Record<string, unknown>);
 			}
 
 			messages.push({
@@ -180,5 +185,5 @@ export async function chat(
 		role: 'user',
 		content: 'Answer now from what you already have. Do not call any more tools.'
 	}], []);
-	return { reply: final.content?.trim() || 'That took too many steps to answer.', report, proposal, usedTools };
+	return { reply: final.content?.trim() || 'That took too many steps to answer.', report, proposals, usedTools };
 }

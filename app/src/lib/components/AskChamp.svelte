@@ -31,10 +31,60 @@
 		role: 'user' | 'assistant';
 		content: string;
 		report?: Report;
-		proposal?: Proposal;
-		applied?: { to: string } | null;
-		applyError?: string | null;
+		proposals?: Proposal[];
+		/** Keyed by email+capability, because one turn can carry a card per person
+		 *  and each is applied on its own. */
+		applied: Record<string, string>;
+		applyErrors: Record<string, string>;
 	};
+
+	const propKey = (p: Proposal) => `${p.email}:${p.capability}`;
+
+	// Models write markdown whether or not you ask them not to, and the panel
+	// was showing it raw: "**4**" and "* item" arrived as literal asterisks.
+	//
+	// Parsed into tokens and rendered as Svelte elements rather than pushed
+	// through {@html}. That is not fussiness: this prose is shaped by candidate
+	// records, so any path that turns model output into markup is a path from a
+	// candidate's name field into the DOM. Tokens cannot carry HTML.
+	type Inline = { t: 'text' | 'b' | 'code'; v: string };
+	type Block = { kind: 'p' | 'li' | 'oli'; marker?: string; parts: Inline[] };
+
+	function inlines(line: string): Inline[] {
+		const out: Inline[] = [];
+		// **bold** and `code`, in one pass so neither can swallow the other.
+		const re = /\*\*(.+?)\*\*|`([^`]+)`/g;
+		let last = 0;
+		let m: RegExpExecArray | null;
+		while ((m = re.exec(line))) {
+			if (m.index > last) out.push({ t: 'text', v: line.slice(last, m.index) });
+			if (m[1] !== undefined) out.push({ t: 'b', v: m[1] });
+			else out.push({ t: 'code', v: m[2] });
+			last = m.index + m[0].length;
+		}
+		if (last < line.length) out.push({ t: 'text', v: line.slice(last) });
+		// A lone asterisk left over is emphasis the model opened and never closed,
+		// or a stray bullet mid-line. It reads as noise either way.
+		return out.map((i) => (i.t === 'text' ? { ...i, v: i.v.replace(/\*/g, '') } : i));
+	}
+
+	function blocks(md: string): Block[] {
+		const out: Block[] = [];
+		for (const raw of (md ?? '').split('\n')) {
+			const line = raw.trimEnd();
+			if (!line.trim()) continue;
+			const bullet = line.match(/^\s*[-*\u2022]\s+(.*)$/);
+			const numbered = line.match(/^\s*(\d+)[.)]\s+(.*)$/);
+			// Headings lose their hashes but keep their text — the panel has no
+			// heading level to give them anyway.
+			const heading = line.match(/^\s*#{1,6}\s+(.*)$/);
+			if (bullet) out.push({ kind: 'li', parts: inlines(bullet[1]) });
+			else if (numbered) out.push({ kind: 'oli', marker: numbered[1] + '.', parts: inlines(numbered[2]) });
+			else if (heading) out.push({ kind: 'p', parts: [{ t: 'b', v: heading[1].replace(/\*/g, '') }] });
+			else out.push({ kind: 'p', parts: inlines(line) });
+		}
+		return out;
+	}
 
 	let open = $state(false);
 	let question = $state('');
@@ -58,7 +108,7 @@
 		if (!q || busy) return;
 		question = '';
 		error = null;
-		turns = [...turns, { role: 'user', content: q }];
+		turns = [...turns, { role: 'user', content: q, applied: {}, applyErrors: {} }];
 		busy = true;
 		await scrollDown();
 		try {
@@ -85,9 +135,9 @@
 					role: 'assistant',
 					content: body.reply,
 					report: body.report,
-					proposal: body.proposal,
-					applied: null,
-					applyError: null
+					proposals: body.proposals ?? [],
+					applied: {},
+					applyErrors: {}
 				}
 			];
 		} catch {
@@ -98,11 +148,9 @@
 		}
 	}
 
-	async function applyProposal(turn: Turn) {
-		if (!turn.proposal) return;
-		const p = turn.proposal;
+	async function applyProposal(turn: Turn, p: Proposal) {
 		if (!confirm(`Set "${p.capabilityLabel}" to ${p.to} for ${p.email}?`)) return;
-		turn.applyError = null;
+		delete turn.applyErrors[propKey(p)];
 		try {
 			const res = await fetch('/admin/ai/apply', {
 				method: 'POST',
@@ -111,13 +159,13 @@
 			});
 			if (!res.ok) {
 				const body = (await res.json().catch(() => null)) as { message?: string } | null;
-				turn.applyError = body?.message ?? `Could not apply (${res.status}).`;
+				turn.applyErrors[propKey(p)] = body?.message ?? `Could not apply (${res.status}).`;
 			} else {
 				const body = await res.json();
-				turn.applied = { to: body.to };
+				turn.applied[propKey(p)] = body.to;
 			}
 		} catch {
-			turn.applyError = 'Could not apply — check your connection.';
+			turn.applyErrors[propKey(p)] = 'Could not apply — check your connection.';
 		}
 		turns = [...turns];
 	}
@@ -192,7 +240,18 @@
 
 			{#each turns as t, i (i)}
 				<div class="turn {t.role}">
-					<div class="bubble">{t.content}</div>
+					<div class="bubble">
+						{#each blocks(t.content) as b, bi (bi)}
+							{#if b.kind === 'p'}
+								<p>{#each b.parts as x, xi (xi)}{#if x.t === 'b'}<b>{x.v}</b>{:else if x.t === 'code'}<code>{x.v}</code>{:else}{x.v}{/if}{/each}</p>
+							{:else}
+								<div class="li">
+									<span class="mk">{b.kind === 'oli' ? b.marker : '·'}</span>
+									<span>{#each b.parts as x, xi (xi)}{#if x.t === 'b'}<b>{x.v}</b>{:else if x.t === 'code'}<code>{x.v}</code>{:else}{x.v}{/if}{/each}</span>
+								</div>
+							{/if}
+						{/each}
+					</div>
 
 					{#if t.report}
 						<div class="report">
@@ -218,37 +277,48 @@
 						</div>
 					{/if}
 
-					{#if t.proposal}
-						<div class="proposal">
-							<div class="prop-h">Proposed access change</div>
+					{#each t.proposals ?? [] as p (propKey(p))}
+						{@const noop = p.from === p.to}
+						<div class="proposal" class:noop>
+							<div class="prop-h">{noop ? 'No change needed' : 'Proposed access change'}</div>
 							<div class="prop-b">
-								<b>{t.proposal.email}</b> ({t.proposal.role})<br />
-								{t.proposal.capabilityLabel}
-								<code>{t.proposal.capability}</code><br />
-								<span class="from">{t.proposal.from}</span> → <b>{t.proposal.to}</b>
-								{#if t.proposal.reason}<div class="why">{t.proposal.reason}</div>{/if}
+								<b>{p.email}</b> ({p.role})<br />
+								{p.capabilityLabel}
+								<code>{p.capability}</code><br />
+								{#if noop}
+									<span class="from">already {p.to}</span>
+								{:else}
+									<span class="from">{p.from}</span> → <b>{p.to}</b>
+								{/if}
+								{#if p.reason}<div class="why">{p.reason}</div>{/if}
 							</div>
-							{#if !t.proposal.implemented}
-								<p class="prop-note">
-									This capability has no control behind it in the app yet, so applying it records the
-									intent but changes nothing today.
-								</p>
+							{#if noop}
+								<!-- Applying would write a grant identical to what the preset
+								     already gives, which is noise in the audit log for no gain. -->
+								<p class="prop-note">They already have this. Nothing to apply.</p>
 							{:else}
-								<p class="prop-note">
-									Access is still decided by role, so this is recorded against the login and takes
-									effect when the capability model is enforced.
-								</p>
+								{#if !p.implemented}
+									<p class="prop-note">
+										This capability has no control behind it in the app yet, so applying it records
+										the intent but changes nothing today.
+									</p>
+								{:else}
+									<p class="prop-note">
+										Access is still decided by role, so this is recorded against the login and takes
+										effect when the capability model is enforced.
+									</p>
+								{/if}
+								{#if t.applied[propKey(p)]}
+									<p class="prop-ok">Applied ✓ — set to {t.applied[propKey(p)]} and written to the audit log.</p>
+								{:else if isSuperAdmin}
+									<button type="button" class="prop-btn" onclick={() => applyProposal(t, p)}>Apply this change</button>
+								{:else}
+									<p class="prop-note">Only a super admin can apply this.</p>
+								{/if}
 							{/if}
-							{#if t.applied}
-								<p class="prop-ok">Applied ✓ — set to {t.applied.to} and written to the audit log.</p>
-							{:else if isSuperAdmin}
-								<button type="button" class="prop-btn" onclick={() => applyProposal(t)}>Apply this change</button>
-							{:else}
-								<p class="prop-note">Only a super admin can apply this.</p>
-							{/if}
-							{#if t.applyError}<p class="prop-err">{t.applyError}</p>{/if}
+							{#if t.applyErrors[propKey(p)]}<p class="prop-err">{t.applyErrors[propKey(p)]}</p>{/if}
 						</div>
-					{/if}
+					{/each}
 				</div>
 			{/each}
 
@@ -367,9 +437,25 @@
 		border-radius: 12px;
 		font-size: 12.5px;
 		line-height: 1.55;
-		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 	}
+	/* The user's own text is still shown exactly as typed — a pasted schema
+	   keeps its line breaks. Only the assistant's prose goes through the parser. */
+	.turn.user .bubble { white-space: pre-wrap; }
+	.bubble p { margin: 0 0 6px; }
+	.bubble p:last-child { margin-bottom: 0; }
+	.bubble .li { display: flex; gap: 7px; margin: 0 0 3px; }
+	.bubble .li:last-child { margin-bottom: 0; }
+	.bubble .mk { flex: none; color: var(--ae-muted); font-variant-numeric: tabular-nums; }
+	.bubble code {
+		font-family: var(--ae-font-mono);
+		font-size: 11px;
+		padding: 1px 4px;
+		border-radius: 4px;
+		background: rgba(127, 127, 127, 0.18);
+	}
+	.proposal.noop { border-color: var(--ae-line-strong); background: transparent; opacity: 0.8; }
+	.proposal.noop .prop-h { color: var(--ae-muted); }
 	.turn.user .bubble { background: rgba(255, 125, 85, 0.16); border: 1px solid rgba(255, 125, 85, 0.3); }
 	.turn.assistant .bubble { background: var(--ae-line); color: var(--ae-text-2); }
 	.thinking { color: var(--ae-muted); font-style: italic; }
