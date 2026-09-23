@@ -17,6 +17,13 @@
 		navigator.clipboard.writeText(value);
 	}
 
+	// Which row has its set-password box open, and which has its delete
+	// confirmation open. One at a time: these are the two destructive things on
+	// the page, and having both hanging open on several rows invites the wrong
+	// button.
+	let pwOpenFor = $state<string | null>(null);
+	let delOpenFor = $state<string | null>(null);
+
 	// The one-time password to surface (from create or reset).
 	const oneTimePassword = $derived(form?.password ?? null);
 </script>
@@ -78,6 +85,14 @@
 		</div>
 	{/if}
 
+	{#if form?.deleted}
+		<div class="notice">
+			<div style="font-size:13px;color:var(--ink)">
+				Login deleted: <b>{form.email}</b>. Their audit history is kept.
+			</div>
+		</div>
+	{/if}
+
 	{#if form?.passwordReset}
 		<div class="linkbox">
 			<div style="font-size:13px;color:var(--fg-2);margin-bottom:8px">
@@ -85,8 +100,12 @@
 			</div>
 			<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
 				<span style="font-size:12.5px;color:var(--smoke)">New password:</span>
-				<code class="linkcode">{form.password}</code>
-				<button type="button" class="teal-pill-btn" onclick={() => copy(form.password)}>Copy</button>
+				{#if form.chosen}
+					<span style="font-size:12.5px;color:var(--ink)">the one you set</span>
+				{:else}
+					<code class="linkcode">{form.password}</code>
+					<button type="button" class="teal-pill-btn" onclick={() => copy(form.password)}>Copy</button>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -128,6 +147,11 @@
 					<input type="hidden" name="id" value={a.id} />
 					<button class="btn ghost small" type="submit">Reset password</button>
 				</form>
+				<button
+					class="btn ghost small"
+					type="button"
+					onclick={() => { pwOpenFor = pwOpenFor === a.id ? null : a.id; delOpenFor = null; }}
+				>Set password</button>
 				{#if !a.isSelf}
 					<form method="POST" action="?/setStatus" use:enhance style="display:contents">
 						<input type="hidden" name="id" value={a.id} />
@@ -136,8 +160,76 @@
 							{a.status === 'active' ? 'Disable' : 'Enable'}
 						</button>
 					</form>
+					<button
+						class="btn ghost small danger"
+						type="button"
+						onclick={() => { delOpenFor = delOpenFor === a.id ? null : a.id; pwOpenFor = null; }}
+					>Delete</button>
 				{/if}
 			</div>
+
+			{#if pwOpenFor === a.id}
+				<!-- Setting a password by hand, for when it is handed over in person
+				     or over a channel the super admin picks rather than shown once on
+				     this screen. Same action as Reset: blank still generates one. -->
+				<form
+					class="rowpanel"
+					method="POST"
+					action="?/resetPassword"
+					use:enhance={() => async ({ update }) => { pwOpenFor = null; await update(); }}
+				>
+					<input type="hidden" name="id" value={a.id} />
+					<label for="pw-{a.id}">New password for {a.email}</label>
+					<div class="rowpanel-row">
+						<input
+							id="pw-{a.id}"
+							name="password"
+							type="text"
+							autocomplete="off"
+							minlength="8"
+							required
+							placeholder="At least 8 characters"
+						/>
+						<button class="btn small" type="submit">Set it</button>
+						<button class="btn ghost small" type="button" onclick={() => (pwOpenFor = null)}>Cancel</button>
+					</div>
+					<p class="rowpanel-hint">
+						Signs them out everywhere. They are not asked to change it, so share it the way you
+						would any credential.
+					</p>
+				</form>
+			{/if}
+
+			{#if delOpenFor === a.id}
+				<!-- Permanent. The email has to be typed because a confirm dialog is
+				     muscle memory and this cannot be undone. -->
+				<form
+					class="rowpanel danger"
+					method="POST"
+					action="?/deleteUser"
+					use:enhance={() => async ({ update }) => { delOpenFor = null; await update(); }}
+				>
+					<input type="hidden" name="id" value={a.id} />
+					<label for="del-{a.id}">Delete this login permanently</label>
+					<div class="rowpanel-row">
+						<input
+							id="del-{a.id}"
+							name="confirmEmail"
+							type="text"
+							autocomplete="off"
+							required
+							placeholder="Type {a.email} to confirm"
+						/>
+						<button class="btn small danger-btn" type="submit">Delete login</button>
+						<button class="btn ghost small" type="button" onclick={() => (delOpenFor = null)}>Cancel</button>
+					</div>
+					<p class="rowpanel-hint">
+						They lose access immediately and the row is gone for good. What they did is kept — the
+						audit trail records people by email, so their history outlives the login. Disable
+						instead if you only want to block sign-in.
+					</p>
+				</form>
+			{/if}
 		</div>
 	{/each}
 </section>
@@ -245,5 +337,55 @@
 		.gen-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	/* The two per-row panels: set a password, or delete the login. They sit under
+	   the row they belong to rather than in a dialog, so the email they are about
+	   stays on screen while it is typed. */
+	.rowpanel {
+		grid-column: 1 / -1;
+		margin: -2px 0 10px;
+		padding: 11px 13px;
+		border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+		border-radius: 10px;
+		background: rgba(0, 0, 0, 0.02);
+	}
+	.rowpanel.danger {
+		border-color: rgba(228, 62, 62, 0.45);
+		background: rgba(228, 62, 62, 0.05);
+	}
+	.rowpanel label {
+		display: block;
+		font-size: 12px;
+		font-weight: 600;
+		margin-bottom: 6px;
+	}
+	.rowpanel-row {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.rowpanel-row input {
+		flex: 1;
+		min-width: 220px;
+		font-family: inherit;
+		font-size: 13px;
+		padding: 7px 9px;
+		border: 1px solid var(--line-strong, rgba(0, 0, 0, 0.2));
+		border-radius: 7px;
+	}
+	.rowpanel-hint {
+		margin: 8px 0 0;
+		font-size: 11.5px;
+		line-height: 1.5;
+		color: var(--smoke);
+	}
+	.btn.danger {
+		color: #b42318;
+	}
+	.btn.danger-btn {
+		background: #b42318;
+		color: #fff;
 	}
 </style>
