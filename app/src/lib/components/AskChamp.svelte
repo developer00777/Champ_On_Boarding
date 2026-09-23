@@ -1,0 +1,437 @@
+<script lang="ts">
+	// The assistant panel, opened from the floating launcher in the corner of
+	// every admin page.
+	//
+	// Two things here are deliberately NOT rendered from the model's prose: the
+	// report table and the access proposal. Both come back as structured data
+	// from the server and are drawn by this component, so a number the model
+	// invented cannot appear in a table, and a permission change cannot happen
+	// without a human pressing the button below.
+	import { tick } from 'svelte';
+
+	let { admin }: { admin: { email: string; role: string } } = $props();
+
+	type Report = {
+		title: string;
+		columns: { key: string; label: string }[];
+		rows: string[][];
+		truncated: boolean;
+	};
+	type Proposal = {
+		email: string;
+		role: string;
+		capability: string;
+		capabilityLabel: string;
+		from: string;
+		to: string;
+		reason: string | null;
+		implemented: boolean;
+	};
+	type Turn = {
+		role: 'user' | 'assistant';
+		content: string;
+		report?: Report;
+		proposal?: Proposal;
+		applied?: { to: string } | null;
+		applyError?: string | null;
+	};
+
+	let open = $state(false);
+	let question = $state('');
+	let busy = $state(false);
+	let error: string | null = $state(null);
+	let turns = $state<Turn[]>([]);
+	let scroller: HTMLDivElement | null = $state(null);
+	let input: HTMLTextAreaElement | null = $state(null);
+
+	const isSuperAdmin = $derived(admin.role === 'super_admin');
+
+	const SUGGESTIONS = [
+		'How many candidates are awaiting review?',
+		'Who has an offer letter still in draft?',
+		'Show me a report: name, entity, track, designation, date of joining',
+		'What happened to the last five offer letters?'
+	];
+
+	async function send(text?: string) {
+		const q = (text ?? question).trim();
+		if (!q || busy) return;
+		question = '';
+		error = null;
+		turns = [...turns, { role: 'user', content: q }];
+		busy = true;
+		await scrollDown();
+		try {
+			const res = await fetch('/admin/ai', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					question: q,
+					// Only the prose is replayed. Tables and proposals stay on screen
+					// but are not re-sent: they are large, and the model already knows
+					// what it produced.
+					history: turns.map((t) => ({ role: t.role, content: t.content }))
+				})
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				error = body?.message ?? `The assistant failed (${res.status}).`;
+				return;
+			}
+			const body = await res.json();
+			turns = [
+				...turns,
+				{
+					role: 'assistant',
+					content: body.reply,
+					report: body.report,
+					proposal: body.proposal,
+					applied: null,
+					applyError: null
+				}
+			];
+		} catch {
+			error = 'Could not reach the assistant — check your connection.';
+		} finally {
+			busy = false;
+			await scrollDown();
+		}
+	}
+
+	async function applyProposal(turn: Turn) {
+		if (!turn.proposal) return;
+		const p = turn.proposal;
+		if (!confirm(`Set "${p.capabilityLabel}" to ${p.to} for ${p.email}?`)) return;
+		turn.applyError = null;
+		try {
+			const res = await fetch('/admin/ai/apply', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email: p.email, capability: p.capability, level: p.to })
+			});
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				turn.applyError = body?.message ?? `Could not apply (${res.status}).`;
+			} else {
+				const body = await res.json();
+				turn.applied = { to: body.to };
+			}
+		} catch {
+			turn.applyError = 'Could not apply — check your connection.';
+		}
+		turns = [...turns];
+	}
+
+	function downloadCsv(r: Report) {
+		const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+		const csv = [
+			r.columns.map((c) => esc(c.label)).join(','),
+			...r.rows.map((row) => row.map(esc).join(','))
+		].join('\n');
+		// A data: URL rather than a blob so nothing has to be revoked afterwards;
+		// reports are a few hundred rows at most.
+		const a = document.createElement('a');
+		a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+		a.download = `${r.title.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'report'}.csv`;
+		a.click();
+	}
+
+	async function scrollDown() {
+		await tick();
+		if (scroller) scroller.scrollTop = scroller.scrollHeight;
+	}
+
+	async function toggle() {
+		open = !open;
+		if (open) {
+			await tick();
+			input?.focus();
+		}
+	}
+
+	function onKey(e: KeyboardEvent) {
+		// Enter sends, Shift+Enter is a newline — a schema gets pasted in here and
+		// needs its line breaks.
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			send();
+		}
+	}
+</script>
+
+<svelte:window onkeydown={(e) => e.key === 'Escape' && open && (open = false)} />
+
+{#if open}
+	<div class="panel" role="dialog" aria-modal="false" aria-label="Champ assistant">
+		<div class="phead">
+			<span class="pmark" aria-hidden="true">✨</span>
+			<div style="flex:1;min-width:0">
+				<div class="ptitle">Champ</div>
+				<div class="psub">Answers from your portal data · scoped to your access</div>
+			</div>
+			{#if turns.length}
+				<button class="plink" type="button" onclick={() => (turns = [])}>Clear</button>
+			{/if}
+			<button class="px" type="button" onclick={() => (open = false)} aria-label="Close">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+			</button>
+		</div>
+
+		<div class="pbody" bind:this={scroller}>
+			{#if !turns.length}
+				<p class="empty">
+					Ask about candidates, offers, exits or the audit trail. Paste a set of column headings
+					and I will build the report from your data.
+				</p>
+				<div class="suggest">
+					{#each SUGGESTIONS as s (s)}
+						<button type="button" onclick={() => send(s)}>{s}</button>
+					{/each}
+				</div>
+			{/if}
+
+			{#each turns as t, i (i)}
+				<div class="turn {t.role}">
+					<div class="bubble">{t.content}</div>
+
+					{#if t.report}
+						<div class="report">
+							<div class="rhead">
+								<span class="rtitle">{t.report.title}</span>
+								<span class="rcount">
+									{t.report.rows.length} row{t.report.rows.length === 1 ? '' : 's'}{t.report.truncated ? ' (capped)' : ''}
+								</span>
+								<button type="button" class="plink" onclick={() => downloadCsv(t.report!)}>Download CSV</button>
+							</div>
+							<div class="rscroll">
+								<table>
+									<thead>
+										<tr>{#each t.report.columns as c (c.key)}<th>{c.label}</th>{/each}</tr>
+									</thead>
+									<tbody>
+										{#each t.report.rows as row, ri (ri)}
+											<tr>{#each row as cell, ci (ci)}<td>{cell || '—'}</td>{/each}</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					{/if}
+
+					{#if t.proposal}
+						<div class="proposal">
+							<div class="prop-h">Proposed access change</div>
+							<div class="prop-b">
+								<b>{t.proposal.email}</b> ({t.proposal.role})<br />
+								{t.proposal.capabilityLabel}
+								<code>{t.proposal.capability}</code><br />
+								<span class="from">{t.proposal.from}</span> → <b>{t.proposal.to}</b>
+								{#if t.proposal.reason}<div class="why">{t.proposal.reason}</div>{/if}
+							</div>
+							{#if !t.proposal.implemented}
+								<p class="prop-note">
+									This capability has no control behind it in the app yet, so applying it records the
+									intent but changes nothing today.
+								</p>
+							{:else}
+								<p class="prop-note">
+									Access is still decided by role, so this is recorded against the login and takes
+									effect when the capability model is enforced.
+								</p>
+							{/if}
+							{#if t.applied}
+								<p class="prop-ok">Applied ✓ — set to {t.applied.to} and written to the audit log.</p>
+							{:else if isSuperAdmin}
+								<button type="button" class="prop-btn" onclick={() => applyProposal(t)}>Apply this change</button>
+							{:else}
+								<p class="prop-note">Only a super admin can apply this.</p>
+							{/if}
+							{#if t.applyError}<p class="prop-err">{t.applyError}</p>{/if}
+						</div>
+					{/if}
+				</div>
+			{/each}
+
+			{#if busy}<div class="turn assistant"><div class="bubble thinking">Looking it up…</div></div>{/if}
+			{#if error}<p class="err">{error}</p>{/if}
+		</div>
+
+		<div class="pfoot">
+			<textarea
+				bind:this={input}
+				bind:value={question}
+				onkeydown={onKey}
+				rows="2"
+				placeholder="Ask about your data, or paste report headings…"
+				disabled={busy}
+			></textarea>
+			<button class="send" type="button" onclick={() => send()} disabled={busy || !question.trim()} aria-label="Send">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6" /></svg>
+			</button>
+		</div>
+	</div>
+{/if}
+
+<button class="launcher" class:on={open} type="button" onclick={toggle} aria-label={open ? 'Close Champ' : 'Ask Champ'} title="Ask Champ">
+	<span aria-hidden="true">{open ? '×' : '✨'}</span>
+</button>
+
+<style>
+	.launcher {
+		position: fixed;
+		right: 22px;
+		bottom: 22px;
+		z-index: 400;
+		width: 52px;
+		height: 52px;
+		border-radius: 50%;
+		border: 1px solid var(--ae-line-strong);
+		background: var(--ae-card-bg), rgba(13, 16, 26, 0.96);
+		box-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(14px);
+		font-size: 22px;
+		line-height: 1;
+		cursor: pointer;
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+	.launcher:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 18px 44px -12px rgba(0, 0, 0, 0.7);
+	}
+	.launcher.on {
+		font-size: 26px;
+		color: var(--ae-muted);
+	}
+
+	.panel {
+		position: fixed;
+		right: 22px;
+		bottom: 86px;
+		z-index: 400;
+		width: min(560px, calc(100vw - 44px));
+		height: min(660px, calc(100vh - 130px));
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 16px;
+		background: var(--ae-card-bg), var(--ae-modal-base, rgba(13, 16, 26, 0.97));
+		box-shadow: 0 28px 70px -20px rgba(0, 0, 0, 0.7);
+		backdrop-filter: blur(18px) saturate(160%);
+		overflow: hidden;
+	}
+	:global(.aegis[data-theme='light']) .panel {
+		--ae-modal-base: rgba(252, 253, 255, 0.98);
+	}
+	.phead {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 14px;
+		border-bottom: 1px solid var(--ae-line);
+	}
+	.pmark { font-size: 17px; }
+	.ptitle { font-size: 14px; font-weight: 600; }
+	.psub { font-size: 10.5px; color: var(--ae-muted); margin-top: 1px; }
+	.px, .plink {
+		background: none;
+		border: 0;
+		color: var(--ae-muted);
+		cursor: pointer;
+		font: inherit;
+		font-size: 11px;
+	}
+	.plink { text-decoration: underline; text-underline-offset: 2px; }
+	.px:hover, .plink:hover { color: var(--ae-text); }
+
+	.pbody { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+	.empty { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ae-muted); }
+	.suggest { display: flex; flex-direction: column; gap: 6px; }
+	.suggest button {
+		text-align: left;
+		padding: 8px 10px;
+		border: 1px solid var(--ae-line);
+		border-radius: 9px;
+		background: none;
+		color: var(--ae-text-2);
+		font: inherit;
+		font-size: 12px;
+		cursor: pointer;
+	}
+	.suggest button:hover { border-color: var(--ae-line-strong); color: var(--ae-text); }
+
+	.turn { display: flex; flex-direction: column; gap: 8px; }
+	.turn.user { align-items: flex-end; }
+	.bubble {
+		max-width: 88%;
+		padding: 9px 12px;
+		border-radius: 12px;
+		font-size: 12.5px;
+		line-height: 1.55;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+	.turn.user .bubble { background: rgba(255, 125, 85, 0.16); border: 1px solid rgba(255, 125, 85, 0.3); }
+	.turn.assistant .bubble { background: var(--ae-line); color: var(--ae-text-2); }
+	.thinking { color: var(--ae-muted); font-style: italic; }
+	.err { font-size: 12px; color: var(--ae-crimson); margin: 0; }
+
+	.report { border: 1px solid var(--ae-line-strong); border-radius: 10px; overflow: hidden; }
+	.rhead { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-bottom: 1px solid var(--ae-line); }
+	.rtitle { flex: 1; font-size: 12px; font-weight: 600; }
+	.rcount { font-family: var(--ae-font-mono); font-size: 10px; color: var(--ae-muted); }
+	.rscroll { max-height: 280px; overflow: auto; }
+	table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+	th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--ae-line); white-space: nowrap; }
+	th { position: sticky; top: 0; background: var(--ae-card-bg), rgba(13, 16, 26, 0.98); font-weight: 600; font-size: 10.5px; }
+
+	.proposal { border: 1px solid var(--ae-amber); border-radius: 10px; padding: 10px 12px; background: rgba(242, 177, 92, 0.08); }
+	.prop-h { font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ae-amber); margin-bottom: 7px; }
+	.prop-b { font-size: 12px; line-height: 1.6; }
+	.prop-b code { font-family: var(--ae-font-mono); font-size: 10.5px; color: var(--ae-muted); }
+	.from { color: var(--ae-muted); }
+	.why { margin-top: 5px; font-size: 11.5px; color: var(--ae-muted); }
+	.prop-note { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--ae-muted); }
+	.prop-ok { margin: 8px 0 0; font-size: 11.5px; color: var(--ae-verdant); }
+	.prop-err { margin: 6px 0 0; font-size: 11.5px; color: var(--ae-crimson); }
+	.prop-btn {
+		margin-top: 9px;
+		padding: 6px 12px;
+		border-radius: 8px;
+		border: 1px solid var(--ae-amber);
+		background: rgba(242, 177, 92, 0.16);
+		color: var(--ae-text);
+		font: inherit;
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.pfoot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--ae-line); align-items: flex-end; }
+	.pfoot textarea {
+		flex: 1;
+		resize: none;
+		font: inherit;
+		font-size: 12.5px;
+		line-height: 1.5;
+		padding: 8px 10px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 9px;
+		background: transparent;
+		color: var(--ae-text-2);
+	}
+	.send {
+		flex: none;
+		width: 34px;
+		height: 34px;
+		border-radius: 9px;
+		border: 1px solid var(--ae-line-strong);
+		background: rgba(255, 125, 85, 0.16);
+		color: var(--ae-text);
+		cursor: pointer;
+	}
+	.send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+	@media (max-width: 620px) {
+		.panel { right: 10px; left: 10px; width: auto; bottom: 80px; height: calc(100vh - 110px); }
+		.launcher { right: 14px; bottom: 14px; }
+	}
+</style>

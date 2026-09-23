@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AskChamp from '$lib/components/AskChamp.svelte';
 	import { page } from '$app/stores';
 	import '$lib/styles/aegis.css';
 	import '$lib/styles/aegis-kit.css';
@@ -153,6 +154,11 @@
 
 	<div class="content">
 		{@render children()}
+		<!-- The assistant. Every admin page carries it; what it can see is decided
+		     per person by the capability gate on the server, not here. -->
+		{#if data.admin}
+			<AskChamp admin={data.admin} />
+		{/if}
 	</div>
 </div>
 
