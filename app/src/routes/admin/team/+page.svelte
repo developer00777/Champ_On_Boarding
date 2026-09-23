@@ -17,6 +17,68 @@
 		navigator.clipboard.writeText(value);
 	}
 
+	// The activity panel: which row is open, and what has been loaded for it.
+	// Fetched on demand rather than with the page — most visits here are to add
+	// or disable someone, and nobody needs a hundred audit rows per login to do
+	// that.
+	type Entry = {
+		at: string;
+		action: string;
+		subject: string | null;
+		field: string | null;
+		from: string | null;
+		to: string | null;
+		ip: string | null;
+	};
+	let logOpenFor = $state<string | null>(null);
+	let logBusy = $state(false);
+	let logError: string | null = $state(null);
+	let logEntries = $state<Entry[]>([]);
+	let logTruncated = $state(false);
+
+	async function toggleLog(id: string) {
+		if (logOpenFor === id) {
+			logOpenFor = null;
+			return;
+		}
+		logOpenFor = id;
+		pwOpenFor = null;
+		delOpenFor = null;
+		logBusy = true;
+		logError = null;
+		logEntries = [];
+		try {
+			const res = await fetch(`/admin/team/activity?id=${id}`);
+			if (!res.ok) {
+				logError = `Could not load the activity (${res.status}).`;
+				return;
+			}
+			const body = await res.json();
+			logEntries = body.entries;
+			logTruncated = body.truncated;
+		} catch {
+			logError = 'Could not load the activity — check your connection.';
+		} finally {
+			logBusy = false;
+		}
+	}
+
+	/** `offer_letter_sent` reads as "Offer letter sent". Derived rather than
+	 *  mapped: there are ~90 action names and new ones are added with each
+	 *  feature, and a lookup table would silently fall back to raw keys. */
+	function actionLabel(a: string): string {
+		const words = a.replace(/_/g, ' ').trim();
+		return words.charAt(0).toUpperCase() + words.slice(1);
+	}
+
+	function when(iso: string): string {
+		const d = new Date(iso);
+		const mins = Math.round((Date.now() - d.getTime()) / 60000);
+		if (mins < 60) return `${Math.max(mins, 1)}m ago`;
+		if (mins < 60 * 24) return `${Math.round(mins / 60)}h ago`;
+		return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
+	}
+
 	// Which row has its set-password box open, and which has its delete
 	// confirmation open. One at a time: these are the two destructive things on
 	// the page, and having both hanging open on several rows invites the wrong
@@ -150,7 +212,12 @@
 				<button
 					class="btn ghost small"
 					type="button"
-					onclick={() => { pwOpenFor = pwOpenFor === a.id ? null : a.id; delOpenFor = null; }}
+					onclick={() => toggleLog(a.id)}
+				>{logOpenFor === a.id ? 'Hide activity' : 'Activity'}</button>
+				<button
+					class="btn ghost small"
+					type="button"
+					onclick={() => { pwOpenFor = pwOpenFor === a.id ? null : a.id; delOpenFor = null; logOpenFor = null; }}
 				>Set password</button>
 				{#if !a.isSelf}
 					<form method="POST" action="?/setStatus" use:enhance style="display:contents">
@@ -167,6 +234,50 @@
 					>Delete</button>
 				{/if}
 			</div>
+
+			{#if logOpenFor === a.id}
+				<div class="rowpanel log">
+					<div class="log-h">
+						<span>What {a.email} has done</span>
+						{#if logEntries.length}
+							<span class="log-count">
+								last {logEntries.length}{logTruncated ? ' shown' : ''}
+							</span>
+						{/if}
+					</div>
+					{#if logBusy}
+						<p class="rowpanel-hint">Loading…</p>
+					{:else if logError}
+						<p class="rowpanel-hint err">{logError}</p>
+					{:else if !logEntries.length}
+						<p class="rowpanel-hint">
+							Nothing recorded against this login yet. Actions are logged from the moment someone
+							starts working in the portal.
+						</p>
+					{:else}
+						<div class="log-list">
+							{#each logEntries as e, i (i)}
+								<div class="log-row">
+									<span class="log-when" title={new Date(e.at).toLocaleString('en-IN')}>{when(e.at)}</span>
+									<span class="log-what">
+										{actionLabel(e.action)}
+										{#if e.subject}<span class="log-subj">· {e.subject}</span>{/if}
+										{#if e.field}<span class="log-field">{e.field}</span>{/if}
+										{#if e.from || e.to}
+											<span class="log-delta">
+												{#if e.from}<span class="log-from">{e.from}</span> → {/if}<b>{e.to ?? '—'}</b>
+											</span>
+										{/if}
+									</span>
+								</div>
+							{/each}
+						</div>
+						{#if logTruncated}
+							<p class="rowpanel-hint">Older entries exist beyond these.</p>
+						{/if}
+					{/if}
+				</div>
+			{/if}
 
 			{#if pwOpenFor === a.id}
 				<!-- Setting a password by hand, for when it is handed over in person
@@ -375,6 +486,44 @@
 		border: 1px solid var(--line-strong, rgba(0, 0, 0, 0.2));
 		border-radius: 7px;
 	}
+	.rowpanel.log { background: rgba(0, 0, 0, 0.015); }
+	.log-h {
+		display: flex;
+		align-items: baseline;
+		gap: 9px;
+		font-size: 12px;
+		font-weight: 600;
+		margin-bottom: 9px;
+	}
+	.log-count { font-size: 10.5px; font-weight: 400; color: var(--smoke); }
+	.log-list { max-height: 320px; overflow-y: auto; }
+	.log-row {
+		display: flex;
+		gap: 10px;
+		padding: 6px 0;
+		border-top: 1px solid var(--line, rgba(0, 0, 0, 0.08));
+		font-size: 12px;
+		line-height: 1.45;
+	}
+	.log-row:first-child { border-top: none; }
+	.log-when {
+		flex: none;
+		width: 62px;
+		color: var(--smoke);
+		font-size: 11px;
+	}
+	.log-what { min-width: 0; overflow-wrap: anywhere; }
+	.log-subj { color: var(--smoke); }
+	.log-field {
+		margin-left: 6px;
+		padding: 1px 5px;
+		border-radius: 4px;
+		background: rgba(127, 127, 127, 0.14);
+		font-size: 10.5px;
+	}
+	.log-delta { display: block; font-size: 11px; color: var(--smoke); margin-top: 1px; }
+	.log-from { text-decoration: line-through; }
+	.rowpanel-hint.err { color: #b42318; }
 	.rowpanel-hint {
 		margin: 8px 0 0;
 		font-size: 11.5px;
