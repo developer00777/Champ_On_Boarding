@@ -5,7 +5,7 @@
 // answer to "what may this person see" rather than two that can disagree.
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { chat, type ChatMessage } from '$lib/server/ai/chat';
+import { chat, ChatError, type ChatMessage } from '$lib/server/ai/chat';
 import { audit } from '$lib/server/audit';
 
 export const config = { runtime: 'nodejs24.x' };
@@ -36,7 +36,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 		result = await chat(locals.admin, history, question);
 	} catch (e) {
 		console.error('[ai] chat failed:', e);
-		error(502, 'The assistant could not be reached. Try again in a moment.');
+		error(502, e instanceof ChatError ? e.userMessage : 'The assistant hit an unexpected error. Try again in a moment.');
 	}
 
 	// The question is logged, not the answer: it records who asked what of the

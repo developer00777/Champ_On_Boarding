@@ -99,33 +99,92 @@ interface ApiMessage {
 	tool_call_id?: string;
 }
 
-async function callModel(messages: ApiMessage[], tools: unknown[]): Promise<ApiMessage> {
-	const res = await fetch(ENDPOINT, {
-		method: 'POST',
-		headers: {
-			Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-			'Content-Type': 'application/json',
-			// OpenRouter attributes traffic with these; harmless if unset.
-			'X-Title': 'ChampHR'
-		},
-		body: JSON.stringify({
-			model: MODEL,
-			messages,
-			tools: tools.length ? tools : undefined,
-			// Same posture as the OCR client: this payload carries employee data,
-			// so it must not be retained for training.
-			provider: { data_collection: 'deny' },
-			temperature: 0.2
-		}),
-		signal: AbortSignal.timeout(TIMEOUT_MS)
-	});
-	if (!res.ok) {
-		const body = await res.text();
-		throw new Error(`OpenRouter ${res.status}: ${body.slice(0, 300)}`);
+/** A failed model call, with a reason fit to show the person who asked. The
+ *  route used to answer every failure with the same "could not be reached",
+ *  which left no way to tell a timeout from a spent key from a bad model id
+ *  without the server logs. */
+export class ChatError extends Error {
+	constructor(
+		message: string,
+		readonly userMessage: string,
+		/** Worth one more try: a timeout, a rate limit, the provider overloaded. */
+		readonly transient: boolean
+	) {
+		super(message);
 	}
-	const json = await res.json();
-	const msg = json.choices?.[0]?.message;
-	if (!msg) throw new Error('OpenRouter returned no message');
+}
+
+function reasonFor(status: number, body: string): ChatError {
+	let detail = '';
+	try {
+		detail = String(JSON.parse(body)?.error?.message ?? '');
+	} catch {
+		// Not JSON — the status alone has to do.
+	}
+	const raw = `OpenRouter ${status}: ${body.slice(0, 300)}`;
+	if (status === 401 || status === 403)
+		return new ChatError(raw, 'The assistant’s AI key was refused (OPENROUTER_API_KEY). An admin needs to check it.', false);
+	if (status === 402)
+		return new ChatError(raw, 'The assistant has run out of AI credit for now. An admin needs to top it up or raise the key’s limit.', false);
+	if (status === 429)
+		return new ChatError(raw, 'The AI service is rate-limiting us. Wait a minute and ask again.', true);
+	if (status === 400 || status === 404)
+		return new ChatError(raw, `The AI service rejected the request${detail ? `: ${detail.slice(0, 160)}` : ''}.`, false);
+	return new ChatError(raw, `The AI service is having trouble (${status}). Try again in a moment.`, status >= 500);
+}
+
+async function callModel(messages: ApiMessage[], tools: unknown[]): Promise<ApiMessage> {
+	try {
+		return await callModelOnce(messages, tools);
+	} catch (e) {
+		// One retry for the failures that clear on their own. More than one would
+		// keep the person waiting past the point of it being worth it.
+		if (!(e instanceof ChatError) || !e.transient) throw e;
+		console.warn('[ai] retrying after:', e.message);
+		await new Promise((r) => setTimeout(r, 1500));
+		return await callModelOnce(messages, tools);
+	}
+}
+
+async function callModelOnce(messages: ApiMessage[], tools: unknown[]): Promise<ApiMessage> {
+	let res: Response;
+	try {
+		res = await fetch(ENDPOINT, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+				'Content-Type': 'application/json',
+				// OpenRouter attributes traffic with these; harmless if unset.
+				'X-Title': 'ChampHR'
+			},
+			body: JSON.stringify({
+				model: MODEL,
+				messages,
+				tools: tools.length ? tools : undefined,
+				// Same posture as the OCR client: this payload carries employee data,
+				// so it must not be retained for training.
+				provider: { data_collection: 'deny' },
+				temperature: 0.2
+			}),
+			signal: AbortSignal.timeout(TIMEOUT_MS)
+		});
+	} catch (e) {
+		const timedOut = e instanceof Error && e.name === 'TimeoutError';
+		throw new ChatError(
+			`OpenRouter ${timedOut ? 'timed out' : 'unreachable'}: ${e instanceof Error ? e.message : e}`,
+			timedOut
+				? 'The AI service took too long to answer. Try again, or ask a narrower question.'
+				: 'The server could not reach the AI service. Try again in a moment.',
+			true
+		);
+	}
+	if (!res.ok) throw reasonFor(res.status, await res.text());
+	const json = await res.json().catch(() => null);
+	// OpenRouter can answer 200 with an error inside when the provider failed
+	// mid-way, so the body is checked as well as the status.
+	if (json?.error) throw reasonFor(Number(json.error.code) || 502, JSON.stringify(json));
+	const msg = json?.choices?.[0]?.message;
+	if (!msg) throw new ChatError('OpenRouter returned no message', 'The AI service sent back an empty answer. Try again.', true);
 	return msg as ApiMessage;
 }
 
