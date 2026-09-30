@@ -1,7 +1,7 @@
 import { redirect, type Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { connectDb } from '$lib/server/db';
-import { getRedis } from '$lib/server/redis';
+import { rateLimited } from '$lib/server/rate-limit';
 import { resolveSession } from '$lib/server/auth';
 import { isAllowedAdminIp } from '$lib/server/ip-allowlist';
 import { startBgvReminderTicker } from '$lib/server/bgv-reminders';
@@ -10,20 +10,6 @@ import { startBgvReminderTicker } from '$lib/server/bgv-reminders';
 // the only thing that chases unanswered BGV requests — there is no HTTP
 // trigger for it on purpose. Replicas coordinate through a Redis lock.
 startBgvReminderTicker();
-
-// Redis-backed rate limiter — fails open so a Redis outage never blocks the app.
-async function rateLimited(key: string, limit: number, windowSec: number): Promise<boolean> {
-	try {
-		const redis = getRedis();
-		const rKey = `rl:${key}`;
-		const count = await redis.incr(rKey);
-		if (count === 1) await redis.expire(rKey, windowSec);
-		return count > limit;
-	} catch (e) {
-		console.error('[rate-limit] Redis error, failing open:', e);
-		return false;
-	}
-}
 
 export const handle: Handle = async ({ event, resolve }) => {
 	try {
@@ -59,11 +45,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	if (event.request.method === 'POST' && event.url.pathname === '/admin/login') {
-		if (await rateLimited(`login:${ip}`, 10, 60)) {
-			return new Response('Too many attempts, try again in a minute.', { status: 429 });
-		}
-	}
+	// The login limit lives in the login action itself, not here: the form posts
+	// through use:enhance, which reads the reply as JSON, and a plain-text 429
+	// from this hook surfaced as "Unexpected token 'T'..." instead of the message.
 	// /bgv/ is the previous-employer verification form and /x/ the offboarding
 	// surfaces (the employee's exit forms, an approver's clearance page, the
 	// final document handover) — all public and token-gated like /c/, so they

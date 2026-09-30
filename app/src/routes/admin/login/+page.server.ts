@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { Admin } from '$lib/server/db/schema';
 import { verifyPassword, createSession } from '$lib/server/auth';
 import { audit } from '$lib/server/audit';
+import { rateLimited } from '$lib/server/rate-limit';
 
 export const load: PageServerLoad = ({ locals }) => {
 	if (locals.admin) redirect(303, '/admin');
@@ -14,6 +15,23 @@ export const actions: Actions = {
 		const email = String(form.get('email') ?? '').trim().toLowerCase();
 		const password = String(form.get('password') ?? '');
 		if (!email || !password) return fail(400, { message: 'Email and password are required.' });
+
+		// Two budgets. The whole HR team logs in from one office IP, so an IP-only
+		// limit of 10 a minute let a few colleagues signing in at once lock each
+		// other out. Guessing is capped per account; the IP cap only stops a
+		// sweep across many accounts.
+		let ip = '';
+		try {
+			ip = getClientAddress();
+		} catch {
+			// Unknown IP — the per-account budget still applies.
+		}
+		if (
+			(await rateLimited(`login:${ip}:${email}`, 10, 60)) ||
+			(await rateLimited(`login:${ip}`, 60, 60))
+		) {
+			return fail(429, { message: 'Too many attempts, try again in a minute.' });
+		}
 
 		try {
 			const admin = await Admin.findOne({ email }).lean();
