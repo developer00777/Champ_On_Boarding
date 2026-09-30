@@ -214,6 +214,40 @@ function amount(v: number): string {
 	return Number.isInteger(r) ? String(r) : r.toFixed(2);
 }
 
+/** The name the balancing row goes under — what HR adds to bring the cash
+ *  total up to the gross. */
+export const SPECIAL_ALLOWANCES = 'Special Allowances';
+
+/** How far Total Cash Compensation (Before PF) is from the gross HR typed:
+ *  positive when cash falls short, negative when it goes past. Zero when the
+ *  annexure is off or no gross was entered — annexures saved before the gross
+ *  existed have nothing to match. Rounded to paise so float sums never show a
+ *  mismatch of 0.0000001. */
+export function grossGap(a: CompensationAnnexure): number {
+	const gross = annexureNumber(a.grossPm ?? '');
+	if (!a.enabled || gross <= 0) return 0;
+	return Math.round((gross - computeAnnexureTotals(a).cashTotalPm) * 100) / 100;
+}
+
+/** Moves the Special Allowances row by the gap so the cash total lands on the
+ *  gross: adds the row if there is none, and removes it if the gap takes it to
+ *  zero. Returns the annexure unchanged when the gap is too large to absorb —
+ *  cash already past the gross with no Special Allowances to take it from. */
+export function balanceWithSpecialAllowances(a: CompensationAnnexure): CompensationAnnexure {
+	const gap = grossGap(a);
+	if (!gap) return a;
+	const i = a.extraCash.findIndex((r) => r.label.trim().toLowerCase() === SPECIAL_ALLOWANCES.toLowerCase());
+	const next = (i >= 0 ? annexureNumber(a.extraCash[i].pm) : 0) + gap;
+	if (next < 0) return a;
+	const extraCash =
+		i < 0
+			? [...a.extraCash, { label: SPECIAL_ALLOWANCES, pm: amount(next) }]
+			: next === 0
+				? a.extraCash.filter((_, j) => j !== i)
+				: a.extraCash.map((r, j) => (j === i ? { ...r, pm: amount(next) } : r));
+	return { ...a, extraCash };
+}
+
 /** Fills the fixed rows from the annexure's `grossPm`. Special Allowances is
  *  deliberately not one of them: HR adds it by hand to bring the cash total up
  *  to the gross, so it is theirs to set. Everything else HR entered — added

@@ -44,6 +44,7 @@ import {
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
+import { grossGap } from '$lib/shared/annexure';
 import { getFixedLists } from '$lib/server/settings';
 import { sendEmployeeCodeMail } from '$lib/server/employee-code-mail';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
@@ -1225,6 +1226,19 @@ ${brandSignoff(brand)}`,
 		const parsed = await offerLetterInputFromForm(form);
 		if (!parsed.ok) return fail(400, { message: parsed.error });
 		const input: OfferLetterInput = parsed.input;
+
+		// Page 4 must add up: Total Cash Compensation (Before PF) is the gross the
+		// annexure was filled from. Checked here rather than in the shared parse so
+		// preview and the wording editor still work on a half-balanced draft.
+		const gap = grossGap(input.compensationAnnexure);
+		if (gap) {
+			return fail(400, {
+				message:
+					gap > 0
+						? `Total cash components are ₹${Math.abs(gap).toLocaleString('en-IN')} short of the gross salary. Add it as Special Allowances before saving.`
+						: `Total cash components are ₹${Math.abs(gap).toLocaleString('en-IN')} more than the gross salary. Reduce a cash component before saving.`
+			});
+		}
 
 		// Hand-edited wording is super-admin-only. An hr_admin's form carries no
 		// manual-edit fields, so taking the parse at face value would quietly

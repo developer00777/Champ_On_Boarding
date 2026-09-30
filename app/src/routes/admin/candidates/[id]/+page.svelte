@@ -10,7 +10,13 @@
 		type Track
 	} from '$lib/shared/matrix';
 	import { toIsoDate } from '$lib/shared/dates';
-	import { computeAnnexureTotals, GROSS_RULES, structureFromGross } from '$lib/shared/annexure';
+	import {
+		balanceWithSpecialAllowances,
+		computeAnnexureTotals,
+		grossGap as annexureGrossGap,
+		GROSS_RULES,
+		structureFromGross
+	} from '$lib/shared/annexure';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import {
 		SHIFT_TIMINGS,
@@ -668,8 +674,12 @@
 	/** How far the cash rows are from the gross HR typed — what is left for
 	 *  them to add as Special Allowances, or how far the floors on Basic and
 	 *  HRA have already taken it past. Measured from the rows as they stand,
-	 *  so a figure HR overrode by hand counts. */
-	const grossGap = $derived(n(annexure.grossPm ?? '') ? n(annexure.grossPm ?? '') - annexureCashPm : 0);
+	 *  so a figure HR overrode by hand counts. The save refuses while this is
+	 *  not zero; the same grossGap runs there. */
+	const grossGap = $derived(annexureGrossGap(annexure));
+	/** Whether the Special Allowances row can take up the whole gap — false
+	 *  only when cash is past the gross by more than that row holds. */
+	const canBalance = $derived(balanceWithSpecialAllowances(annexure) !== annexure);
 
 	const employmentTypeOptions = [
 		{ value: '', label: 'Select…' },
@@ -2470,17 +2480,25 @@
 										Basic is half the gross (min ₹15,000), HRA half of Basic (min ₹7,500), LTA ₹1,250;
 										PF, gratuity, insurance and longevity follow. Any figure can still be edited.
 									</p>
-									{#if grossGap > 0.004}
+									{#if grossGap > 0}
 										<p class="annexure-gross-left">
-											₹{money(grossGap)} left to reach the gross — add it below as
-											<strong>Special Allowances</strong> with “+ Add component”.
+											₹{money(grossGap)} left to reach the gross — total cash components must equal
+											the gross before the letter can be saved.
+											<button type="button" class="row-add" onclick={() => (annexure = balanceWithSpecialAllowances(annexure))}>
+												Add as Special Allowances
+											</button>
 										</p>
-									{:else if grossGap < -0.004}
+									{:else if grossGap < 0}
 										<p class="annexure-gross-warn">
 											Cash components come to ₹{money(annexureCashPm)}, which is ₹{money(-grossGap)}
 											more than the gross entered{n(annexure.grossPm ?? '') < GROSS_RULES.basicMinPm + GROSS_RULES.hraMinPm + GROSS_RULES.ltaPm
 												? ' — this gross is below the minimum Basic, HRA and LTA'
-												: ''}.
+												: ''}. They must match before the letter can be saved.
+											{#if canBalance}
+												<button type="button" class="row-add" onclick={() => (annexure = balanceWithSpecialAllowances(annexure))}>
+													Take it off Special Allowances
+												</button>
+											{/if}
 										</p>
 									{/if}
 
