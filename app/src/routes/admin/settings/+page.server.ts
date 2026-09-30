@@ -1,6 +1,8 @@
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { audit } from '$lib/server/audit';
+import { levelsToday, mayToday } from '$lib/server/access';
+import { CAPS, SETTINGS_CAPS, type SettingsCap } from '$lib/shared/access';
 import {
 	getItSetupMailSettings,
 	saveItSetupMailSettings,
@@ -23,14 +25,39 @@ import {
 	saveExitMailSettings
 } from '$lib/server/offboarding/mail';
 
+// Each section of this page is its own capability in the access studio's
+// Access & org module (SETTINGS_CAPS), and this page is where they are
+// enforced: Act edits the section, View reads it, none hides it. A super admin
+// holds all four at Act; everyone else reads them unless given more, one
+// section at a time.
+const LABEL: Record<SettingsCap, string> = {
+	'settings.itMail': 'the IT & VPN setup mail',
+	'settings.empCodeMail': 'the employee code mail',
+	'settings.exitMail': 'the offboarding mail',
+	'settings.lists': 'the dropdown options'
+};
+
+/** The refusal for a save this login may not make, or null when it may. */
+async function deny(admin: App.Locals['admin'], cap: SettingsCap) {
+	if (await mayToday(admin, cap, 'act')) return null;
+	return fail(403, {
+		error: `You can’t change ${LABEL[cap]}. A super admin can give you Act on “${CAPS[cap].label}” in Access & org, or ask Champ to request it.`
+	});
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
+	if (!locals.admin) redirect(303, '/admin/login');
+	const level = await levelsToday(locals.admin, SETTINGS_CAPS);
+	const see = (c: SettingsCap) => level[c] !== 'none';
 	const [itSetupMail, exitMail, fixedLists, employeeCodeMail] = await Promise.all([
-		getItSetupMailSettings(),
-		getExitMailSettings(),
-		getFixedLists(),
-		getEmployeeCodeMailSettings()
+		see('settings.itMail') ? getItSetupMailSettings() : null,
+		see('settings.exitMail') ? getExitMailSettings() : null,
+		see('settings.lists') ? getFixedLists() : null,
+		see('settings.empCodeMail') ? getEmployeeCodeMailSettings() : null
 	]);
 	return {
+		// A hidden section's settings are not sent at all: hiding it in the page
+		// while its recipient list sat in the page data would hide nothing.
 		itSetupMail,
 		defaults: IT_SETUP_MAIL_DEFAULTS,
 		// Passed as data rather than imported by the component: settings.ts is a
@@ -43,20 +70,25 @@ export const load: PageServerLoad = async ({ locals }) => {
 		employeeCodeTokens: EMPLOYEE_CODE_SUBJECT_TOKENS,
 		exitMail,
 		exitDefaults: EXIT_MAIL_DEFAULTS,
-		isSuperAdmin: locals.admin?.role === 'super_admin'
+		canEdit: {
+			itMail: level['settings.itMail'] === 'act',
+			empCodeMail: level['settings.empCodeMail'] === 'act',
+			exitMail: level['settings.exitMail'] === 'act',
+			lists: level['settings.lists'] === 'act'
+		},
+		capLabel: Object.fromEntries(SETTINGS_CAPS.map((c) => [c, CAPS[c].label])) as Record<SettingsCap, string>
 	};
 };
 
 export const actions: Actions = {
-	// Who the system/VPN enablement mail goes to, and how it signs off. Changing
-	// these is an operational call HR makes, not a redeploy — but it changes what
-	// leaves the building, so it stays super-admin only like every other
-	// org-wide setting.
+	// Every save below changes what leaves the building or what everyone can
+	// pick, so none is open by default: each needs Act on its own section, which
+	// a super admin has and hands out per person in the access studio.
 	/** The fixed dropdown lists. One action for all of them — a future list is an
 	 *  entry in FIXED_LIST_DEFS and a textarea, not another action. */
 	saveFixedLists: async ({ request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { error: 'Only a super admin can change these settings.' });
+		const denied = await deny(locals.admin, 'settings.lists');
+		if (denied) return denied;
 
 		const form = await request.formData();
 		const next: FixedLists = {};
@@ -71,9 +103,9 @@ export const actions: Actions = {
 		if (empty.length)
 			return fail(400, { error: `${empty.join(' and ')} cannot be empty — add at least one option.` });
 
-		await saveFixedLists(next, locals.admin.id);
+		await saveFixedLists(next, locals.admin!.id);
 		await audit({
-			actor: locals.admin.email,
+			actor: locals.admin!.email,
 			action: 'settings_updated',
 			field: 'fixed_lists',
 			newValue: FIXED_LIST_DEFS.map((d) => `${d.key}: ${next[d.key].join(', ')}`).join(' | '),
@@ -83,8 +115,8 @@ export const actions: Actions = {
 	},
 
 	saveEmployeeCodeMail: async ({ request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { error: 'Only a super admin can change these settings.' });
+		const denied = await deny(locals.admin, 'settings.empCodeMail');
+		if (denied) return denied;
 
 		const form = await request.formData();
 		const to = parseRecipients(String(form.get('ecTo') ?? ''));
@@ -100,10 +132,10 @@ export const actions: Actions = {
 
 		await saveEmployeeCodeMailSettings(
 			{ to, cc, subject, signoffName, signoffDesignation },
-			locals.admin.id
+			locals.admin!.id
 		);
 		await audit({
-			actor: locals.admin.email,
+			actor: locals.admin!.email,
 			action: 'settings_updated',
 			field: 'employee_code_mail',
 			newValue: `to: ${to.join(', ')} | cc: ${cc.join(', ') || '—'} | subject: ${subject || '(default)'}`,
@@ -113,8 +145,8 @@ export const actions: Actions = {
 	},
 
 	saveItSetupMail: async ({ request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { error: 'Only a super admin can change these settings.' });
+		const denied = await deny(locals.admin, 'settings.itMail');
+		if (denied) return denied;
 
 		const form = await request.formData();
 		const to = parseRecipients(String(form.get('to') ?? ''));
@@ -135,10 +167,10 @@ export const actions: Actions = {
 
 		await saveItSetupMailSettings(
 			{ to, cc, subject, signoffName, signoffDesignation },
-			locals.admin.id
+			locals.admin!.id
 		);
 		await audit({
-			actor: locals.admin.email,
+			actor: locals.admin!.email,
 			action: 'settings_updated',
 			field: 'it_setup_mail',
 			newValue: `to: ${to.join(', ')} | cc: ${cc.join(', ') || '—'} | subject: ${subject || '(default)'} | signoff: ${signoffName}`,
@@ -150,11 +182,11 @@ export const actions: Actions = {
 	// Puts every field back to the code-supplied default in one click, rather
 	// than making HR retype four addresses from memory to undo a bad edit.
 	resetItSetupMail: async ({ locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { error: 'Only a super admin can change these settings.' });
-		await saveItSetupMailSettings(IT_SETUP_MAIL_DEFAULTS, locals.admin.id);
+		const denied = await deny(locals.admin, 'settings.itMail');
+		if (denied) return denied;
+		await saveItSetupMailSettings(IT_SETUP_MAIL_DEFAULTS, locals.admin!.id);
 		await audit({
-			actor: locals.admin.email,
+			actor: locals.admin!.email,
 			action: 'settings_updated',
 			field: 'it_setup_mail',
 			newValue: 'reset to defaults',
@@ -165,11 +197,11 @@ export const actions: Actions = {
 
 	// Offboarding mail: who IT's "block system access" request goes to, who is
 	// copied on the employee-facing exit and handover mails, and how they sign
-	// off. Same reasoning as the IT setup mail above — an operational call HR
-	// makes, but it changes what leaves the building, so super-admin only.
+	// off. An operational call HR makes, but it changes what leaves the
+	// building, so it needs Act on the offboarding mail section.
 	saveExitMail: async ({ request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { error: 'Only a super admin can change these settings.' });
+		const denied = await deny(locals.admin, 'settings.exitMail');
+		if (denied) return denied;
 
 		const form = await request.formData();
 		const itTo = parseRecipients(String(form.get('itTo') ?? ''));
@@ -187,10 +219,10 @@ export const actions: Actions = {
 
 		await saveExitMailSettings(
 			{ itTo, itCc, hrCc, signoffName, signoffDesignation },
-			locals.admin.id
+			locals.admin!.id
 		);
 		await audit({
-			actor: locals.admin.email,
+			actor: locals.admin!.email,
 			action: 'settings_updated',
 			field: 'exit_mail',
 			newValue: `it: ${itTo.join(', ')} | hrCc: ${hrCc.join(', ') || '—'} | signoff: ${signoffName}`,
@@ -200,11 +232,11 @@ export const actions: Actions = {
 	},
 
 	resetExitMail: async ({ locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { error: 'Only a super admin can change these settings.' });
-		await saveExitMailSettings(EXIT_MAIL_DEFAULTS, locals.admin.id);
+		const denied = await deny(locals.admin, 'settings.exitMail');
+		if (denied) return denied;
+		await saveExitMailSettings(EXIT_MAIL_DEFAULTS, locals.admin!.id);
 		await audit({
-			actor: locals.admin.email,
+			actor: locals.admin!.email,
 			action: 'settings_updated',
 			field: 'exit_mail',
 			newValue: 'reset to defaults',

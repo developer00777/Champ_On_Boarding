@@ -317,6 +317,7 @@
 										<div class="cap-l">
 											{c.label}
 											{#if c.wired === false}<span class="notwired" title="No such control exists in the app yet">not wired</span>{/if}
+										{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}
 										</div>
 										<div class="cap-k" title={c.surface.length ? c.surface.join('\n') : 'Nothing in the app implements this yet.'}>
 											{c.key}{c.surface.length ? ` · ${c.surface.length} place${c.surface.length === 1 ? '' : 's'}` : ''}
@@ -344,6 +345,22 @@
 					</tbody>
 				</table>
 			</div>
+			<!-- What the cells mean, in the matrix's own chips so each line sits beside
+			     the thing it explains. Not every capability offers every level: a
+			     read-only one stops at View, a pure gate is — or Sign. -->
+			<section class="legend" aria-label="What the access levels mean">
+				<h3>What the levels mean</h3>
+				<dl>
+					<div><dt><span class="cell" data-lv="none">{LEVEL_LABEL.none}</span></dt><dd><b>No access.</b> Can’t see or use it.</dd></div>
+					<div><dt><span class="cell" data-lv="view">{LEVEL_LABEL.view}</span></dt><dd><b>Read-only.</b> Can look, but not change anything.</dd></div>
+					<div><dt><span class="cell" data-lv="act">{LEVEL_LABEL.act}</span></dt><dd><b>Can do it</b> — edit, save, send.</dd></div>
+					<div><dt><span class="cell" data-lv="approve">{LEVEL_LABEL.approve}</span></dt><dd><b>Can sign it off.</b> Only on rows that need an approval.</dd></div>
+					<div><dt><span class="inforce">in force</span></dt><dd>The app checks this row today; a change takes effect on Apply.</dd></div>
+					<div><dt><span class="notwired">not wired</span></dt><dd>Nothing in the app implements it yet, so a level here does nothing.</dd></div>
+					<div><dt><span class="od-key"></span></dt><dd>A dot is a personal override on top of the person’s preset.</dd></div>
+				</dl>
+				<p>Rows with neither tag are recorded here but still decided by the person’s role elsewhere in the app.</p>
+			</section>
 		{:else}
 			<div class="sim">
 				<div class="simhead">
@@ -506,7 +523,7 @@
 							{#each m.caps as c (c.key)}
 								<div class="caprow">
 									<div class="cap-id">
-										<div class="cap-l">{c.label}{#if isOverride(p, c.key)}<span class="ovr"></span>{/if}</div>
+										<div class="cap-l">{c.label}{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}{#if isOverride(p, c.key)}<span class="ovr"></span>{/if}</div>
 										<div class="cap-k">{c.surface.length ? c.surface[0] : 'not wired yet'}{c.surface.length > 1 ? ` +${c.surface.length - 1}` : ''}{p.checkers[c.key] ? ' · needs sign-off' : ''}</div>
 									</div>
 									<div class="seg">
@@ -671,6 +688,7 @@
 	tr.grouprow th { font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ae-amber); padding: 8px 12px; }
 	.cap-l { font-size: 12px; }
 	.cap-k { font-family: var(--ae-font-mono); font-size: 9px; color: var(--ae-muted); margin-top: 1px; opacity: 0.8; }
+	.inforce { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid rgba(62, 207, 154, 0.45); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-verdant); }
 	.notwired { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid var(--ae-line-strong); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-muted); }
 	.cell { width: 68px; padding: 4px 0; border-radius: 7px; font-family: var(--ae-font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; border: 1px solid transparent; cursor: pointer; }
 	.cell[data-lv='none'] { background: var(--ae-line); color: var(--ae-muted); }
@@ -678,6 +696,17 @@
 	.cell[data-lv='act'] { background: rgba(255, 125, 85, 0.2); color: var(--ae-ember, #ff7d55); }
 	.cell[data-lv='approve'] { background: rgba(62, 207, 154, 0.2); color: var(--ae-verdant); }
 	.cell.locked { opacity: 0.5; cursor: not-allowed; }
+	.legend { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--ae-line); border-radius: 12px; max-width: 760px; }
+	.legend h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ae-text-2); }
+	.legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 20px; }
+	.legend dl > div { display: flex; align-items: center; gap: 10px; }
+	.legend dt { flex: 0 0 76px; display: flex; justify-content: center; }
+	.legend dt .cell { display: inline-block; text-align: center; cursor: default; }
+	.legend dt .inforce, .legend dt .notwired { margin-left: 0; }
+	.legend dd { margin: 0; font-size: 12px; color: var(--ae-muted); line-height: 1.4; }
+	.legend dd b { color: var(--ae-text); font-weight: 600; }
+	.legend p { margin: 10px 0 0; font-size: 11.5px; color: var(--ae-muted); }
+	.od-key { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ae-muted); }
 	.od { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: currentColor; margin-left: 4px; vertical-align: middle; }
 
 	.avatar { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 10px; font-weight: 600; color: #fff; }

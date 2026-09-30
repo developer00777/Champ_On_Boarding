@@ -8,7 +8,7 @@
 import { Types } from 'mongoose';
 import { Admin, Candidate, TeamRequest } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
-import { CAPS, PRESETS, capLevels, effectiveLevel, levelIndex, type Level } from '$lib/shared/access';
+import { CAPS, capLevels, levelIndex, levelToday, type Level } from '$lib/shared/access';
 import type { Inbox, RequestAction, RequestView } from '$lib/shared/requests';
 
 export interface Viewer {
@@ -37,22 +37,14 @@ const clean = (s: unknown, max = MAX_TEXT) => {
 	return t || null;
 };
 
-/** The level a login has today. Read from the role, not from recorded grants,
- *  for the same reason callerFrom does: the role is what the guards enforce, so
- *  it is the honest answer to "what can they do right now". */
-export function currentLevel(role: string, cap: string): Level {
-	return effectiveLevel(
-		{
-			preset: PRESETS[role] ? role : 'hr_admin',
-			grants: {},
-			checkers: {},
-			population: 'all',
-			entities: 'all',
-			tracks: 'all',
-			status: 'active'
-		},
-		cap
-	);
+/** The level a login has today — levelToday's answer. For most capabilities
+ *  that is the role alone, because the role is what the guards enforce; for an
+ *  enforced one it includes the grants a super admin has applied. */
+export function currentLevel(
+	login: { role: string; grants?: unknown; accessExpiresAt?: Date | string | null },
+	cap: string
+): Level {
+	return levelToday(login, cap);
 }
 
 /** Write one capability override onto a login, exactly as the access studio
@@ -69,7 +61,7 @@ export async function applyGrant(opts: {
 }) {
 	const target = await Admin.findOne({ email: opts.email.trim().toLowerCase() });
 	if (!target) throw new RequestError(404, 'No login with that email.');
-	const before = currentLevel(target.role, opts.capability);
+	const before = currentLevel(target, opts.capability);
 	const existing = (Array.isArray(target.grants) ? target.grants : []) as { cap?: string; level?: string }[];
 	const grants = [...existing.filter((g) => g.cap !== opts.capability), { cap: opts.capability, level: opts.level }];
 	await Admin.findByIdAndUpdate(target._id, { $set: { grants } });
@@ -128,6 +120,7 @@ async function toViews(docs: Doc[], v: Viewer): Promise<RequestView[]> {
 		level: d.level ?? null,
 		levelAtRequest: d.levelAtRequest ?? null,
 		implemented: d.capability ? CAPS[d.capability]?.wired !== false : true,
+		enforced: d.capability ? !!CAPS[d.capability]?.enforced : false,
 		title: d.title ?? null,
 		candidateId: d.candidateId ? String(d.candidateId) : null,
 		candidateName: d.candidateId ? (candName.get(String(d.candidateId)) ?? null) : null,
@@ -209,7 +202,12 @@ export async function checkAccessRequest(v: Viewer, capability: string, level: s
 	const lv = level as Level;
 	if (!capLevels(cap.key).includes(lv) || lv === 'none')
 		throw new RequestError(400, `"${cap.label}" can be requested at: ${capLevels(cap.key).filter((l) => l !== 'none').join(', ')}.`);
-	const from = currentLevel(v.role, cap.key);
+	// Only an enforced capability has grants worth reading; for the rest the
+	// role is the whole answer and the read would be wasted.
+	const own = cap.enforced
+		? await Admin.findOne({ email: v.email }).select('grants accessExpiresAt').lean()
+		: null;
+	const from = currentLevel({ role: v.role, grants: own?.grants, accessExpiresAt: (own?.accessExpiresAt as Date | null) ?? null }, cap.key);
 	if (levelIndex(from) >= levelIndex(lv))
 		throw new RequestError(409, `You already have "${cap.label}" at ${from}.`);
 	const open = await TeamRequest.findOne({ kind: 'access', status: 'pending', fromEmail: v.email, capability: cap.key })

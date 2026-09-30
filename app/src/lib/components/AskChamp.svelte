@@ -32,6 +32,7 @@
 		to: string;
 		reason: string | null;
 		implemented: boolean;
+		enforced?: boolean;
 	};
 	type Turn = {
 		role: 'user' | 'assistant';
@@ -443,6 +444,10 @@
 									<p class="prop-note">
 										This capability has no control behind it in the app yet, so applying it records
 										the intent but changes nothing today.
+									</p>
+								{:else if p.enforced}
+									<p class="prop-note">
+										The app checks this capability today, so applying it takes effect straight away.
 									</p>
 								{:else}
 									<p class="prop-note">

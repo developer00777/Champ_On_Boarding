@@ -7,10 +7,12 @@
 // Super-admin only, and deliberately so: this is the page that decides who can
 // use every other page.
 //
-// Nothing here is enforced yet. The guards across the app still read `role`;
-// this authors the richer model beside it. The matrix says so on its face
-// rather than implying an enforcement that is not there — see the header of
-// lib/shared/access.ts.
+// Almost nothing here is enforced yet. The guards across the app still read
+// `role`; this authors the richer model beside it. The exceptions are the
+// capabilities marked `enforced` (today, the Settings sections), which the app
+// checks through levelToday, so a change to one here takes effect on Apply.
+// The matrix marks those "in force" rather than implying more — see the
+// header of lib/shared/access.ts.
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Admin, AuditLog } from '$lib/server/db/schema';
@@ -22,6 +24,7 @@ import {
 	LEVELS,
 	POPULATIONS,
 	PRESETS,
+	grantsFromRows,
 	type Level,
 	type Population
 } from '$lib/shared/access';
@@ -32,18 +35,9 @@ function requireSuperAdmin(locals: App.Locals) {
 }
 
 /** Grants are stored as a list because capability keys carry dots; the studio
- *  works in plain objects. These two functions are the only place that knows. */
-function grantsToObject(rows: unknown): Record<string, Level> {
-	const out: Record<string, Level> = {};
-	if (!Array.isArray(rows)) return out;
-	for (const r of rows) {
-		const row = r as { cap?: string; level?: string };
-		if (!row?.cap || !CAPS[row.cap]) continue;
-		if (!LEVELS.includes(row.level as Level)) continue;
-		out[row.cap] = row.level as Level;
-	}
-	return out;
-}
+ *  works in plain objects. grantsFromRows is shared with the guards that
+ *  enforce a grant, so the studio and the app read a row the same way. */
+const grantsToObject = grantsFromRows;
 function checkersToObject(rows: unknown): Record<string, boolean> {
 	const out: Record<string, boolean> = {};
 	if (!Array.isArray(rows)) return out;

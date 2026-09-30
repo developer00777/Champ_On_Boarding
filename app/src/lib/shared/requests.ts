@@ -17,6 +17,9 @@ export interface RequestView {
 	levelAtRequest: string | null;
 	/** False when the capability has no control behind it in the app yet. */
 	implemented: boolean;
+	/** True when the app checks this capability today, so approving takes
+	 *  effect at once rather than "when the capability model is enforced". */
+	enforced: boolean;
 	title: string | null;
 	candidateId: string | null;
 	candidateName: string | null;
@@ -54,6 +57,7 @@ export type Draft =
 			to: string;
 			note: string | null;
 			implemented: boolean;
+			enforced: boolean;
 	  }
 	| {
 			kind: 'task';

@@ -14,11 +14,16 @@
 // control that does not exist.
 //
 // ── What this module does NOT do yet ────────────────────────────────────────
-// Nothing here is enforced. The guards in +page.server.ts still decide who may
-// do what, and they still read `role`. This module is the authoring surface and
-// the single description of the app's permission surface; switching the guards
-// over to it is a separate, larger change that touches every action, and doing
-// it silently underneath a UI review would be the wrong order.
+// Almost nothing here is enforced. The guards in +page.server.ts still decide
+// who may do what, and they still read `role`. This module is the authoring
+// surface and the single description of the app's permission surface;
+// switching the guards over to it is a separate, larger change that touches
+// every action, and doing it silently underneath a UI review would be the
+// wrong order.
+//
+// The exception is a capability marked `enforced`: the app checks it today,
+// through levelToday below, so a grant on it takes effect the moment it is
+// applied. The Settings page's sections are the first of these.
 
 export const LEVELS = ['none', 'view', 'act', 'approve'] as const;
 export type Level = (typeof LEVELS)[number];
@@ -56,6 +61,9 @@ export interface Capability {
 	/** False when the app has no such control yet — the row is a placeholder for
 	 *  a gate the business has asked for, and the matrix labels it as one. */
 	wired?: false;
+	/** True when the app checks this capability today (via levelToday), rather
+	 *  than still deciding by role. The matrix marks these "in force". */
+	enforced?: true;
 }
 
 export interface Module {
@@ -212,11 +220,10 @@ export const MODULES: Module[] = [
 		tone: 'violet',
 		caps: [
 			{ key: 'inbox.view', label: 'Read the shared inbox', kind: 'read',
-				surface: ['/admin/inbox', 'GET /admin/inbox/search'] },
-			{ key: 'inbox.templates', label: 'Edit mail templates', kind: 'write',
-				surface: ['/admin/settings::saveItSetupMail', '::resetItSetupMail', '::saveEmployeeCodeMail', '::saveExitMail', '::resetExitMail'] },
-			{ key: 'inbox.lists', label: 'Edit fixed lists and defaults', kind: 'write',
-				surface: ['/admin/settings::saveFixedLists'] }
+				surface: ['/admin/inbox', 'GET /admin/inbox/search'] }
+			// The Settings page's rows used to sit here as "Edit mail templates" and
+			// "Edit fixed lists", one row for four sections. They are in Access & org
+			// now, one per section — see SETTINGS_CAPS.
 		]
 	},
 	{
@@ -241,10 +248,32 @@ export const MODULES: Module[] = [
 			{ key: 'team.permissions', label: 'Change anyone’s access', kind: 'gate',
 				surface: ['/admin/access'] },
 			{ key: 'team.org', label: 'Redraw reporting lines', kind: 'gate',
-				surface: [], wired: false }
+				surface: [], wired: false },
+			// One per section of /admin/settings, so a super admin can hand the IT
+			// helpdesk list to the IT coordinator without also handing over the
+			// offboarding list. View reads the section, Act edits it, and none hides
+			// it. Enforced: the Settings page checks these, not the role.
+			{ key: 'settings.itMail', label: 'Settings: IT & VPN setup mail', kind: 'write', enforced: true,
+				surface: ['/admin/settings::saveItSetupMail', '/admin/settings::resetItSetupMail'] },
+			{ key: 'settings.empCodeMail', label: 'Settings: employee code mail', kind: 'write', enforced: true,
+				surface: ['/admin/settings::saveEmployeeCodeMail'] },
+			{ key: 'settings.exitMail', label: 'Settings: offboarding mail', kind: 'write', enforced: true,
+				surface: ['/admin/settings::saveExitMail', '/admin/settings::resetExitMail'] },
+			{ key: 'settings.lists', label: 'Settings: dropdown options', kind: 'write', enforced: true,
+				surface: ['/admin/settings::saveFixedLists'] }
 		]
 	}
 ];
+
+export const SETTINGS_CAPS = ['settings.itMail', 'settings.empCodeMail', 'settings.exitMail', 'settings.lists'] as const;
+export type SettingsCap = (typeof SETTINGS_CAPS)[number];
+
+/** Every preset reads every Settings section and none edits one — the page was
+ *  open to read and super-admin-only to change, and that is kept as the
+ *  baseline. Editing is given per person, as an override in the studio. Keeping
+ *  every preset at the same level also means the level the matrix shows never
+ *  depends on whether a person's studio preset matches their role. */
+const SETTINGS_BASELINE = Object.fromEntries(SETTINGS_CAPS.map((k) => [k, 'view'])) as Record<SettingsCap, Level>;
 
 export const CAPS: Record<string, Capability> = {};
 export const CAP_MODULE: Record<string, Module> = {};
@@ -285,33 +314,33 @@ export const PRESETS: Record<string, Preset> = {
 		note: 'What requireApprover allows today: the onboarding job end to end, minus the destructive and settings-level actions.',
 		mods: { candidates: 'act', offer: 'act', docs: 'act', it: 'act', empid: 'act', bgv: 'act',
 			exit: 'act', entities: 'view', comms: 'view', data: 'view', access: 'view' },
-		over: { 'candidate.approve': 'approve', 'candidate.decision': 'approve',
+		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'approve', 'candidate.decision': 'approve',
 			'candidate.edit': 'none', 'candidate.link': 'none', 'candidate.delete': 'none',
 			'offer.manual': 'none', 'offer.upload': 'none', 'offer.approve': 'none',
 			'docs.reveal': 'none', 'docs.zip': 'none', 'empid.uan': 'none',
 			'exit.fnf': 'act', 'exit.closure': 'none', 'exit.reopen': 'none',
 			'entity.create': 'none', 'entity.brand': 'none', 'entity.archive': 'none',
-			'inbox.templates': 'none', 'inbox.lists': 'none', 'export.run': 'none',
+			'export.run': 'none',
 			'team.invite': 'none', 'team.permissions': 'none' } },
 
 	finance_team: { name: 'Finance team', tone: 'amber', legacy: true,
 		note: 'What the app gives this role today: it passes requireAnyAdmin only, so it can look and run the cross-check.',
 		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view', bgv: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'view', access: 'none' },
-		over: { 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none' } },
+		over: { ...SETTINGS_BASELINE, 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none' } },
 
 	hr_manager: { name: 'HR manager', tone: 'verdant',
 		note: 'Runs a desk. Signs off the things their executives should not sign off themselves.',
 		mods: { candidates: 'max', offer: 'max', docs: 'act', it: 'act', empid: 'max', bgv: 'act',
 			exit: 'act', entities: 'view', comms: 'act', data: 'view', access: 'view' },
-		over: { 'docs.reveal': 'approve', 'docs.zip': 'approve', 'exit.closure': 'approve',
+		over: { ...SETTINGS_BASELINE, 'docs.reveal': 'approve', 'docs.zip': 'approve', 'exit.closure': 'approve',
 			'candidate.delete': 'none', 'export.run': 'approve', 'offer.upload': 'none', 'offer.manual': 'none' } },
 
 	hr_exec: { name: 'HR executive', tone: 'azure',
 		note: 'Does the onboarding work. Everything that needs a second pair of eyes routes upwards.',
 		mods: { candidates: 'act', offer: 'act', docs: 'act', it: 'act', empid: 'act', bgv: 'act',
 			exit: 'act', entities: 'view', comms: 'view', data: 'none', access: 'none' },
-		over: { 'candidate.approve': 'view', 'candidate.decision': 'none', 'candidate.delete': 'none',
+		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'view', 'candidate.decision': 'none', 'candidate.delete': 'none',
 			'offer.approve': 'none', 'offer.manual': 'none', 'offer.upload': 'none',
 			'docs.reveal': 'none', 'docs.zip': 'none', 'it.approve': 'none', 'empid.approve': 'none',
 			'exit.fnf': 'view', 'exit.closure': 'none', 'exit.reopen': 'none' } },
@@ -320,7 +349,7 @@ export const PRESETS: Record<string, Preset> = {
 		note: 'Owns the candidates they bring in, up to the point the offer goes out.',
 		mods: { candidates: 'act', offer: 'act', docs: 'view', it: 'none', empid: 'none', bgv: 'view',
 			exit: 'none', entities: 'view', comms: 'view', data: 'none', access: 'none' },
-		over: { 'candidate.approve': 'none', 'candidate.decision': 'none', 'candidate.delete': 'none',
+		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'none', 'candidate.decision': 'none', 'candidate.delete': 'none',
 			'offer.approve': 'none', 'offer.send': 'none', 'offer.manual': 'none', 'offer.upload': 'none',
 			'docs.review': 'act' } },
 
@@ -328,19 +357,19 @@ export const PRESETS: Record<string, Preset> = {
 		note: 'Provisioning and nothing else, but across every entity.',
 		mods: { candidates: 'view', offer: 'none', docs: 'none', it: 'max', empid: 'view', bgv: 'none',
 			exit: 'view', entities: 'view', comms: 'view', data: 'none', access: 'none' },
-		over: { 'empid.notify': 'act', 'exit.clearance': 'act' } },
+		over: { ...SETTINGS_BASELINE, 'empid.notify': 'act', 'exit.clearance': 'act' } },
 
 	finance: { name: 'Finance & payroll', tone: 'amber',
 		note: 'Settles the money. Cannot close what it settles.',
 		mods: { candidates: 'view', offer: 'view', docs: 'none', it: 'none', empid: 'view', bgv: 'none',
 			exit: 'act', entities: 'view', comms: 'none', data: 'view', access: 'none' },
-		over: { 'empid.uan': 'act', 'exit.fnf': 'approve', 'exit.closure': 'none', 'export.run': 'approve' } },
+		over: { ...SETTINGS_BASELINE, 'empid.uan': 'act', 'exit.fnf': 'approve', 'exit.closure': 'none', 'export.run': 'approve' } },
 
 	auditor: { name: 'Auditor', tone: 'azure',
 		note: 'Reads everything, changes nothing, and cannot take the data out.',
 		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view', bgv: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'view', access: 'view' },
-		over: { 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none' } }
+		over: { ...SETTINGS_BASELINE, 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none' } }
 };
 export const PRESET_KEYS = Object.keys(PRESETS);
 
@@ -456,8 +485,54 @@ export function sodConflicts(g: Grantee) {
 /** Access that has lapsed is not the same as a disabled login: the person can
  *  still sign in and be told their access ended, rather than bouncing off a
  *  login screen with no explanation. */
-export function accessLapsed(g: Grantee, now = new Date()): boolean {
+export function accessLapsed(g: Pick<Grantee, 'accessExpiresAt'>, now = new Date()): boolean {
 	if (!g.accessExpiresAt) return false;
 	const t = new Date(g.accessExpiresAt);
 	return !isNaN(t.getTime()) && t.getTime() < now.getTime();
+}
+
+/** Grants are stored as a list of { cap, level } because capability keys carry
+ *  dots, which Mongo reads as paths in a field name. Rows naming a capability
+ *  or level that no longer exists are dropped. */
+export function grantsFromRows(rows: unknown): Record<string, Level> {
+	const out: Record<string, Level> = {};
+	if (!Array.isArray(rows)) return out;
+	for (const r of rows) {
+		const row = r as { cap?: string; level?: string };
+		if (!row?.cap || !CAPS[row.cap]) continue;
+		if (!LEVELS.includes(row.level as Level)) continue;
+		out[row.cap] = row.level as Level;
+	}
+	return out;
+}
+
+/** What the app lets this login do right now — the honest answer, as distinct
+ *  from what the studio has recorded for later.
+ *
+ *  For an `enforced` capability that is the person's own override if a super
+ *  admin set one (and it has not lapsed), otherwise the role's preset. For
+ *  every other capability the role alone decides, because the guards still
+ *  read the role and a recorded grant changes nothing yet.
+ *
+ *  The preset comes from the role, never the studio's accessPreset: the role is
+ *  what the rest of the app enforces, and the enforced capabilities keep every
+ *  preset at the same baseline anyway. */
+export function levelToday(
+	login: { role: string; grants?: unknown; accessExpiresAt?: Date | string | null },
+	cap: string
+): Level {
+	const grantee: Grantee = {
+		preset: PRESETS[login.role] ? login.role : 'hr_admin',
+		grants: {},
+		checkers: {},
+		population: 'all',
+		entities: 'all',
+		tracks: 'all',
+		status: 'active'
+	};
+	if (CAPS[cap]?.enforced) {
+		const expires = login.accessExpiresAt instanceof Date ? login.accessExpiresAt.toISOString() : login.accessExpiresAt;
+		if (!accessLapsed({ accessExpiresAt: expires ?? null })) grantee.grants = grantsFromRows(login.grants);
+	}
+	return effectiveLevel(grantee, cap);
 }

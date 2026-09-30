@@ -110,6 +110,8 @@
 			{#if !r.implemented}
 				This capability has no control behind it in the app yet, so approving records the intent but
 				changes nothing today.
+			{:else if r.enforced}
+				The app checks this capability today, so approving gives it to them straight away.
 			{:else}
 				Approving records this against their login. Access is still decided by role, so it takes effect
 				when the capability model is enforced.

@@ -6,10 +6,12 @@
 	/** The stored lists are arrays; the textareas edit them as one address per
 	 *  line, which is how HR reads a recipient list. Seeded once — retyping is
 	 *  in-progress user input the server round-trip must not clobber. */
+	// A section this login has no access to arrives as null (see the load), so
+	// every seed below tolerates a missing one.
 	// svelte-ignore state_referenced_locally
-	let to = $state(data.itSetupMail.to.join('\n'));
+	let to = $state(data.itSetupMail?.to.join('\n') ?? '');
 	// svelte-ignore state_referenced_locally
-	let cc = $state(data.itSetupMail.cc.join('\n'));
+	let cc = $state(data.itSetupMail?.cc.join('\n') ?? '');
 
 	const isDefault = $derived(
 		to.trim() === data.defaults.to.join('\n') && cc.trim() === data.defaults.cc.join('\n')
@@ -17,11 +19,11 @@
 
 	// Same seed-once treatment for the offboarding recipient lists.
 	// svelte-ignore state_referenced_locally
-	let itTo = $state(data.exitMail.itTo.join('\n'));
+	let itTo = $state(data.exitMail?.itTo.join('\n') ?? '');
 	// svelte-ignore state_referenced_locally
-	let itCc = $state(data.exitMail.itCc.join('\n'));
+	let itCc = $state(data.exitMail?.itCc.join('\n') ?? '');
 	// svelte-ignore state_referenced_locally
-	let hrCc = $state(data.exitMail.hrCc.join('\n'));
+	let hrCc = $state(data.exitMail?.hrCc.join('\n') ?? '');
 
 	/** One textarea per fixed list, edited as one option per line. Seeded once for
 	 *  the same reason the recipient boxes are: a server round-trip must not
@@ -31,15 +33,19 @@
 		Object.fromEntries(
 			data.fixedListDefs.map((d: { key: string }) => [
 				d.key,
-				(data.fixedLists[d.key] ?? []).join('\n')
+				(data.fixedLists?.[d.key] ?? []).join('\n')
 			])
 		)
 	);
 
 	// svelte-ignore state_referenced_locally
-	let ecTo = $state(data.employeeCodeMail.to.join('\n'));
+	let ecTo = $state(data.employeeCodeMail?.to.join('\n') ?? '');
 	// svelte-ignore state_referenced_locally
-	let ecCc = $state(data.employeeCodeMail.cc.join('\n'));
+	let ecCc = $state(data.employeeCodeMail?.cc.join('\n') ?? '');
+
+	const nothingVisible = $derived(
+		!data.itSetupMail && !data.exitMail && !data.fixedLists && !data.employeeCodeMail
+	);
 
 	const exitIsDefault = $derived(
 		itTo.trim() === data.exitDefaults.itTo.join('\n') &&
@@ -54,6 +60,12 @@
 	when the desk behind it changes.
 </p>
 
+{#if nothingVisible}
+	<p class="muted" style="font-size:14px">
+		You have no access to any settings. A super admin can give it in Access &amp; org.
+	</p>
+{/if}
+
 {#if form?.error}
 	<p class="flash err">{form.error}</p>
 {:else if form?.saved}
@@ -64,6 +76,7 @@
 	<p class="flash ok">Offboarding mail settings saved.</p>
 {/if}
 
+{#if data.itSetupMail}
 <section class="card">
 	<h2 class="card-title">IT &amp; VPN setup mail</h2>
 	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
@@ -73,7 +86,7 @@
 	</p>
 
 	<form method="POST" action="?/saveItSetupMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
-		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+		<fieldset class="rbac" disabled={!data.canEdit.itMail}>
 			<div class="grid">
 				<label class="field">
 					<span>To</span>
@@ -89,7 +102,7 @@
 					<span>Subject line</span>
 					<input
 						name="subject"
-						value={data.itSetupMail.subject}
+						value={data.itSetupMail!.subject}
 						maxlength="200"
 						placeholder={data.defaults.subject}
 					/>
@@ -103,13 +116,13 @@
 				</label>
 				<label class="field">
 					<span>Sign-off name</span>
-					<input name="signoffName" value={data.itSetupMail.signoffName} maxlength="80" />
+					<input name="signoffName" value={data.itSetupMail!.signoffName} maxlength="80" />
 				</label>
 				<label class="field">
 					<span>Sign-off designation</span>
 					<input
 						name="signoffDesignation"
-						value={data.itSetupMail.signoffDesignation}
+						value={data.itSetupMail!.signoffDesignation}
 						maxlength="80"
 					/>
 				</label>
@@ -123,13 +136,16 @@
 		</fieldset>
 	</form>
 
-	{#if !data.isSuperAdmin}
+	{#if !data.canEdit.itMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — changing these requires a super admin login.
+			View-only — to change this you need Act on “{data.capLabel['settings.itMail']}” in Access &amp; org. A super admin can
+			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
 </section>
+{/if}
 
+{#if data.exitMail}
 <section class="card" style="margin-top:18px">
 	<h2 class="card-title">Offboarding mail</h2>
 	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
@@ -139,7 +155,7 @@
 	</p>
 
 	<form method="POST" action="?/saveExitMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
-		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+		<fieldset class="rbac" disabled={!data.canEdit.exitMail}>
 			<div class="grid">
 				<label class="field">
 					<span>IT team — To</span>
@@ -158,13 +174,13 @@
 				</label>
 				<label class="field">
 					<span>Sign-off name</span>
-					<input name="exitSignoffName" value={data.exitMail.signoffName} maxlength="80" />
+					<input name="exitSignoffName" value={data.exitMail!.signoffName} maxlength="80" />
 				</label>
 				<label class="field">
 					<span>Sign-off designation</span>
 					<input
 						name="exitSignoffDesignation"
-						value={data.exitMail.signoffDesignation}
+						value={data.exitMail!.signoffDesignation}
 						maxlength="80"
 					/>
 				</label>
@@ -178,15 +194,18 @@
 		</fieldset>
 	</form>
 
-	{#if !data.isSuperAdmin}
+	{#if !data.canEdit.exitMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — changing these requires a super admin login.
+			View-only — to change this you need Act on “{data.capLabel['settings.exitMail']}” in Access &amp; org. A super admin can
+			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
 </section>
+{/if}
 
 <!-- Fixed dropdown lists. Deliberately generic: each entry in FIXED_LIST_DEFS
      renders its own box here, so adding a future dropdown needs no new UI. -->
+{#if data.fixedLists}
 <section class="card" style="margin-top:18px">
 	<h2 class="card-title">Dropdown options</h2>
 	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
@@ -195,7 +214,7 @@
 	</p>
 
 	<form method="POST" action="?/saveFixedLists" use:enhance={() => async ({ update }) => update({ reset: false })}>
-		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+		<fieldset class="rbac" disabled={!data.canEdit.lists}>
 			{#each data.fixedListDefs as def (def.key)}
 				<label class="field">
 					<span>{def.label}</span>
@@ -211,16 +230,19 @@
 		</fieldset>
 	</form>
 
-	{#if !data.isSuperAdmin}
+	{#if !data.canEdit.lists}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — changing these requires a super admin login.
+			View-only — to change this you need Act on “{data.capLabel['settings.lists']}” in Access &amp; org. A super admin can
+			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
 </section>
+{/if}
 
 <!-- Employee code mail. Same shape as the IT & VPN setup mail above: the desk
      is admin-editable, the subject is a template, and the mail itself is only
      ever sent by hand from the candidate page. -->
+{#if data.employeeCodeMail}
 <section class="card" style="margin-top:18px">
 	<h2 class="card-title">New joinee employee code mail</h2>
 	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
@@ -230,7 +252,7 @@
 	</p>
 
 	<form method="POST" action="?/saveEmployeeCodeMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
-		<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+		<fieldset class="rbac" disabled={!data.canEdit.empCodeMail}>
 			<label class="field">
 				<span>To</span>
 				<textarea name="ecTo" bind:value={ecTo} rows="3" placeholder="one address per line"></textarea>
@@ -245,7 +267,7 @@
 				<span>Subject line</span>
 				<input
 					name="ecSubject"
-					value={data.employeeCodeMail.subject}
+					value={data.employeeCodeMail!.subject}
 					maxlength="200"
 					placeholder={data.employeeCodeDefaults.subject}
 				/>
@@ -260,13 +282,13 @@
 			</label>
 			<label class="field">
 				<span>Sign-off name</span>
-				<input name="ecSignoffName" value={data.employeeCodeMail.signoffName} maxlength="80" />
+				<input name="ecSignoffName" value={data.employeeCodeMail!.signoffName} maxlength="80" />
 			</label>
 			<label class="field">
 				<span>Sign-off designation</span>
 				<input
 					name="ecSignoffDesignation"
-					value={data.employeeCodeMail.signoffDesignation}
+					value={data.employeeCodeMail!.signoffDesignation}
 					maxlength="80"
 					placeholder="optional"
 				/>
@@ -276,12 +298,14 @@
 		</fieldset>
 	</form>
 
-	{#if !data.isSuperAdmin}
+	{#if !data.canEdit.empCodeMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — changing these requires a super admin login.
+			View-only — to change this you need Act on “{data.capLabel['settings.empCodeMail']}” in Access &amp; org. A super admin can
+			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
 </section>
+{/if}
 
 <style>
 	.card-title {

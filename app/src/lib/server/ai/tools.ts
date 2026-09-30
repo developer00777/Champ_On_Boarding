@@ -35,6 +35,7 @@ import {
 	PRESETS,
 	effectiveLevel,
 	levelIndex,
+	levelToday,
 	type Grantee,
 	type Level
 } from '$lib/shared/access';
@@ -396,7 +397,9 @@ export const TOOLS: ToolDef[] = [
 					key: c.key,
 					label: c.label,
 					kind: c.kind,
-					implemented: c.wired !== false
+					implemented: c.wired !== false,
+					// Checked by the app today: a grant here takes effect at once.
+					enforced: !!c.enforced
 				}))
 			})),
 			levels: { none: 'no access', view: 'can see', act: 'can do', approve: 'can sign off' }
@@ -461,22 +464,14 @@ export const TOOLS: ToolDef[] = [
 		run: async (args) => {
 			const a = args as { email?: string; capability?: string; level?: Level; reason?: string };
 			const target = await Admin.findOne({ email: String(a.email ?? '').toLowerCase() })
-				.select('email role')
+				.select('email role grants accessExpiresAt')
 				.lean();
 			if (!target) return { error: `No login found for ${a.email}.` };
 			const cap = CAPS[String(a.capability)];
 			if (!cap) return { error: `No capability called "${a.capability}".` };
 
-			const current = effectiveLevel(
-				{
-					preset: PRESETS[target.role] ? target.role : 'hr_admin',
-					grants: {},
-					checkers: {},
-					population: 'all',
-					entities: 'all',
-					tracks: 'all',
-					status: 'active'
-				},
+			const current = levelToday(
+				{ role: target.role, grants: target.grants, accessExpiresAt: (target.accessExpiresAt as Date | null) ?? null },
 				cap.key
 			);
 			return {
@@ -488,7 +483,8 @@ export const TOOLS: ToolDef[] = [
 					from: current,
 					to: a.level,
 					reason: a.reason ?? null,
-					implemented: cap.wired !== false
+					implemented: cap.wired !== false,
+					enforced: !!cap.enforced
 				},
 				note: 'Nothing has changed. Present this to the user and tell them to use the Apply button on the proposal card.'
 			};
@@ -521,7 +517,8 @@ export const TOOLS: ToolDef[] = [
 						from,
 						to: level,
 						note: a.reason?.trim().slice(0, 500) || null,
-						implemented: cap.wired !== false
+						implemented: cap.wired !== false,
+						enforced: !!cap.enforced
 					},
 					note: 'Nothing has been sent. Tell them to press Send on the card, and that it goes to the super admins to approve.'
 				};
