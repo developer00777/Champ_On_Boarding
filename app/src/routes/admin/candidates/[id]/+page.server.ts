@@ -45,6 +45,7 @@ import {
 } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { grossGap } from '$lib/shared/annexure';
+import { mayToday } from '$lib/server/access';
 import { getFixedLists } from '$lib/server/settings';
 import { sendEmployeeCodeMail } from '$lib/server/employee-code-mail';
 import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
@@ -467,6 +468,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		officeLocations: fixedLists.officeLocations ?? [],
 		noticePeriods: fixedLists.noticePeriods ?? [],
 		isSuperAdmin: locals.admin?.role === 'super_admin',
+		/** Act on "Direct upload of the offer letter" in the access studio — the
+		 *  same check the uploaded-letter endpoint makes. */
+		canDirectUpload: locals.admin ? await mayToday(locals.admin, 'offer.upload', 'act') : false,
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
 	};
 };

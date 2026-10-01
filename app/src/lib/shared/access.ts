@@ -108,8 +108,6 @@ export const MODULES: Module[] = [
 				surface: ['GET /admin/candidates/[id]/offer-letter', 'POST /admin/candidates/[id]/offer-letter'] },
 			{ key: 'offer.manual', label: 'Hand-edit the letter’s wording', kind: 'write',
 				surface: ['POST /admin/candidates/[id]/offer-letter/blocks'] },
-			{ key: 'offer.upload', label: 'Upload a letter and place its signature', kind: 'write',
-				surface: ['POST|PATCH|DELETE /admin/candidates/[id]/offer-letter/uploaded'] },
 			{ key: 'offer.send', label: 'Email the offer to the candidate', kind: 'write',
 				surface: ['/admin/candidates/[id]::sendOfferLetterEmail'] },
 			{ key: 'offer.approve', label: 'Approve the offer before release', kind: 'gate',
@@ -260,7 +258,14 @@ export const MODULES: Module[] = [
 			{ key: 'settings.exitMail', label: 'Settings: offboarding mail', kind: 'write', enforced: true,
 				surface: ['/admin/settings::saveExitMail', '/admin/settings::resetExitMail'] },
 			{ key: 'settings.lists', label: 'Settings: dropdown options', kind: 'write', enforced: true,
-				surface: ['/admin/settings::saveFixedLists'] }
+				surface: ['/admin/settings::saveFixedLists'] },
+			// Kept under its old key, so the presets and any grant already recorded
+			// on it carry over; it moved here from Offer letters so the super admin
+			// hands it out beside the other per-person powers. Act uploads, moves
+			// the signature and removes; View opens the uploaded letter. Enforced
+			// by the uploaded-letter endpoint and the candidate page.
+			{ key: 'offer.upload', label: 'Direct upload of the offer letter', kind: 'write', enforced: true,
+				surface: ['POST|PATCH|DELETE /admin/candidates/[id]/offer-letter/uploaded', 'GET /admin/candidates/[id]/offer-letter/uploaded'] }
 		]
 	}
 ];
@@ -316,7 +321,8 @@ export const PRESETS: Record<string, Preset> = {
 			exit: 'act', entities: 'view', comms: 'view', data: 'view', access: 'view' },
 		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'approve', 'candidate.decision': 'approve',
 			'candidate.edit': 'none', 'candidate.link': 'none', 'candidate.delete': 'none',
-			'offer.manual': 'none', 'offer.upload': 'none', 'offer.approve': 'none',
+			// Opens an uploaded letter (whoever sends it has to see it), cannot upload one.
+			'offer.manual': 'none', 'offer.upload': 'view', 'offer.approve': 'none',
 			'docs.reveal': 'none', 'docs.zip': 'none', 'empid.uan': 'none',
 			'exit.fnf': 'act', 'exit.closure': 'none', 'exit.reopen': 'none',
 			'entity.create': 'none', 'entity.brand': 'none', 'entity.archive': 'none',
@@ -369,7 +375,7 @@ export const PRESETS: Record<string, Preset> = {
 		note: 'Reads everything, changes nothing, and cannot take the data out.',
 		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view', bgv: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'view', access: 'view' },
-		over: { ...SETTINGS_BASELINE, 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none' } }
+		over: { ...SETTINGS_BASELINE, 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none', 'offer.upload': 'none' } }
 };
 export const PRESET_KEYS = Object.keys(PRESETS);
 

@@ -1074,7 +1074,7 @@
 
 <!-- IT/VPN mail confirm — the mail rendered as IT will receive it, with the
      recipient list and a warning for any column that would go out blank. -->
-<!-- ── Direct upload (super admin only) ─────────────────────────────────────
+<!-- ── Direct upload (Act on offer.upload in the access studio) ─────────────
      Upload a finished letter and it replaces the generated one for this
      candidate. The signature is not burnt into the stored file: the page is
      drawn to a canvas here with the signature floating over it, so placing it
@@ -2749,10 +2749,10 @@
 					>
 						{previewing ? 'Building preview…' : 'Preview'}
 					</button>
-					{#if data.isSuperAdmin}
-						<!-- Replacing the letter wholesale is a super admin's call, so the
-						     button is theirs alone; the upload endpoint, the save action and
-						     the preview all re-check the role server-side. -->
+					{#if data.canDirectUpload && data.isApprover}
+						<!-- Replacing the letter wholesale is given per person: Act on
+						     "Direct upload of the offer letter" in the access studio. The
+						     upload endpoint re-checks the same capability server-side. -->
 						<button type="button" class="btn ghost small" onclick={openDirectUpload}>
 							{uploaded ? 'Uploaded letter' : 'Direct upload'}
 						</button>
@@ -2766,6 +2766,15 @@
 				</div>
 				</fieldset>
 			</form>
+			{#if data.canDirectUpload && !data.isApprover}
+				<!-- The form above is read-only for this login, which would disable a
+				     button inside it — but Direct upload was given to them on its own. -->
+				<div style="margin-top:8px">
+					<button type="button" class="btn ghost small" onclick={openDirectUpload}>
+						{uploaded ? 'Uploaded letter' : 'Direct upload'}
+					</button>
+				</div>
+			{/if}
 			<!-- The letter reached the candidate but the portal did not record it —
 			     the send failed after the mail went out, or it was sent by hand.
 			     Without this the only ways to correct the status were to press Send,

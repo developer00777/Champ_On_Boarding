@@ -6,15 +6,18 @@
 //   PATCH  move/resize the signature, or turn the stamp off
 //   DELETE drop it and go back to the generated letter
 //
-// Uploading and changing are a super admin's call, matching the button that
-// opens this. Reading is open to HR: whoever can send the letter has to be able
-// to see the letter they are sending.
+// Who may do what is the "Direct upload of the offer letter" row in the access
+// studio (offer.upload), not the role: Act uploads, moves the signature and
+// removes; View reads. A super admin holds Act and HR admins View by default,
+// because whoever can send the letter has to be able to see it; anyone else is
+// given it per person.
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { ObjectId } from 'mongodb';
 import { Candidate, OfferLetter } from '$lib/server/db/schema';
 import { uploadBytesToGridFS, getGridFSBytes, deleteFromGridFS } from '$lib/server/storage';
 import { audit } from '$lib/server/audit';
+import { mayToday } from '$lib/server/access';
 import { matchesMagicBytes, safeFilename } from '$lib/server/uploads';
 import { offerLetterInputFromDraft } from '$lib/server/offer-letter/fields';
 import {
@@ -30,16 +33,16 @@ export const config = { runtime: 'nodejs24.x' };
  *  than after a long wait. */
 const MAX_LETTER_BYTES = 25 * 1024 * 1024;
 
-function requireSuperAdmin(locals: App.Locals) {
+async function requireUploader(locals: App.Locals) {
 	if (!locals.admin) error(401, 'Not authenticated');
-	if (locals.admin.role !== 'super_admin')
-		error(403, 'Only a super admin can upload an offer letter.');
+	if (!(await mayToday(locals.admin, 'offer.upload', 'act')))
+		error(403, 'You need Act on “Direct upload of the offer letter” in Access & org to upload or change a letter.');
 }
 
-function requireReader(locals: App.Locals) {
+async function requireReader(locals: App.Locals) {
 	if (!locals.admin) error(401, 'Not authenticated');
-	if (locals.admin.role !== 'super_admin' && locals.admin.role !== 'hr_admin')
-		error(403, 'Only HR or a super admin can read an offer letter.');
+	if (!(await mayToday(locals.admin, 'offer.upload', 'view')))
+		error(403, 'You need View on “Direct upload of the offer letter” in Access & org to open the uploaded letter.');
 }
 
 async function draftFor(id: string) {
@@ -55,7 +58,7 @@ function signatureOf(draft: { uploadedLetter?: unknown } | null): UploadedSignat
 }
 
 export const POST: RequestHandler = async ({ params, request, locals, getClientAddress }) => {
-	requireSuperAdmin(locals);
+	await requireUploader(locals);
 	const { candidate } = await draftFor(params.id);
 
 	let form: FormData;
@@ -129,7 +132,7 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 };
 
 export const GET: RequestHandler = async ({ params, url, locals }) => {
-	requireReader(locals);
+	await requireReader(locals);
 	const { candidate, draft } = await draftFor(params.id);
 	const fileId = draft?.uploadedLetter?.fileId;
 	if (!fileId) error(404, 'No letter has been uploaded for this candidate.');
@@ -162,7 +165,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 };
 
 export const PATCH: RequestHandler = async ({ params, request, locals, getClientAddress }) => {
-	requireSuperAdmin(locals);
+	await requireUploader(locals);
 	const { draft } = await draftFor(params.id);
 	if (!draft?.uploadedLetter?.fileId) error(404, 'No letter has been uploaded for this candidate.');
 
@@ -205,7 +208,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals, getClient
 };
 
 export const DELETE: RequestHandler = async ({ params, locals, getClientAddress }) => {
-	requireSuperAdmin(locals);
+	await requireUploader(locals);
 	const { draft } = await draftFor(params.id);
 	const fileId = draft?.uploadedLetter?.fileId;
 	if (!fileId) error(404, 'No letter has been uploaded for this candidate.');
