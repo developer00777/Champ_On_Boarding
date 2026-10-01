@@ -39,7 +39,17 @@ const ALLOWLIST: AllowEntry[] = [
 	{ label: 'TATA (JST/TDS)', cidr: '103.170.163.0/24' },
 
 	// AIRTEL TDS — 182.78.39.1-255
-	{ label: 'AIRTEL TDS', cidr: '182.78.39.0/24' }
+	{ label: 'AIRTEL TDS', cidr: '182.78.39.0/24' },
+
+	// TATA NEW ISP — 14.99.3.34-38 and 14.99.4.34-38. Five addresses each, so
+	// split into exact blocks (.34/31 = .34-.35, .36/31 = .36-.37, .38/32)
+	// rather than a wider CIDR that would let in neighbouring addresses.
+	{ label: 'TATA NEW ISP', cidr: '14.99.3.34/31' },
+	{ label: 'TATA NEW ISP', cidr: '14.99.3.36/31' },
+	{ label: 'TATA NEW ISP', cidr: '14.99.3.38/32' },
+	{ label: 'TATA NEW ISP', cidr: '14.99.4.34/31' },
+	{ label: 'TATA NEW ISP', cidr: '14.99.4.36/31' },
+	{ label: 'TATA NEW ISP', cidr: '14.99.4.38/32' }
 ];
 
 function ipToInt(ip: string): number | null {
