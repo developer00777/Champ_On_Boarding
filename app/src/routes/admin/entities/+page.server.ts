@@ -1,8 +1,10 @@
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Candidate, Company } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { BRANDS } from '$lib/shared/brands';
+import { lacking, levelsToday } from '$lib/server/access';
+import type { Level } from '$lib/shared/access';
 
 /** Uploaded logos are stored inline on the company row as data-URIs, matching how
  *  offer-letter signatures are handled. Keep the cap low: the row is read on
@@ -21,13 +23,29 @@ async function readLogo(form: FormData): Promise<string | null | { error: string
 	return `data:${file.type};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
+// Every power on this page is a row in the access studio's Access & org module
+// ("Entities: …"), checked per login: open the page, add a company, set logo
+// and brand, archive or restore. A super admin holds them all; anyone else
+// opens the page and holds what a super admin gave them.
+async function deny(admin: App.Locals['admin'], cap: string, min: Level = 'act') {
+	const message = await lacking(admin, cap, min);
+	return message ? fail(403, { companyError: message }) : null;
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
-	const isSuperAdmin = locals.admin?.role === 'super_admin';
+	if (!locals.admin) redirect(303, '/admin/login');
+	const lv = await levelsToday(locals.admin, ['entity.view', 'entity.create', 'entity.brand', 'entity.archive'] as const);
+	if (lv['entity.view'] === 'none') redirect(303, '/admin');
+	const can = {
+		create: lv['entity.create'] === 'act',
+		brand: lv['entity.brand'] === 'act',
+		archive: lv['entity.archive'] === 'approve'
+	};
 	const [companies, deactivated] = await Promise.all([
 		Company.find({ active: true }).sort({ name: 1 }).lean(),
-		// Only super admins can restore, and this list exists for exactly that —
-		// no reason to query or ship it to an hr_admin session.
-		isSuperAdmin ? Company.find({ active: false }).sort({ name: 1 }).lean() : Promise.resolve([])
+		// The archived list exists only to restore from — no reason to query or
+		// ship it to a session that cannot restore.
+		can.archive ? Company.find({ active: false }).sort({ name: 1 }).lean() : Promise.resolve([])
 	]);
 
 	// Candidate counts per company: an entity with candidates attached cannot be
@@ -56,13 +74,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 			primary: b.colors.primary,
 			logo: b.logo.src
 		})),
-		isSuperAdmin
+		can
 	};
 };
 
 export const actions: Actions = {
 	setCompanyBrand: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const denied = await deny(locals.admin, 'entity.brand');
+		if (denied) return denied;
 		const form = await request.formData();
 		const companyId = String(form.get('companyId') ?? '');
 		const brandSlug = String(form.get('brandSlug') ?? '') || null;
@@ -71,7 +90,8 @@ export const actions: Actions = {
 	},
 
 	createCompany: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const denied = await deny(locals.admin, 'entity.create');
+		if (denied) return denied;
 		const form = await request.formData();
 		const name = String(form.get('name') ?? '').trim();
 		const brandSlug = String(form.get('brandSlug') ?? '') || null;
@@ -97,7 +117,8 @@ export const actions: Actions = {
 	},
 
 	setCompanyLogo: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const denied = await deny(locals.admin, 'entity.brand');
+		if (denied) return denied;
 		const form = await request.formData();
 		const companyId = String(form.get('companyId') ?? '');
 		if (String(form.get('remove') ?? '') === '1') {
@@ -112,7 +133,8 @@ export const actions: Actions = {
 	},
 
 	deleteCompany: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const denied = await deny(locals.admin, 'entity.archive', 'approve');
+		if (denied) return denied;
 		const form = await request.formData();
 		const companyId = String(form.get('companyId') ?? '');
 		const company = await Company.findById(companyId).lean();
@@ -139,7 +161,8 @@ export const actions: Actions = {
 	},
 
 	restoreCompany: async ({ request, locals }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { companyError: 'Forbidden.' });
+		const denied = await deny(locals.admin, 'entity.archive', 'approve');
+		if (denied) return denied;
 		const form = await request.formData();
 		const companyId = String(form.get('companyId') ?? '');
 		const company = await Company.findById(companyId).lean();

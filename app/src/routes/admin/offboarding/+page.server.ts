@@ -8,6 +8,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Company, Exit, ExitClearance } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
+import { lacking, mayToday } from '$lib/server/access';
 import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import { RANGE_KEYS, rangeStart, type RangeKey } from '$lib/shared/ranges';
@@ -88,9 +89,10 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		statuses: Object.keys(EXIT_STATUS_META),
 		companies: companies.map((c) => ({ id: String(c._id), name: c.name })),
 		canInitiate: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin',
-		// Deleting an exit is super-admin-only (see the deleteExit action), so the
-		// control is hidden rather than shown-and-rejected for an hr_admin.
-		canDelete: locals.admin?.role === 'super_admin'
+		// Deleting an exit is "Exits: reopen or delete an exit" in Access & org
+		// (see the deleteExit action), so the control is hidden rather than
+		// shown-and-rejected for anyone not given it.
+		canDelete: await mayToday(locals.admin, 'exit.reopen', 'approve')
 	};
 };
 
@@ -183,8 +185,8 @@ export const actions: Actions = {
 	 *  company's hiring history — an exit created by mistake has no value, and
 	 *  the underlying onboarding record is never touched. */
 	deleteExit: async ({ request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { message: 'Only a super admin can delete an offboarding record.', initiateError: false });
+		const noDelete = await lacking(locals.admin, 'exit.reopen', 'approve');
+		if (noDelete) return fail(403, { message: noDelete, initiateError: false });
 
 		const form = await request.formData();
 		const exitId = String(form.get('exitId') ?? '');

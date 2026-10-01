@@ -15,6 +15,9 @@
 		TONE_HEX,
 		capLevels,
 		effectiveLevel,
+		baselineLevel,
+		checkedToday,
+		isLocked,
 		grantedCount,
 		isOverride,
 		levelIndex,
@@ -77,8 +80,11 @@
 	 *  ignored: a super admin holds every capability by definition, so a matrix
 	 *  cell that looks clickable and does nothing would be a lie. */
 	function setCap(p: Person, cap: string, level: Level) {
-		if (PRESETS[p.preset]?.locked) return;
-		const base = presetLevel(p.preset, cap);
+		// A super admin's rows and a reserved row are fixed (isLocked).
+		if (isLocked(p, cap)) return;
+		// On a row the app checks, the baseline is the role's real access, not
+		// the preset — so an override is anything that differs from that.
+		const base = baselineLevel(p, cap);
 		if (level === base) delete p.grants[cap];
 		else p.grants[cap] = level;
 		// A capability nobody can act on cannot need a second signature.
@@ -95,8 +101,11 @@
 	function setPreset(p: Person, preset: string) {
 		p.preset = preset;
 		// The overrides described differences from the old preset; against a new
-		// one they mean something else entirely, so they go.
-		p.grants = {};
+		// one they mean something else entirely, so they go — except on the rows
+		// the app checks, which start from the role and not the preset, so a
+		// grant there means the same whatever preset is picked. Dropping one
+		// would quietly take away something the person can really do.
+		p.grants = Object.fromEntries(Object.entries(p.grants).filter(([cap]) => checkedToday(cap)));
 		people = [...people];
 	}
 
@@ -318,6 +327,7 @@
 											{c.label}
 											{#if c.wired === false}<span class="notwired" title="No such control exists in the app yet">not wired</span>{/if}
 										{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}
+										{#if c.reserved}<span class="reserved" title="Kept for super admins: whoever holds it could make themselves a super admin, so it cannot be handed out">super admin only</span>{/if}
 										</div>
 										<div class="cap-k" title={c.surface.length ? c.surface.join('\n') : 'Nothing in the app implements this yet.'}>
 											{c.key}{c.surface.length ? ` · ${c.surface.length} place${c.surface.length === 1 ? '' : 's'}` : ''}
@@ -325,14 +335,20 @@
 									</th>
 									{#each people as p (p.id)}
 										{@const lv = effectiveLevel(p, c.key)}
-										{@const locked = !!PRESETS[p.preset]?.locked}
+										{@const locked = isLocked(p, c.key)}
 										<td>
 											<button
 												class="cell"
 												data-lv={lv}
 												class:locked
 												disabled={locked}
-												title={locked ? 'Super admins hold everything' : `${p.name} · ${c.label}`}
+												title={locked
+													? c.reserved && p.role !== 'super_admin'
+														? 'Kept for super admins — cannot be handed out'
+														: 'Super admins hold everything'
+													: checkedToday(c.key)
+														? `${p.name} · ${c.label} — starts from their role (${p.role}), not the preset`
+														: `${p.name} · ${c.label}`}
 												onclick={() => cycleCap(p, c.key)}
 											>
 												{LEVEL_LABEL[lv]}{#if isOverride(p, c.key)}<span class="od"></span>{/if}
@@ -355,7 +371,8 @@
 					<div><dt><span class="cell" data-lv="view">{LEVEL_LABEL.view}</span></dt><dd><b>Read-only.</b> Can look, but not change anything.</dd></div>
 					<div><dt><span class="cell" data-lv="act">{LEVEL_LABEL.act}</span></dt><dd><b>Can do it</b> — edit, save, send.</dd></div>
 					<div><dt><span class="cell" data-lv="approve">{LEVEL_LABEL.approve}</span></dt><dd><b>Can sign it off.</b> Only on rows that need an approval.</dd></div>
-					<div><dt><span class="inforce">in force</span></dt><dd>The app checks this row today; a change takes effect on Apply.</dd></div>
+					<div><dt><span class="inforce">in force</span></dt><dd>The app checks this row today; a change takes effect on Apply. It starts from the person’s role, not their preset.</dd></div>
+				<div><dt><span class="reserved">super admin only</span></dt><dd>Stays with super admins. Whoever held it could make themselves one, so it can’t be handed out.</dd></div>
 					<div><dt><span class="notwired">not wired</span></dt><dd>Nothing in the app implements it yet, so a level here does nothing.</dd></div>
 					<div><dt><span class="od-key"></span></dt><dd>A dot is a personal override on top of the person’s preset.</dd></div>
 				</dl>
@@ -523,7 +540,7 @@
 							{#each m.caps as c (c.key)}
 								<div class="caprow">
 									<div class="cap-id">
-										<div class="cap-l">{c.label}{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}{#if isOverride(p, c.key)}<span class="ovr"></span>{/if}</div>
+										<div class="cap-l">{c.label}{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}{#if c.reserved}<span class="reserved" title="Kept for super admins — cannot be handed out">super admin only</span>{/if}{#if isOverride(p, c.key)}<span class="ovr"></span>{/if}</div>
 										<div class="cap-k">{c.surface.length ? c.surface[0] : 'not wired yet'}{c.surface.length > 1 ? ` +${c.surface.length - 1}` : ''}{p.checkers[c.key] ? ' · needs sign-off' : ''}</div>
 									</div>
 									<div class="seg">
@@ -532,7 +549,7 @@
 											<button
 												data-lv={l}
 												aria-pressed={effectiveLevel(p, c.key) === l}
-												disabled={!allowed || locked}
+												disabled={!allowed || isLocked(p, c.key)}
 												onclick={() => setCap(p, c.key, l)}
 											>{LEVEL_LABEL[l]}</button>
 										{/each}
@@ -688,6 +705,8 @@
 	tr.grouprow th { font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ae-amber); padding: 8px 12px; }
 	.cap-l { font-size: 12px; }
 	.cap-k { font-family: var(--ae-font-mono); font-size: 9px; color: var(--ae-muted); margin-top: 1px; opacity: 0.8; }
+	.reserved { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid rgba(240, 117, 117, 0.45); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-crimson); }
+	.legend dt .reserved { margin-left: 0; }
 	.inforce { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid rgba(62, 207, 154, 0.45); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-verdant); }
 	.notwired { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid var(--ae-line-strong); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-muted); }
 	.cell { width: 68px; padding: 4px 0; border-radius: 7px; font-family: var(--ae-font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; border: 1px solid transparent; cursor: pointer; }

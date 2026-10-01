@@ -64,6 +64,10 @@ export interface Capability {
 	/** True when the app checks this capability today (via levelToday), rather
 	 *  than still deciding by role. The matrix marks these "in force". */
 	enforced?: true;
+	/** True for a power only a super admin may hold and that cannot be handed
+	 *  out — one that would let its holder make themselves a super admin. The
+	 *  app checks the role for these; the matrix shows them locked. */
+	reserved?: true;
 }
 
 export interface Module {
@@ -83,18 +87,14 @@ export const MODULES: Module[] = [
 				surface: ['/admin/candidates', '/admin/candidates/[id]', 'GET /admin/candidates/search', 'GET /admin/candidates/[id]/report'] },
 			{ key: 'candidate.create', label: 'Generate an onboarding link', kind: 'write',
 				surface: ['/admin::generateLink'] },
-			{ key: 'candidate.edit', label: 'Correct a submitted profile', kind: 'write',
-				surface: ['/admin/candidates/[id]::editProfile'] },
 			{ key: 'candidate.shift', label: 'Set shift timing', kind: 'write',
 				surface: ['/admin/candidates/[id]::setShiftTiming'] },
 			{ key: 'candidate.approve', label: 'Approve a submitted form', kind: 'full',
 				surface: ['/admin/candidates/[id]::approve'] },
 			{ key: 'candidate.decision', label: 'Record the hiring decision', kind: 'full',
-				surface: ['/admin/candidates/[id]::setHiringDecision'] },
-			{ key: 'candidate.link', label: 'Revoke or regenerate the link', kind: 'write',
-				surface: ['/admin/candidates/[id]::revoke', '/admin/candidates/[id]::regenerateLink'] },
-			{ key: 'candidate.delete', label: 'Delete a candidate record', kind: 'gate',
-				surface: ['/admin/candidates/[id]::deleteCandidate'] }
+				surface: ['/admin/candidates/[id]::setHiringDecision'] }
+			// Correcting a profile, the link and deleting a record were super-admin
+			// powers; they are in Access & org now, where they are handed out.
 		]
 	},
 	{
@@ -106,8 +106,6 @@ export const MODULES: Module[] = [
 				surface: ['/admin/candidates/[id]::saveOfferLetter'] },
 			{ key: 'offer.preview', label: 'Preview or download the PDF', kind: 'read',
 				surface: ['GET /admin/candidates/[id]/offer-letter', 'POST /admin/candidates/[id]/offer-letter'] },
-			{ key: 'offer.manual', label: 'Hand-edit the letter’s wording', kind: 'write',
-				surface: ['POST /admin/candidates/[id]/offer-letter/blocks'] },
 			{ key: 'offer.send', label: 'Email the offer to the candidate', kind: 'write',
 				surface: ['/admin/candidates/[id]::sendOfferLetterEmail'] },
 			{ key: 'offer.approve', label: 'Approve the offer before release', kind: 'gate',
@@ -159,8 +157,6 @@ export const MODULES: Module[] = [
 				surface: ['/admin/candidates/[id]::setEmployeeId'] },
 			{ key: 'empid.notify', label: 'Send the employee code mail', kind: 'write',
 				surface: ['/admin/candidates/[id]::sendEmployeeCodeMail', 'GET /admin/candidates/[id]/employee-code-preview'] },
-			{ key: 'empid.uan', label: 'Record the UAN', kind: 'write',
-				surface: ['/admin/candidates/[id]::setUan'] },
 			{ key: 'empid.approve', label: 'Approve the code before release', kind: 'gate',
 				surface: [], wired: false }
 		]
@@ -194,24 +190,12 @@ export const MODULES: Module[] = [
 			{ key: 'exit.fnf', label: 'Prepare the full & final settlement', kind: 'full',
 				surface: ['/admin/offboarding/[id]::saveFnf'] },
 			{ key: 'exit.closure', label: 'Sign off the closure', kind: 'gate',
-				surface: ['/admin/offboarding/[id]::saveClosure'] },
-			{ key: 'exit.reopen', label: 'Reopen or delete a closed exit', kind: 'gate',
-				surface: ['/admin/offboarding/[id]::reopen', '/admin/offboarding::deleteExit'] }
+				surface: ['/admin/offboarding/[id]::saveClosure'] }
 		]
 	},
-	{
-		key: 'entities',
-		name: 'Entities & branding',
-		tone: 'ember',
-		caps: [
-			{ key: 'entity.view', label: 'View the entity list', kind: 'read', surface: ['/admin/entities'] },
-			{ key: 'entity.create', label: 'Add a company', kind: 'write', surface: ['/admin/entities::createCompany'] },
-			{ key: 'entity.brand', label: 'Set logo and brand theme', kind: 'write',
-				surface: ['/admin/entities::setCompanyBrand', '/admin/entities::setCompanyLogo'] },
-			{ key: 'entity.archive', label: 'Archive or restore a company', kind: 'gate',
-				surface: ['/admin/entities::deleteCompany', '/admin/entities::restoreCompany'] }
-		]
-	},
+	// Entities & branding was a module of its own, all of it super-admin-only.
+	// Its rows are in Access & org now, with the other powers a super admin
+	// hands out.
 	{
 		key: 'comms',
 		name: 'Mail & templates',
@@ -239,14 +223,54 @@ export const MODULES: Module[] = [
 		key: 'access',
 		name: 'Access & org',
 		tone: 'crimson',
+		// Everything here is either handed out per person by a super admin (the
+		// `enforced` rows: the app checks them, so a grant works the moment it is
+		// applied) or kept for super admins alone (`reserved`). Nothing in this
+		// module is decided by the role in some other file.
 		caps: [
-			{ key: 'team.view', label: 'See the team list', kind: 'read', surface: ['/admin/team'] },
-			{ key: 'team.invite', label: 'Create and disable logins', kind: 'write',
-				surface: ['/admin/team::createUser', '/admin/team::setStatus', '/admin/team::resetPassword'] },
-			{ key: 'team.permissions', label: 'Change anyone’s access', kind: 'gate',
-				surface: ['/admin/access'] },
-			{ key: 'team.org', label: 'Redraw reporting lines', kind: 'gate',
+			{ key: 'team.view', label: 'Team: see the team list and its activity', kind: 'read', enforced: true,
+				surface: ['/admin/team', 'GET /admin/team/activity'] },
+			// Reserved: whoever can create logins can create a super admin, and
+			// whoever can change access can give themselves anything. Handing
+			// either out is handing out super admin, so neither can be.
+			{ key: 'team.invite', label: 'Team: create, disable, delete and reset logins', kind: 'write', reserved: true,
+				surface: ['/admin/team::createUser', '/admin/team::setStatus', '/admin/team::deleteUser', '/admin/team::resetPassword'] },
+			{ key: 'team.permissions', label: 'Team: change anyone’s access', kind: 'gate', reserved: true,
+				surface: ['/admin/access', '/admin/access::applyAccess', 'POST /admin/ai/apply'] },
+			{ key: 'team.org', label: 'Team: redraw reporting lines', kind: 'gate',
 				surface: [], wired: false },
+			// Candidate powers that were super-admin-only.
+			{ key: 'candidate.edit', label: 'Candidates: correct a submitted profile', kind: 'write', enforced: true,
+				surface: ['/admin/candidates/[id]::editProfile'] },
+			{ key: 'candidate.link', label: 'Candidates: revoke or regenerate the onboarding link', kind: 'write', enforced: true,
+				surface: ['/admin/candidates/[id]::revoke', '/admin/candidates/[id]::regenerateLink'] },
+			{ key: 'empid.uan', label: 'Candidates: record the UAN', kind: 'write', enforced: true,
+				surface: ['/admin/candidates/[id]::setUan'] },
+			{ key: 'candidate.delete', label: 'Candidates: delete a candidate record', kind: 'gate', enforced: true,
+				surface: ['/admin/candidates/[id]::deleteCandidate'] },
+			// Offer letter powers that were super-admin-only. Each works on top of
+			// being able to open the offer letter at all; hand-editing also needs
+			// the offer form to be editable for them (an HR admin's is).
+			// offer.upload keeps its old key so any grant already recorded on it
+			// carries over. Act uploads, moves the signature and removes; View
+			// opens the uploaded letter.
+			{ key: 'offer.upload', label: 'Offer letter: direct upload', kind: 'write', enforced: true,
+				surface: ['POST|PATCH|DELETE /admin/candidates/[id]/offer-letter/uploaded', 'GET /admin/candidates/[id]/offer-letter/uploaded'] },
+			{ key: 'offer.manual', label: 'Offer letter: hand-edit the wording', kind: 'write', enforced: true,
+				surface: ['POST /admin/candidates/[id]/offer-letter/blocks', '/admin/candidates/[id]::saveOfferLetter (manual edits)', 'POST /admin/candidates/[id]/offer-letter (manual edits)'] },
+			{ key: 'offer.markSent', label: 'Offer letter: mark as sent outside the portal', kind: 'write', enforced: true,
+				surface: ['/admin/candidates/[id]::markOfferLetterSent'] },
+			// The entities page, all of which was super-admin-only. View opens it.
+			{ key: 'entity.view', label: 'Entities: open the entities page', kind: 'read', enforced: true,
+				surface: ['/admin/entities'] },
+			{ key: 'entity.create', label: 'Entities: add a company', kind: 'write', enforced: true,
+				surface: ['/admin/entities::createCompany'] },
+			{ key: 'entity.brand', label: 'Entities: set logo and brand theme', kind: 'write', enforced: true,
+				surface: ['/admin/entities::setCompanyBrand', '/admin/entities::setCompanyLogo'] },
+			{ key: 'entity.archive', label: 'Entities: archive or restore a company', kind: 'gate', enforced: true,
+				surface: ['/admin/entities::deleteCompany', '/admin/entities::restoreCompany'] },
+			{ key: 'exit.reopen', label: 'Exits: reopen or delete an exit', kind: 'gate', enforced: true,
+				surface: ['/admin/offboarding/[id]::reopen', '/admin/offboarding::deleteExit'] },
 			// One per section of /admin/settings, so a super admin can hand the IT
 			// helpdesk list to the IT coordinator without also handing over the
 			// offboarding list. View reads the section, Act edits it, and none hides
@@ -258,14 +282,7 @@ export const MODULES: Module[] = [
 			{ key: 'settings.exitMail', label: 'Settings: offboarding mail', kind: 'write', enforced: true,
 				surface: ['/admin/settings::saveExitMail', '/admin/settings::resetExitMail'] },
 			{ key: 'settings.lists', label: 'Settings: dropdown options', kind: 'write', enforced: true,
-				surface: ['/admin/settings::saveFixedLists'] },
-			// Kept under its old key, so the presets and any grant already recorded
-			// on it carry over; it moved here from Offer letters so the super admin
-			// hands it out beside the other per-person powers. Act uploads, moves
-			// the signature and removes; View opens the uploaded letter. Enforced
-			// by the uploaded-letter endpoint and the candidate page.
-			{ key: 'offer.upload', label: 'Direct upload of the offer letter', kind: 'write', enforced: true,
-				surface: ['POST|PATCH|DELETE /admin/candidates/[id]/offer-letter/uploaded', 'GET /admin/candidates/[id]/offer-letter/uploaded'] }
+				surface: ['/admin/settings::saveFixedLists'] }
 		]
 	}
 ];
@@ -327,13 +344,17 @@ export const PRESETS: Record<string, Preset> = {
 			'exit.fnf': 'act', 'exit.closure': 'none', 'exit.reopen': 'none',
 			'entity.create': 'none', 'entity.brand': 'none', 'entity.archive': 'none',
 			'export.run': 'none',
-			'team.invite': 'none', 'team.permissions': 'none' } },
+			'team.invite': 'none', 'team.permissions': 'none',
+			// The team page is super-admin-only today; the Access & org module's
+			// View ceiling would otherwise claim an HR admin can open it.
+			'team.view': 'none' } },
 
 	finance_team: { name: 'Finance team', tone: 'amber', legacy: true,
 		note: 'What the app gives this role today: it passes requireAnyAdmin only, so it can look and run the cross-check.',
 		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view', bgv: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'view', access: 'none' },
-		over: { ...SETTINGS_BASELINE, 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none' } },
+		// The entities page opens for every login today, finance included.
+		over: { ...SETTINGS_BASELINE, 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none', 'entity.view': 'view' } },
 
 	hr_manager: { name: 'HR manager', tone: 'verdant',
 		note: 'Runs a desk. Signs off the things their executives should not sign off themselves.',
@@ -455,20 +476,54 @@ export interface Grantee {
 	status: 'active' | 'disabled';
 	accessExpiresAt?: string | null;
 	reportsTo?: string | null;
+	/** The login's actual role. The rows the app checks (enforced and reserved)
+	 *  start from this, not from `preset`: the studio's preset is a plan, the
+	 *  role is what the guards recognise. Absent means "the preset is the role". */
+	role?: string;
 }
 
-/** Effective level = personal override if set, else the preset, clamped to what
- *  the capability offers. Super admin short-circuits to the maximum. */
+/** The built-in preset whose access a role really gets from the app's guards.
+ *  Only super_admin and hr_admin are recognised by them; every other role —
+ *  including the studio-only ones a login may carry — passes exactly the
+ *  checks a finance_team login does. */
+export function rolePreset(role: string): 'super_admin' | 'hr_admin' | 'finance_team' {
+	return role === 'super_admin' || role === 'hr_admin' ? role : 'finance_team';
+}
+
+/** True for a row the app checks against the login itself — in force, or kept
+ *  for super admins — rather than one only recorded for later. */
+export function checkedToday(cap: string): boolean {
+	return !!(CAPS[cap]?.enforced || CAPS[cap]?.reserved);
+}
+
+/** Whether a person's level on a row is fixed: a super admin holds everything,
+ *  and a reserved row cannot be handed to anyone else. */
+export function isLocked(g: Pick<Grantee, 'preset' | 'role'>, cap: string): boolean {
+	if (checkedToday(cap)) return rolePreset(g.role ?? g.preset) === 'super_admin' || !!CAPS[cap]?.reserved;
+	return !!PRESETS[g.preset]?.locked;
+}
+
+/** The level before any personal override. A row the app checks starts from
+ *  the role's real access; any other row from the studio's preset. */
+export function baselineLevel(g: Pick<Grantee, 'preset' | 'role'>, cap: string): Level {
+	return checkedToday(cap) ? presetLevel(rolePreset(g.role ?? g.preset), cap) : presetLevel(g.preset, cap);
+}
+
+/** Effective level = personal override if set, else the baseline, clamped to
+ *  what the capability offers. A locked row short-circuits: to the maximum for
+ *  a super admin, to the baseline for a reserved row. On a row the app checks,
+ *  an override stops counting once the person's access date has passed. */
 export function effectiveLevel(g: Grantee, cap: string): Level {
-	if (PRESETS[g.preset]?.locked) return capMax(cap);
+	if (isLocked(g, cap)) return rolePreset(g.role ?? g.preset) === 'super_admin' || !checkedToday(cap) ? capMax(cap) : baselineLevel(g, cap);
 	const o = g.grants?.[cap];
-	return o !== undefined ? clampLevel(cap, o) : presetLevel(g.preset, cap);
+	if (o !== undefined && !(checkedToday(cap) && accessLapsed(g))) return clampLevel(cap, o);
+	return baselineLevel(g, cap);
 }
 
 export function isOverride(g: Grantee, cap: string): boolean {
-	if (PRESETS[g.preset]?.locked) return false;
+	if (isLocked(g, cap)) return false;
 	const o = g.grants?.[cap];
-	return o !== undefined && o !== presetLevel(g.preset, cap);
+	return o !== undefined && o !== baselineLevel(g, cap);
 }
 
 export function grantedCount(g: Grantee): number {
@@ -516,29 +571,29 @@ export function grantsFromRows(rows: unknown): Record<string, Level> {
  *  from what the studio has recorded for later.
  *
  *  For an `enforced` capability that is the person's own override if a super
- *  admin set one (and it has not lapsed), otherwise the role's preset. For
- *  every other capability the role alone decides, because the guards still
- *  read the role and a recorded grant changes nothing yet.
+ *  admin set one (and it has not lapsed), otherwise the access their role
+ *  really has (rolePreset). A `reserved` one is the role's alone. For every
+ *  other capability the role's preset decides, because the guards still read
+ *  the role and a recorded grant changes nothing yet.
  *
- *  The preset comes from the role, never the studio's accessPreset: the role is
- *  what the rest of the app enforces, and the enforced capabilities keep every
- *  preset at the same baseline anyway. */
+ *  Never the studio's accessPreset: the role is what the app enforces. */
 export function levelToday(
 	login: { role: string; grants?: unknown; accessExpiresAt?: Date | string | null },
 	cap: string
 ): Level {
-	const grantee: Grantee = {
-		preset: PRESETS[login.role] ? login.role : 'hr_admin',
-		grants: {},
-		checkers: {},
-		population: 'all',
-		entities: 'all',
-		tracks: 'all',
-		status: 'active'
-	};
-	if (CAPS[cap]?.enforced) {
-		const expires = login.accessExpiresAt instanceof Date ? login.accessExpiresAt.toISOString() : login.accessExpiresAt;
-		if (!accessLapsed({ accessExpiresAt: expires ?? null })) grantee.grants = grantsFromRows(login.grants);
-	}
-	return effectiveLevel(grantee, cap);
+	const expires = login.accessExpiresAt instanceof Date ? login.accessExpiresAt.toISOString() : login.accessExpiresAt;
+	return effectiveLevel(
+		{
+			preset: PRESETS[login.role] ? login.role : 'hr_admin',
+			role: login.role,
+			grants: CAPS[cap]?.enforced ? grantsFromRows(login.grants) : {},
+			checkers: {},
+			population: 'all',
+			entities: 'all',
+			tracks: 'all',
+			status: 'active',
+			accessExpiresAt: expires ?? null
+		},
+		cap
+	);
 }

@@ -227,7 +227,7 @@
 			if (!res.ok) {
 				meError =
 					res.status === 403
-						? 'Only a super admin can hand-edit an offer letter.'
+						? 'You need Act on “Offer letter: hand-edit the wording” in Access & org.'
 						: `Could not read the letter (${res.status}). Try saving first.`;
 				return;
 			}
@@ -1481,8 +1481,8 @@
 		     requireApprover, not super-admin-only, and always have been. A banner
 		     that undersells the role is the same problem as one that oversells it. -->
 		{data.isApprover
-			? 'HR access — you can approve candidates, manage the offer letter, and assign and announce the employee code. Other edits require a super admin login.'
-			: 'View-only — editing candidate records requires a super admin login.'}
+			? 'HR access — you can approve candidates, manage the offer letter, and assign and announce the employee code. Other edits are given per person by a super admin, in Access & org.'
+			: 'View-only — editing candidate records needs HR access, or a power a super admin gives you in Access & org.'}
 		Running the OCR cross-check is open to everyone.
 	</div>
 {/if}
@@ -1594,12 +1594,12 @@
 			<form method="POST" action="?/revoke" use:enhance onsubmit={(e) => {
 				if (!confirm('Revoke this onboarding link?')) e.preventDefault();
 			}}>
-				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<fieldset class="rbac" disabled={!data.can.link}>
 					<button class="btn ghost danger-hover">Revoke link</button>
 				</fieldset>
 			</form>
 		{/if}
-		{#if data.isSuperAdmin}
+		{#if data.can.delete}
 			<form method="POST" action="?/deleteCandidate" use:enhance onsubmit={(e) => {
 				if (!confirm(`Permanently delete ${c.fullName || c.email}? This removes their profile, uploaded documents, and offer letter. This cannot be undone.`)) e.preventDefault();
 			}}>
@@ -1631,7 +1631,7 @@
 				<form method="POST" action="?/regenerateLink" use:enhance onsubmit={(e) => {
 					if (!confirm('Regenerate this onboarding link? The current link will stop working immediately.')) e.preventDefault();
 				}}>
-					<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+					<fieldset class="rbac" disabled={!data.can.link}>
 						<button type="submit" class="teal-pill-btn">Regenerate link</button>
 					</fieldset>
 				</form>
@@ -1641,7 +1641,7 @@
 				No active onboarding link for this candidate.
 			</div>
 			<form method="POST" action="?/regenerateLink" use:enhance>
-				<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+				<fieldset class="rbac" disabled={!data.can.link}>
 					<button type="submit" class="teal-pill-btn">Generate link</button>
 				</fieldset>
 			</form>
@@ -2129,7 +2129,7 @@
 			<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
 				<div class="eyebrow">Extracted details</div>
 				<div style="flex:1"></div>
-				{#if data.isSuperAdmin}
+				{#if data.can.edit}
 					{#if editingProfile}
 						<button type="button" class="btn ghost small" onclick={() => (editingProfile = false)}>Cancel</button>
 						<button type="submit" form="edit-profile-form" class="btn small">Save changes</button>
@@ -2208,7 +2208,7 @@
 					<span class="fvalue">{c.uanNo || '—'}</span>
 				{:else}
 					<form method="POST" action="?/setUan" use:enhance={() => async ({ update }) => update({ reset: false })} class="uan-form">
-						<fieldset class="rbac" disabled={!data.isSuperAdmin}>
+						<fieldset class="rbac" disabled={!data.can.uan}>
 							<input name="uanNo" value={form?.uanSaved ? form.uanNo : (c.uanNo ?? '')} placeholder="12 digits" class="uan-input" />
 							<button class="btn ghost small">Save</button>
 						</fieldset>
@@ -2482,8 +2482,10 @@
 									</p>
 									{#if grossGap > 0}
 										<p class="annexure-gross-left">
-											₹{money(grossGap)} left to reach the gross — total cash components must equal
-											the gross before the letter can be saved.
+											₹{money(grossGap)} left to reach the gross —
+											{uploaded
+												? 'not checked while the uploaded letter is in use, but needed before the generated letter can be sent.'
+												: 'total cash components must equal the gross before the letter can be saved.'}
 											<button type="button" class="row-add" onclick={() => (annexure = balanceWithSpecialAllowances(annexure))}>
 												Add as Special Allowances
 											</button>
@@ -2493,7 +2495,9 @@
 											Cash components come to ₹{money(annexureCashPm)}, which is ₹{money(-grossGap)}
 											more than the gross entered{n(annexure.grossPm ?? '') < GROSS_RULES.basicMinPm + GROSS_RULES.hraMinPm + GROSS_RULES.ltaPm
 												? ' — this gross is below the minimum Basic, HRA and LTA'
-												: ''}. They must match before the letter can be saved.
+												: ''}. {uploaded
+													? 'Not checked while the uploaded letter is in use, but they must match before the generated letter can be sent.'
+													: 'They must match before the letter can be saved.'}
 											{#if canBalance}
 												<button type="button" class="row-add" onclick={() => (annexure = balanceWithSpecialAllowances(annexure))}>
 													Take it off Special Allowances
@@ -2720,7 +2724,7 @@
 						</div>
 					{/if}
 
-				{#if data.isSuperAdmin}
+				{#if data.can.manual}
 					<!-- The manual edits ride along as ordinary form fields, so Save
 					     persists them and Preview renders them through exactly the same
 					     parse as every other field on this form. Rendered only for a
@@ -2749,7 +2753,7 @@
 					>
 						{previewing ? 'Building preview…' : 'Preview'}
 					</button>
-					{#if data.canDirectUpload && data.isApprover}
+					{#if data.can.upload && data.isApprover}
 						<!-- Replacing the letter wholesale is given per person: Act on
 						     "Direct upload of the offer letter" in the access studio. The
 						     upload endpoint re-checks the same capability server-side. -->
@@ -2766,7 +2770,7 @@
 				</div>
 				</fieldset>
 			</form>
-			{#if data.canDirectUpload && !data.isApprover}
+			{#if data.can.upload && !data.isApprover}
 				<!-- The form above is read-only for this login, which would disable a
 				     button inside it — but Direct upload was given to them on its own. -->
 				<div style="margin-top:8px">
@@ -2780,7 +2784,7 @@
 			     Without this the only ways to correct the status were to press Send,
 			     which emails a duplicate to fix a bookkeeping error, or to edit the
 			     database. Super admin only; the audit entry says it was set by hand. -->
-			{#if data.isSuperAdmin && ol.status !== 'sent'}
+			{#if data.can.markSent && ol.status !== 'sent'}
 				<details class="mark-sent">
 					<summary>Already sent outside the portal?</summary>
 					<form

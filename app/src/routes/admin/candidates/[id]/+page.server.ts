@@ -39,16 +39,15 @@ import { runVerification } from '$lib/server/verify/engine';
 import { VERIFY_SPECS } from '$lib/shared/match';
 import {
 	offerLetterInputFromDraft,
-	isOfferLetterComplete,
-	missingOfferLetterFields,
 	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { grossGap } from '$lib/shared/annexure';
-import { mayToday } from '$lib/server/access';
+import { lacking, levelsToday, mayToday } from '$lib/server/access';
+import type { Level } from '$lib/shared/access';
 import { getFixedLists } from '$lib/server/settings';
 import { sendEmployeeCodeMail } from '$lib/server/employee-code-mail';
-import { sendOfferLetterMail } from '$lib/server/offer-letter/send';
+import { generatedLetterProblem, hasUploadedLetter, sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken, ensureLiveLinkToken } from '$lib/server/tokens';
 import { isShiftTiming } from '$lib/shared/shifts';
@@ -70,9 +69,13 @@ async function getCandidate(id: string) {
  *  physical items received, and assigning the employee code are carved out
  *  via requireApprover below; the OCR cross-check is ungated entirely
  *  (requireAnyAdmin). */
-function requireSuperAdmin(locals: App.Locals) {
-	if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Only a super admin can edit candidate records.' });
-	return null;
+/** The powers that used to be super-admin-only on this page — correcting a
+ *  profile, the link, the UAN, deleting the record — are rows in the access
+ *  studio's Access & org module now, checked per login. A super admin holds
+ *  all of them; anyone else holds what a super admin gave them. */
+async function requireCap(locals: App.Locals, cap: string, min: Level = 'act') {
+	const message = await lacking(locals.admin, cap, min);
+	return message ? fail(403, { message }) : null;
 }
 
 /** Approving a candidate, sending their offer letter, logging physical
@@ -468,9 +471,23 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		officeLocations: fixedLists.officeLocations ?? [],
 		noticePeriods: fixedLists.noticePeriods ?? [],
 		isSuperAdmin: locals.admin?.role === 'super_admin',
-		/** Act on "Direct upload of the offer letter" in the access studio — the
-		 *  same check the uploaded-letter endpoint makes. */
-		canDirectUpload: locals.admin ? await mayToday(locals.admin, 'offer.upload', 'act') : false,
+		/** What this login may do with the powers handed out in Access & org —
+		 *  the same checks the actions and endpoints make, read once here so the
+		 *  page shows a button exactly when pressing it would work. */
+		can: await (async () => {
+			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false };
+			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent'] as const);
+			const at = (l: Level, min: Level) => ['none', 'view', 'act', 'approve'].indexOf(l) >= ['none', 'view', 'act', 'approve'].indexOf(min);
+			return {
+				edit: at(lv['candidate.edit'], 'act'),
+				link: at(lv['candidate.link'], 'act'),
+				uan: at(lv['empid.uan'], 'act'),
+				delete: at(lv['candidate.delete'], 'approve'),
+				upload: at(lv['offer.upload'], 'act'),
+				manual: at(lv['offer.manual'], 'act'),
+				markSent: at(lv['offer.markSent'], 'act')
+			};
+		})(),
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
 	};
 };
@@ -1055,7 +1072,7 @@ ${brandSignoff(brand)}`,
 	},
 
 	revoke: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = await requireCap(locals, 'candidate.link');
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -1076,7 +1093,7 @@ ${brandSignoff(brand)}`,
 	// new one is handed out. Unlike `revoke`, this does not touch candidate.status
 	// — the candidate is still expected to complete onboarding, just via a new URL.
 	regenerateLink: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = await requireCap(locals, 'candidate.link');
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -1097,7 +1114,8 @@ ${brandSignoff(brand)}`,
 	},
 
 	deleteCandidate: async ({ params, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin') return fail(403, { message: 'Forbidden.' });
+		const forbidden = await requireCap(locals, 'candidate.delete', 'approve');
+		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 		const { candidate } = row;
@@ -1131,7 +1149,7 @@ ${brandSignoff(brand)}`,
 	},
 
 	setUan: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = await requireCap(locals, 'empid.uan');
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -1234,7 +1252,12 @@ ${brandSignoff(brand)}`,
 		// Page 4 must add up: Total Cash Compensation (Before PF) is the gross the
 		// annexure was filled from. Checked here rather than in the shared parse so
 		// preview and the wording editor still work on a half-balanced draft.
-		const gap = grossGap(input.compensationAnnexure);
+		// Not while a letter is uploaded: the upload is this candidate's letter,
+		// so the fields describe nothing that goes out and must not block a save.
+		// Sending the generated letter checks again (generatedLetterProblem), so a
+		// mismatch saved now cannot go out if the upload is later removed.
+		const uploadedNow = await OfferLetter.exists({ candidateId: params.id, 'uploadedLetter.fileId': { $ne: null } });
+		const gap = uploadedNow ? 0 : grossGap(input.compensationAnnexure);
 		if (gap) {
 			return fail(400, {
 				message:
@@ -1250,8 +1273,8 @@ ${brandSignoff(brand)}`,
 		// field — the saved list is carried forward instead.
 		const existing = await OfferLetter.findOne({ candidateId: params.id }).lean();
 		const saved = offerLetterInputFromDraft(existing);
-		const isSuperAdmin = locals.admin?.role === 'super_admin';
-		if (!isSuperAdmin) {
+		const mayHandEdit = await mayToday(locals.admin, 'offer.manual', 'act');
+		if (!mayHandEdit) {
 			input.manualEdits = saved.manualEdits;
 			input.manualAdditions = saved.manualAdditions;
 		}
@@ -1326,7 +1349,7 @@ ${brandSignoff(brand)}`,
 	// they've submitted (or been approved), this is the only way to fix a typo
 	// without asking them to redo the whole form.
 	editProfile: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireSuperAdmin(locals);
+		const forbidden = await requireCap(locals, 'candidate.edit');
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
@@ -1376,8 +1399,8 @@ ${brandSignoff(brand)}`,
 	 *  was set by hand and by whom, because "sent" now means two different
 	 *  things and the log should be able to tell them apart. */
 	markOfferLetterSent: async ({ params, request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return fail(403, { offerLetterError: true, message: 'Only a super admin can record a letter as sent.' });
+		const noMark = await lacking(locals.admin, 'offer.markSent');
+		if (noMark) return fail(403, { offerLetterError: true, message: noMark });
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
 
@@ -1425,18 +1448,16 @@ ${brandSignoff(brand)}`,
 		const { candidate, company } = row;
 
 		const draft = await OfferLetter.findOne({ candidateId: params.id });
-		const draftInput = offerLetterInputFromDraft(draft);
 		const track = candidate.track as Track;
-		// A directly-uploaded letter is already written, so the form's required
-		// fields do not gate sending it: they describe a letter this candidate is
-		// not getting. What must exist is the upload.
-		const hasUpload = !!draft?.uploadedLetter?.fileId;
-		if (!draft || (!hasUpload && !isOfferLetterComplete(draftInput, track))) {
-			return fail(400, {
-				offerLetterError: true,
-				message: `Fill in all offer letter fields before sending (missing: ${missingOfferLetterFields(draftInput, track).join(', ')}).`
-			});
-		}
+		// A directly-uploaded letter is already written, so nothing about the
+		// form gates sending it — not its required fields, not the annexure:
+		// they describe a letter this candidate is not getting. What must exist
+		// is the upload. Without one, the generated letter has to be complete
+		// and add up (generatedLetterProblem, shared with the onboarding-link
+		// email so the two can never disagree).
+		if (!draft) return fail(400, { offerLetterError: true, message: 'Fill in the offer letter before sending.' });
+		const problem = hasUploadedLetter(draft) ? null : generatedLetterProblem(draft, track);
+		if (problem) return fail(400, { offerLetterError: true, message: problem });
 
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
 		try {

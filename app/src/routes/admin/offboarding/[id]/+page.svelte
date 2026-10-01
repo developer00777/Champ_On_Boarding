@@ -853,7 +853,7 @@
 								: 'Send handover link & close exit'}
 					</button>
 				</form>
-				{#if e.status === 'completed' && data.isSuperAdmin}
+				{#if e.status === 'completed' && data.canReopen}
 					<form
 						method="POST"
 						action="?/reopen"

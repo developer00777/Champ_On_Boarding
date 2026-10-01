@@ -2,10 +2,9 @@
 // Only served once the HR team has marked the offer letter as 'sent'.
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { Company, OfferLetter } from '$lib/server/db/schema';
+import { Company, OfferLetter, type OfferLetterDoc } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
-import { offerLetterInputFromDraft } from '$lib/server/offer-letter/fields';
-import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
+import { offerLetterPdf } from '$lib/server/offer-letter/send';
 import { brandBySlug } from '$lib/shared/brands';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -19,9 +18,12 @@ export const GET: RequestHandler = async ({ params }) => {
 	const company = await Company.findById(candidate.companyId).lean();
 	const brand = brandBySlug(company?.brandSlug ?? undefined);
 
-	const input = offerLetterInputFromDraft(draft);
-	const pdfBytes = await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand);
-	const body = pdfBytes.slice().buffer;
+	// The same letter the candidate was emailed: the uploaded one when HR
+	// uploaded it, however much of the form is filled in. This used to always
+	// render from the form, so a candidate downloading again got a different
+	// letter from the one in their inbox.
+	const { bytes } = await offerLetterPdf(candidate, company?.name ?? '', draft as OfferLetterDoc, brand);
+	const body = bytes.slice().buffer;
 
 	const safeName = (candidate.fullName ?? candidate.email)
 		.replace(/[^a-zA-Z0-9 ]/g, '')

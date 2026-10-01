@@ -59,6 +59,8 @@ export async function applyGrant(opts: {
 	via: string;
 	ip?: string;
 }) {
+	if (CAPS[opts.capability]?.reserved)
+		throw new RequestError(400, `“${CAPS[opts.capability].label}” stays with super admins and cannot be given to anyone else.`);
 	const target = await Admin.findOne({ email: opts.email.trim().toLowerCase() });
 	if (!target) throw new RequestError(404, 'No login with that email.');
 	const before = currentLevel(target, opts.capability);
@@ -199,6 +201,7 @@ export async function checkAccessRequest(v: Viewer, capability: string, level: s
 	if (isSuper(v)) throw new RequestError(400, 'A super admin already has every capability — there is nothing to request.');
 	const cap = CAPS[capability];
 	if (!cap) throw new RequestError(400, `No capability called "${capability}".`);
+	if (cap.reserved) throw new RequestError(400, `“${cap.label}” stays with super admins, so it cannot be requested.`);
 	const lv = level as Level;
 	if (!capLevels(cap.key).includes(lv) || lv === 'none')
 		throw new RequestError(400, `"${cap.label}" can be requested at: ${capLevels(cap.key).filter((l) => l !== 'none').join(', ')}.`);

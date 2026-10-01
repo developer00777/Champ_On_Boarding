@@ -7,6 +7,7 @@
 // that can bill.
 import { env } from '$env/dynamic/private';
 import { callerFrom, runTool, toolSchemas, type Caller } from './tools';
+import { Admin } from '$lib/server/db/schema';
 import type { Draft, RequestView } from '$lib/shared/requests';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
@@ -196,7 +197,10 @@ export async function chat(
 	if (!env.OPENROUTER_API_KEY)
 		return { reply: 'The assistant is not configured on this environment — OPENROUTER_API_KEY is not set.', usedTools: [] };
 
-	const caller = callerFrom(admin);
+	// The person's own grants, so the tools Champ offers on rows the app checks
+	// (the team list, say) match what the pages let this login do.
+	const own = await Admin.findById(admin.id).select('grants accessExpiresAt').lean();
+	const caller = callerFrom(admin, { grants: own?.grants, accessExpiresAt: (own?.accessExpiresAt as Date | null) ?? null });
 	const tools = toolSchemas(caller);
 	const toolNames = tools.map((t) => (t as { function: { name: string } }).function.name);
 

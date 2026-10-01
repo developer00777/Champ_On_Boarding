@@ -33,7 +33,9 @@ import {
 	CAPS,
 	MODULES,
 	PRESETS,
+	checkedToday,
 	effectiveLevel,
+	grantsFromRows,
 	levelIndex,
 	levelToday,
 	type Grantee,
@@ -50,29 +52,37 @@ export interface Caller {
 	grantee: Grantee;
 }
 
-export function callerFrom(admin: { id: string; email: string; role: string }): Caller {
+export function callerFrom(
+	admin: { id: string; email: string; role: string },
+	own?: { grants?: unknown; accessExpiresAt?: Date | null }
+): Caller {
 	return {
 		id: admin.id,
 		email: admin.email,
 		role: admin.role,
-		// Grants are not read here on purpose: the studio authors them but the
-		// app does not enforce them yet, so the preset — which is the role, and
-		// IS enforced everywhere else — is the honest source. When enforcement
-		// lands this becomes a full read of the admin's grants.
+		// The preset is the role, which is what the app enforces. The person's
+		// own grants are kept too, but `can` only lets them count on the rows the
+		// app checks (levelToday) — everywhere else a recorded grant changes
+		// nothing yet, so it must not change what Champ shows either.
 		grantee: {
 			preset: PRESETS[admin.role] ? admin.role : 'hr_admin',
-			grants: {},
+			role: admin.role,
+			grants: grantsFromRows(own?.grants),
 			checkers: {},
 			population: 'all',
 			entities: 'all',
 			tracks: 'all',
-			status: 'active'
+			status: 'active',
+			accessExpiresAt: own?.accessExpiresAt ? own.accessExpiresAt.toISOString() : null
 		}
 	};
 }
 
 export function can(caller: Caller, cap: string, min: Level = 'view'): boolean {
-	return levelIndex(effectiveLevel(caller.grantee, cap)) >= levelIndex(min);
+	const level = checkedToday(cap)
+		? effectiveLevel(caller.grantee, cap)
+		: effectiveLevel({ ...caller.grantee, grants: {} }, cap);
+	return levelIndex(level) >= levelIndex(min);
 }
 
 // ── the reportable field catalogue ───────────────────────────────────────────
@@ -399,7 +409,9 @@ export const TOOLS: ToolDef[] = [
 					kind: c.kind,
 					implemented: c.wired !== false,
 					// Checked by the app today: a grant here takes effect at once.
-					enforced: !!c.enforced
+					enforced: !!c.enforced,
+					// Kept for super admins: cannot be proposed, requested or granted.
+					superAdminOnly: !!c.reserved
 				}))
 			})),
 			levels: { none: 'no access', view: 'can see', act: 'can do', approve: 'can sign off' }
@@ -469,6 +481,7 @@ export const TOOLS: ToolDef[] = [
 			if (!target) return { error: `No login found for ${a.email}.` };
 			const cap = CAPS[String(a.capability)];
 			if (!cap) return { error: `No capability called "${a.capability}".` };
+			if (cap.reserved) return { error: `"${cap.label}" stays with super admins and cannot be given to anyone else. Say so.` };
 
 			const current = levelToday(
 				{ role: target.role, grants: target.grants, accessExpiresAt: (target.accessExpiresAt as Date | null) ?? null },

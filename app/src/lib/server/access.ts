@@ -1,7 +1,7 @@
 // The server side of levelToday: reads the login's own grants, so a guard can
 // ask "may this person do this right now" of a capability the app enforces.
 import { Admin } from '$lib/server/db/schema';
-import { levelIndex, levelToday, type Level } from '$lib/shared/access';
+import { CAPS, LEVEL_LABEL, levelIndex, levelToday, type Level } from '$lib/shared/access';
 
 /** Today's level on each of `caps` for a signed-in admin, from one read. */
 export async function levelsToday<C extends string>(
@@ -19,4 +19,18 @@ export async function mayToday(admin: { id: string; role: string } | null, cap: 
 	if (!admin) return false;
 	const { [cap]: level } = await levelsToday(admin, [cap]);
 	return levelIndex(level) >= levelIndex(min);
+}
+
+/** The refusal for a guard, or null when this login may go ahead. Phrased
+ *  for the person refused: which row to ask for and at what level, so the
+ *  message is also the instruction. Callers wrap it in their own fail()/error()
+ *  shape. */
+export async function lacking(
+	admin: { id: string; role: string } | null,
+	cap: string,
+	min: Level = 'act'
+): Promise<string | null> {
+	if (!admin) return 'Not signed in.';
+	if (await mayToday(admin, cap, min)) return null;
+	return `You need ${LEVEL_LABEL[min]} on “${CAPS[cap]?.label ?? cap}” in Access & org. A super admin can give it to you there.`;
 }

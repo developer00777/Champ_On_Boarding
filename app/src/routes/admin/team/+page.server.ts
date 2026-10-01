@@ -5,6 +5,7 @@ import { hashPassword } from '$lib/server/auth';
 import { randomToken } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 import { getRedis } from '$lib/server/redis';
+import { mayToday } from '$lib/server/access';
 
 const ROLES = ['hr_admin', 'super_admin', 'finance_team'] as const;
 type Role = (typeof ROLES)[number];
@@ -50,11 +51,17 @@ function generatePassword(): string {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-	requireSuperAdmin(locals);
+	// Seeing the team is "Team: see the team list and its activity" in Access &
+	// org, handed out per person. Every action below stays super-admin-only —
+	// that row is reserved, because creating a login means being able to create
+	// a super admin.
+	if (!locals.admin) redirect(303, '/admin/login');
+	if (!(await mayToday(locals.admin, 'team.view', 'view'))) redirect(303, '/admin');
 
 	const admins = await Admin.find({}).sort({ createdAt: 1 }).lean();
 
 	return {
+		canManage: locals.admin.role === 'super_admin',
 		admins: admins.map((a) => ({
 			id: String(a._id),
 			email: a.email,

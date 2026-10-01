@@ -11,19 +11,67 @@ import { baseUrl } from '$lib/server/base-url';
 import {
 	offerLetterInputFromDraft,
 	isOfferLetterComplete,
-	LETTER_TYPE_BY_TRACK
+	missingOfferLetterFields,
+	LETTER_TYPE_BY_TRACK,
+	type OfferLetterInput
 } from '$lib/server/offer-letter/fields';
+import { grossGap } from '$lib/shared/annexure';
 import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
 import { getGridFSBytes } from '$lib/server/storage';
 import { stampUploadedLetter } from '$lib/server/offer-letter/uploaded';
 
+/** True when this candidate has a directly-uploaded letter. While they do, it
+ *  is their offer letter everywhere — preview, download, the candidate's own
+ *  download, the offer email and the onboarding-link email — however much of
+ *  the form is filled in. The form's fields describe a letter they are not
+ *  getting until the upload is removed. */
+export function hasUploadedLetter(draft: Pick<OfferLetterDoc, 'uploadedLetter'> | null | undefined): boolean {
+	return !!draft?.uploadedLetter?.fileId;
+}
+
+/** Why the generated letter cannot go out yet, or null when it can. Never
+ *  asked of an uploaded letter: that is already written. */
+export function generatedLetterProblem(draft: OfferLetterDoc | null, track: Track): string | null {
+	const input = offerLetterInputFromDraft(draft);
+	if (!isOfferLetterComplete(input, track))
+		return `Fill in all offer letter fields before sending (missing: ${missingOfferLetterFields(input, track).join(', ')}).`;
+	// Saving refuses an annexure that does not add up, except while an upload
+	// stands in for the letter — so a draft saved then, with the upload since
+	// removed, is caught here before the generated letter can carry it.
+	const gap = grossGap(input.compensationAnnexure);
+	if (gap)
+		return `The annexure’s total cash components are ₹${Math.abs(gap).toLocaleString('en-IN')} ${gap > 0 ? 'short of' : 'more than'} the gross salary. Fix it and save before sending.`;
+	return null;
+}
+
 export function offerLetterReadyToSend(draft: OfferLetterDoc | null, track: Track): boolean {
 	if (!draft) return false;
-	// A directly-uploaded letter is already written, so the form's required
-	// fields no longer gate sending it — they describe a letter this candidate
-	// is not getting. The upload itself is the thing that has to exist.
-	if (draft.uploadedLetter?.fileId) return true;
-	return isOfferLetterComplete(offerLetterInputFromDraft(draft), track);
+	if (hasUploadedLetter(draft)) return true;
+	return generatedLetterProblem(draft, track) === null;
+}
+
+/** This candidate's offer letter as a PDF — the one place that decides which
+ *  letter that is. The uploaded letter, stamped with the saved signature, wins
+ *  whenever there is one; otherwise the letter is generated from `input`,
+ *  which defaults to the saved draft (the admin preview passes the form as it
+ *  stands instead). Every route that serves or sends the letter calls this. */
+export async function offerLetterPdf(
+	candidate: Pick<CandidateDoc, 'fullName' | 'email' | 'presentAddress' | 'track'>,
+	companyName: string,
+	draft: OfferLetterDoc | null,
+	brand: BrandTheme,
+	input?: OfferLetterInput
+): Promise<{ bytes: Uint8Array; uploaded: boolean }> {
+	const saved = offerLetterInputFromDraft(draft);
+	if (draft && hasUploadedLetter(draft)) {
+		const bytes = await stampUploadedLetter(
+			await getGridFSBytes(draft.uploadedLetter!.fileId!),
+			draft.uploadedLetter!.signature ?? null,
+			saved.signatoryImageBase64
+		);
+		return { bytes, uploaded: true };
+	}
+	return { bytes: await generateOfferLetterPdf(candidate, companyName, input ?? saved, brand), uploaded: false };
 }
 
 async function buildOfferLetterPdfAttachment(
@@ -32,18 +80,9 @@ async function buildOfferLetterPdfAttachment(
 	draft: OfferLetterDoc,
 	brand: BrandTheme
 ) {
-	const input = offerLetterInputFromDraft(draft);
-	// The letter HR uploaded, signed, is what goes out — the generated one is
-	// not rendered at all when there is an upload to send.
-	const pdfBytes = draft.uploadedLetter?.fileId
-		? await stampUploadedLetter(
-				await getGridFSBytes(draft.uploadedLetter.fileId),
-				draft.uploadedLetter.signature ?? null,
-				input.signatoryImageBase64
-			)
-		: await generateOfferLetterPdf(candidate, companyName, input, brand);
+	const { bytes } = await offerLetterPdf(candidate, companyName, draft, brand);
 	const safeName = (candidate.fullName ?? candidate.email).replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
-	return { filename: `${safeName}_offer_letter.pdf`, content: Buffer.from(pdfBytes) };
+	return { filename: `${safeName}_offer_letter.pdf`, content: Buffer.from(bytes) };
 }
 
 /** Sends the branded offer-letter email with the filled PDF attached. */

@@ -13,14 +13,15 @@ import { Candidate, Company } from '$lib/server/db/schema';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
 import { renderOfferLetter } from '$lib/server/offer-letter/pdf';
 import { brandBySlug } from '$lib/shared/brands';
+import { lacking } from '$lib/server/access';
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (!locals.admin) error(401, 'Not authenticated');
-	// Hand-editing a letter's terms is a super-admin power. The save action and
-	// the preview endpoint enforce the same rule on the way back in; this one
-	// keeps the editor itself out of reach.
-	if (locals.admin.role !== 'super_admin')
-		error(403, 'Only a super admin can hand-edit an offer letter.');
+	// Hand-editing a letter's terms is "Offer letter: hand-edit the wording" in
+	// the access studio. The save action and the preview endpoint check the same
+	// row on the way back in; this one keeps the editor itself out of reach.
+	const no = await lacking(locals.admin, 'offer.manual');
+	if (no) error(403, no);
 
 	const candidate = await Candidate.findById(params.id).lean();
 	if (!candidate) error(404, 'Candidate not found');

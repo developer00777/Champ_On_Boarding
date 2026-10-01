@@ -1,32 +1,16 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { Candidate, Company, OfferLetter } from '$lib/server/db/schema';
+import { Candidate, Company, OfferLetter, type OfferLetterDoc } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { offerLetterInputFromDraft } from '$lib/server/offer-letter/fields';
 import { offerLetterInputFromForm } from '$lib/server/offer-letter/form';
-import { generateOfferLetterPdf } from '$lib/server/offer-letter/pdf';
+import { offerLetterPdf } from '$lib/server/offer-letter/send';
 import { brandBySlug } from '$lib/shared/brands';
-import { getGridFSBytes } from '$lib/server/storage';
-import { stampUploadedLetter } from '$lib/server/offer-letter/uploaded';
-import type { ObjectId } from 'mongodb';
+import { mayToday } from '$lib/server/access';
 
-/** A directly-uploaded letter replaces the generated one wholesale, so both the
- *  download and the preview serve it instead of rendering. Returns null when
- *  this candidate's letter is generated, which is the normal case. */
-async function uploadedLetterBytes(draft: unknown): Promise<Uint8Array | null> {
-	const d = draft as {
-		uploadedLetter?: { fileId?: ObjectId | null; signature?: never };
-		signatoryImageBase64?: string | null;
-	} | null;
-	const fileId = d?.uploadedLetter?.fileId;
-	if (!fileId) return null;
-	const raw = await getGridFSBytes(fileId);
-	return stampUploadedLetter(
-		raw,
-		d?.uploadedLetter?.signature ?? null,
-		d?.signatoryImageBase64 ?? ''
-	);
-}
+// A directly-uploaded letter replaces the generated one wholesale, so both the
+// download and the preview serve it instead of rendering — offerLetterPdf in
+// offer-letter/send.ts decides that for every route, this one included.
 
 /** getClientAddress() throws outright when ADDRESS_HEADER names a header the
  *  request does not carry — which is every request that does not come through a
@@ -59,9 +43,7 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress }) 
 		ip: clientIp(getClientAddress)
 	});
 
-	const input = offerLetterInputFromDraft(draft);
-	const uploaded = await uploadedLetterBytes(draft);
-	const pdfBytes = uploaded ?? (await generateOfferLetterPdf(candidate, company?.name ?? '', input, brand));
+	const { bytes: pdfBytes } = await offerLetterPdf(candidate, company?.name ?? '', draft as OfferLetterDoc | null, brand);
 	// Copy into a standalone ArrayBuffer — an unambiguous BodyInit that both
 	// TypeScript and every JS runtime treat as binary (never JSON-serialised).
 	const body = pdfBytes.slice().buffer;
@@ -97,19 +79,19 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 	// so the preview shows the upload rather than rendering something the
 	// candidate would never receive.
 	const uploadedDraft = await OfferLetter.findOne({ candidateId: params.id }).lean();
-	const uploaded = await uploadedLetterBytes(uploadedDraft);
 
 	const parsed = await offerLetterInputFromForm(await request.formData());
 	if (!parsed.ok) error(400, parsed.error);
 
-	// Hand-edited wording is a super-admin power, so for anyone else the letter
+	// Hand-edited wording is a power given per person ("Offer letter: hand-edit
+	// the wording" in the access studio), so for anyone without it the letter
 	// is previewed with the edits already on file rather than whatever the
 	// posted form carries. Both directions matter: a lesser role must not be
 	// able to preview terms they could not save, and must not be shown a letter
 	// stripped of edits that would go out if they sent it. The form they post
 	// has no manual-edit fields at all, so without this their preview would
 	// silently drop a super admin's changes.
-	if (locals.admin.role !== 'super_admin') {
+	if (!(await mayToday(locals.admin, 'offer.manual', 'act'))) {
 		const draft = await OfferLetter.findOne({ candidateId: params.id }).lean();
 		const saved = offerLetterInputFromDraft(draft);
 		parsed.input.manualEdits = saved.manualEdits;
@@ -124,8 +106,13 @@ export const POST: RequestHandler = async ({ params, request, locals, getClientA
 		ip: clientIp(getClientAddress)
 	});
 
-	const pdfBytes =
-		uploaded ?? (await generateOfferLetterPdf(candidate, company?.name ?? '', parsed.input, brand));
+	const { bytes: pdfBytes } = await offerLetterPdf(
+		candidate,
+		company?.name ?? '',
+		uploadedDraft as OfferLetterDoc | null,
+		brand,
+		parsed.input
+	);
 	const safeName = (candidate.fullName ?? candidate.email)
 		.replace(/[^a-zA-Z0-9 ]/g, '')
 		.trim()

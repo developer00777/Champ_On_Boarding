@@ -15,6 +15,7 @@ import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Admin, Exit, ExitClearance, ExitDocument, ExitToken } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
+import { lacking, mayToday } from '$lib/server/access';
 import { brandBySlug } from '$lib/shared/brands';
 import { baseUrl } from '$lib/server/base-url';
 import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
@@ -299,7 +300,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		})),
 		itMailRecipients: { to: mailSettings.itTo, cc: mailSettings.itCc },
 		isHr: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin',
-		isSuperAdmin: locals.admin?.role === 'super_admin'
+		isSuperAdmin: locals.admin?.role === 'super_admin',
+		/** "Exits: reopen or delete an exit" in Access & org — the reopen action's check. */
+		canReopen: await mayToday(locals.admin, 'exit.reopen', 'approve')
 	};
 };
 
@@ -990,8 +993,8 @@ export const actions: Actions = {
 
 	/** Reopens a closed exit — a relieving letter reissued, a figure corrected. */
 	reopen: async ({ params, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin')
-			return no(403, 'Only a super admin can reopen a closed exit.');
+		const noReopen = await lacking(locals.admin, 'exit.reopen', 'approve');
+		if (noReopen) return no(403, noReopen);
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
 		// The handover page renders the settlement live, so leaving its link valid

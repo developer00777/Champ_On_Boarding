@@ -10,6 +10,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { Admin, AuditLog, Candidate } from '$lib/server/db/schema';
+import { lacking } from '$lib/server/access';
 
 export const config = { runtime: 'nodejs24.x' };
 
@@ -19,8 +20,10 @@ const LIMIT = 100;
 
 export const GET: RequestHandler = async ({ url, locals }) => {
 	if (!locals.admin) error(401, 'Not authenticated');
-	if (locals.admin.role !== 'super_admin')
-		error(403, 'Only a super admin can read the activity log.');
+	// The same row that opens the team page: seeing a login's activity is part
+	// of seeing the team, and is handed out with it.
+	const no = await lacking(locals.admin, 'team.view', 'view');
+	if (no) error(403, no);
 
 	const id = url.searchParams.get('id') ?? '';
 	if (!/^[a-f\d]{24}$/i.test(id)) error(400, 'Bad request.');

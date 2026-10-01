@@ -92,9 +92,15 @@
 
 <h1 class="page-title">Team logins</h1>
 <p class="muted" style="margin:0 0 22px;font-size:14px">
-	Create and manage logins for HR and recruiters. New users sign in at the same admin login page.
+	{#if data.canManage}
+		Create and manage logins for HR and recruiters. New users sign in at the same admin login page.
+	{:else}
+		Who has a login, and what each has done. Creating, resetting, disabling and deleting logins stays with
+		super admins.
+	{/if}
 </p>
 
+{#if data.canManage}
 <section class="card" style="margin-bottom:22px">
 	<div style="font-weight:700;font-size:18px;margin-bottom:16px">Add a login</div>
 	<form method="POST" action="?/createUser" use:enhance>
@@ -180,6 +186,7 @@
 		</div>
 	{/if}
 </section>
+{/if}
 
 <section class="table-card">
 	<div class="thead">
@@ -205,21 +212,25 @@
 				{new Date(a.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
 			</div>
 			<div class="row-actions">
-				<form method="POST" action="?/resetPassword" use:enhance style="display:contents">
-					<input type="hidden" name="id" value={a.id} />
-					<button class="btn ghost small" type="submit">Reset password</button>
-				</form>
+				{#if data.canManage}
+					<form method="POST" action="?/resetPassword" use:enhance style="display:contents">
+						<input type="hidden" name="id" value={a.id} />
+						<button class="btn ghost small" type="submit">Reset password</button>
+					</form>
+				{/if}
 				<button
 					class="btn ghost small"
 					type="button"
 					onclick={() => toggleLog(a.id)}
 				>{logOpenFor === a.id ? 'Hide activity' : 'Activity'}</button>
-				<button
-					class="btn ghost small"
-					type="button"
-					onclick={() => { pwOpenFor = pwOpenFor === a.id ? null : a.id; delOpenFor = null; logOpenFor = null; }}
-				>Set password</button>
-				{#if !a.isSelf}
+				{#if data.canManage}
+					<button
+						class="btn ghost small"
+						type="button"
+						onclick={() => { pwOpenFor = pwOpenFor === a.id ? null : a.id; delOpenFor = null; logOpenFor = null; }}
+					>Set password</button>
+				{/if}
+				{#if data.canManage && !a.isSelf}
 					<form method="POST" action="?/setStatus" use:enhance style="display:contents">
 						<input type="hidden" name="id" value={a.id} />
 						<input type="hidden" name="status" value={a.status === 'active' ? 'disabled' : 'active'} />

@@ -76,6 +76,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 			// The studio's own preset if one has been chosen, otherwise the role the
 			// app is actually enforcing — so an untouched person opens on the truth.
 			preset: PRESETS[(a.accessPreset as string) ?? a.role] ? ((a.accessPreset as string) ?? a.role) : 'hr_admin',
+			// The rows the app checks start from the role, not the preset, so the
+			// matrix can show what this login really has on them.
+			role: a.role as string,
 			status: (a.status as 'active' | 'disabled') ?? 'active',
 			grants: grantsToObject(a.grants),
 			checkers: checkersToObject(a.checkers),
@@ -166,8 +169,10 @@ export const actions: Actions = {
 
 		let changed = 0;
 		for (const p of patches) {
+			// A reserved row cannot be handed out, so a grant on one is dropped
+			// rather than recorded as if it meant something.
 			const grants = Object.entries(p.grants ?? {})
-				.filter(([cap, level]) => CAPS[cap] && LEVELS.includes(level))
+				.filter(([cap, level]) => CAPS[cap] && !CAPS[cap].reserved && LEVELS.includes(level))
 				.map(([cap, level]) => ({ cap, level }));
 			const checkers = Object.keys(p.checkers ?? {}).filter((cap) => CAPS[cap] && p.checkers[cap]);
 			const expires = p.accessExpiresAt ? new Date(p.accessExpiresAt) : null;

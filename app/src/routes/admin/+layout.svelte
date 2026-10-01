@@ -96,15 +96,17 @@
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
 				Offboarding
 			</a>
-			<a
-				href="/admin/entities"
-				class="navitem"
-				class:on={active('/admin/entities')}
-				aria-current={active('/admin/entities') ? 'page' : undefined}
-			>
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18" /><path d="M5 21V6l7-3v18" /><path d="M12 9h7v12" /></svg>
-				Entities
-			</a>
+			{#if data.nav.entities}
+				<a
+					href="/admin/entities"
+					class="navitem"
+					class:on={active('/admin/entities')}
+					aria-current={active('/admin/entities') ? 'page' : undefined}
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18" /><path d="M5 21V6l7-3v18" /><path d="M12 9h7v12" /></svg>
+					Entities
+				</a>
+			{/if}
 			<a
 				href="/admin/analytics"
 				class="navitem"
@@ -125,11 +127,14 @@
 			</a>
 
 			<div class="rail-sec">Admin</div>
-			{#if data.admin.role === 'super_admin'}
+			{#if data.nav.team}
+				<!-- Seeing the team is given per person; managing it is not. -->
 				<a href="/admin/team" class="navitem" class:on={active('/admin/team')}>
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.2" /><path d="M6 20a6 6 0 0 1 12 0" /></svg>
 					Team
 				</a>
+			{/if}
+			{#if data.admin.role === 'super_admin'}
 				<!-- The page that decides who may use every other page, so it is the
 				     one link that must never appear for anyone but a super admin. -->
 				<a href="/admin/access" class="navitem" class:on={active('/admin/access')}>

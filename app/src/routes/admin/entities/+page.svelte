@@ -69,7 +69,7 @@
 	<p class="flash ok">Restored {form.companyRestored}.</p>
 {/if}
 
-{#if data.isSuperAdmin}
+{#if data.can.create}
 	<section class="card" style="margin-bottom:22px">
 		<h2 class="card-title">Add a company</h2>
 		<form
@@ -166,7 +166,7 @@
 				</div>
 			</div>
 
-			{#if data.isSuperAdmin}
+			{#if data.can.brand}
 				<form method="POST" action="?/setCompanyBrand" use:enhance class="ent-form">
 					<input type="hidden" name="companyId" value={c.id} />
 					<GlassSelect
@@ -199,7 +199,12 @@
 						/>
 					</label>
 				</form>
-
+			{:else}
+				<span class="ent-brand">
+					{data.brandOptions.find((b) => b.slug === c.brandSlug)?.name ?? 'No brand'}
+				</span>
+			{/if}
+			{#if data.can.archive}
 				<form
 					method="POST"
 					action="?/deleteCompany"
@@ -219,16 +224,12 @@
 						Delete
 					</button>
 				</form>
-			{:else}
-				<span class="ent-brand">
-					{data.brandOptions.find((b) => b.slug === c.brandSlug)?.name ?? 'No brand'}
-				</span>
 			{/if}
 		</div>
 	{/each}
 </section>
 
-{#if data.isSuperAdmin && data.deactivated.length}
+{#if data.can.archive && data.deactivated.length}
 	<details class="bin">
 		<summary>
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
