@@ -1445,6 +1445,46 @@ function renderInternship(
 	});
 }
 
+/** Words HR starts the clause 3 text with when they have written the verb
+ *  themselves ("commit a minimum of 3 hours a day"), so "You are expected to"
+ *  is all that has to go in front. */
+const EXPECTATION_VERBS =
+	/^(maintain|commit|work|deliver|provide|spend|dedicate|give|attend|complete|be|publish|produce|submit|achieve|meet|put|devote|support|ensure)\b/i;
+
+/** Clause 3 as one sentence, whatever HR typed into its field.
+ *
+ *  The template used to append the field to "You are expected to Maintain",
+ *  which only reads right when HR types a bare noun phrase ("40 hours a
+ *  week"). Typing a full sentence — the natural thing to do — printed "You are
+ *  expected to Maintain You are expected to commit … engagement..": the opening
+ *  twice, a capital M mid-sentence, and a doubled full stop. Now:
+ *
+ *    "You are expected to commit …" / "The consultant will …"  → used as typed
+ *    "to commit …"                                            → "You are expected to commit …"
+ *    "commit …", "maintain …", "work …"                       → "You are expected to commit …"
+ *    "40 hours a week"                                        → "You are expected to maintain 40 hours a week."
+ *
+ *  Always exactly one full stop at the end. Blank keeps the template's own
+ *  wording. */
+export function expectationSentence(raw: string): string {
+	const t = (raw ?? '').trim().replace(/[\s.]+$/, '');
+	if (!t) return 'You are expected to maintain the agreed weekly deliverables as discussed.';
+	const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+	const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+	if (/^(you|the consultant|the employee|consultant|we)\b/i.test(t)) return `${upperFirst(t)}.`;
+	if (/^to\s/i.test(t)) return `You are expected ${lowerFirst(t)}.`;
+	if (EXPECTATION_VERBS.test(t)) return `You are expected to ${lowerFirst(t)}.`;
+	return `You are expected to maintain ${lowerFirst(t)}.`;
+}
+
+/** A responsibility line without the list marker HR may have typed in front —
+ *  "1.", "1)", "(2)", "-", "•", "a)" — since the letter draws its own bullet. */
+export function stripListMarker(line: string): string {
+	let s = (line ?? '').trim();
+	for (let i = 0; i < 2; i++) s = s.replace(/^(?:[-*•–—]\s*|\(?\d{1,2}[.)]\s*|\(?[a-zA-Z][.)]\s+)/, '').trim();
+	return s;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  TEMPLATE 3 — CONSULTANT AGREEMENT  (consultant)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1475,15 +1515,17 @@ function renderConsultant(
 	clause(ctx, '1.', `This assignment will be effective from ${o.joiningDate || '____________'}.`, { key: 'con.clause.1' });
 	clause(ctx, '2.', `Your posting will be at our Corporate Office which is allocated based on the project need i.e., presently at ${company}${o.officeLocation ? ' - ' + o.officeLocation : ''}. However, during your contract period you may be stationed / located / posted / transferred by us to any other location of our Organization, as may be necessary for the implementation of the Project requirement.`, { key: 'con.clause.2' });
 
-	// Clause 3 — per-person weekly expectation
-	if (o.weeklyExpectation.trim()) {
-		clause(ctx, '3.', `You are expected to Maintain ${o.weeklyExpectation.trim()}.`, { key: 'con.clause.3' });
-	} else {
-		clause(ctx, '3.', `You are expected to maintain the agreed weekly deliverables as discussed.`, { key: 'con.clause.3' });
-	}
+	// Clause 3 — per-person expectation. See expectationSentence for why the
+	// typed text is not simply appended to "You are expected to maintain".
+	clause(ctx, '3.', expectationSentence(o.weeklyExpectation), { key: 'con.clause.3' });
 
-	// Clause 4 — Key Responsibilities (manually entered, one bullet per line)
-	const kras = o.keyResponsibilities.split('\n').map((l) => l.trim()).filter(Boolean);
+	// Clause 4 — Key Responsibilities (manually entered, one bullet per line).
+	// The bullet is the marker, so a number or dash HR typed in front of a line
+	// is dropped rather than printed after it ("- 1.Overall …").
+	const kras = o.keyResponsibilities
+		.split('\n')
+		.map((l) => stripListMarker(l))
+		.filter(Boolean);
 	// Drawn by hand rather than through clause(), so the override is resolved
 	// here. Blanking it drops the heading and leaves the bullets, which is what
 	// removing a heading should mean.
@@ -1538,7 +1580,9 @@ function renderConsultant(
 	clause(ctx, 'l)', `Employee should not start a similar business till 12 months from the date of resigning, if contract is active for more than 12 months.`, { key: 'con.clause.12.l' });
 	clause(ctx, 'm)', `Should not share any important information or stock information to others or Competitor or other vendors.`, { gapAfter: 8, key: 'con.clause.12.m' });
 
-	subHeading(ctx, '12. General Conditions of Work: You will be bound by the following:', { gapAfter: 6, key: 'con.general.heading' });
+	// 13, not 12: Termination of Employment above is 12. Both were numbered 12,
+	// so the letter had two clause 12s and neither could be cited unambiguously.
+	subHeading(ctx, '13. General Conditions of Work: You will be bound by the following:', { gapAfter: 6, key: 'con.general.heading' });
 	bullet(ctx, `Age limit for employment is 58 Years; any employee above 58 Years will be given notice to resign immediately without any prior notice.`, { key: 'con.general.1' });
 	bullet(ctx, `You will have no objection to working extra hours in the morning and or the evening according to the requirements of the job;`, { key: 'con.general.2' });
 	bullet(ctx, `You will carry out your duties with diligence and loyalty at all times, keeping the Company's interest paramount;`, { key: 'con.general.3' });

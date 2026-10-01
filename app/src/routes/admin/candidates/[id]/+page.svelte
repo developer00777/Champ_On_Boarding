@@ -2399,8 +2399,9 @@
 				{#if isConsultantLetter}
 					<!-- Consultant Agreement (consultant + contract): clause 3/4/5 inputs -->
 					<label class="offer-field sig-field">
-						<span>Weekly expectation (clause 3)</span>
-						<input name="weeklyExpectation" value={ol.weeklyExpectation ?? ''} placeholder="e.g. Minimum 04 Content per Week" />
+						<span>Expectation (clause 3)</span>
+						<input name="weeklyExpectation" value={ol.weeklyExpectation ?? ''} placeholder="e.g. commit a minimum of 3 hours per day for 10 days" />
+						<small>Printed as “You are expected to …”. Type what follows, or a full sentence starting with “You” — either reads correctly.</small>
 					</label>
 					<label class="offer-field sig-field">
 						<span>Key responsibilities (one per line — becomes bullets in clause 4)</span>
