@@ -766,7 +766,7 @@ function subHeading(ctx: Ctx, text: string, opts: { key?: string; size?: number;
 function signatureLine(
 	ctx: Ctx,
 	caption: string,
-	opts: { key?: string; width?: number; bold?: boolean; employerSignature?: { image: PDFImage; date: string } } = {}
+	opts: { key?: string; width?: number; bold?: boolean; employerSignature?: { image: PDFImage; date: string }; room?: number } = {}
 ) {
 	// A blanked-out override drops the whole block — rule and caption together,
 	// so removing a sign-off never leaves a naked line on the page.
@@ -776,7 +776,10 @@ function signatureLine(
 		caption = edited;
 	}
 	const width = opts.width ?? 200;
-	const above = 14 * ctx.blockGap; // room to actually sign
+	// Room to actually sign. A letter whose block gap is 1 (the consultant
+	// agreement) leaves only 14pt, which would shrink a stamped signature to a
+	// smudge, so a caller stamping one asks for the room it needs.
+	const above = opts.room ?? 14 * ctx.blockGap;
 	ensure(ctx, above + 18);
 	ctx.y -= above;
 	const ruleY = ctx.y;
@@ -1602,10 +1605,24 @@ function renderConsultant(
 	para(ctx, `This letter constitutes the complete understanding between you and the company regarding terms of employment with the company. This supersedes any and all other agreements, either written or oral, between you and the company regarding your employment. Any modification of this agreement will be effective only if it is in writing signed by both the parties. Any arbitration arising out of this contract will be held between employee and employer at Bangalore Head Office with company nominated person on one to one basis.`, { gapAfter: 6, key: 'con.accept.complete' });
 	para(ctx, `I am sure that you will find your employment with ${company} a great challenge and we look forward to a long and mutually beneficial association.`, { gapAfter: 14, key: 'con.accept.challenge' });
 
-	keepTogether(ctx, 190, () => {
+	// The agreement's only company sign-off, so it carries the uploaded
+	// signature and the date — the way the appointment and internship letters'
+	// Employer Representative blocks do. It used to be a blank rule with an
+	// empty "Date:", so consultant and contract letters went out unsigned even
+	// with a signature on file. Without one it stays a rule for wet ink.
+	const sig = ctx.employerSignature;
+	keepTogether(ctx, sig ? 220 : 190, () => {
 		para(ctx, `For ${company}`, { font: ctx.fontB, gapAfter: 10, key: 'con.forCompany' });
-		signatureLine(ctx, 'Authorized Signatory', { width: 190, bold: true, key: 'con.sig.authorized' });
-		para(ctx, `Date:`, { gapAfter: 12, key: 'con.sig.date' });
+		signatureLine(ctx, 'Authorized Signatory', {
+			width: 190,
+			bold: true,
+			employerSignature: sig ?? undefined,
+			room: sig ? 44 : undefined,
+			key: 'con.sig.authorized'
+		});
+		if (o.signatoryName.trim())
+			para(ctx, [o.signatoryName.trim(), o.signatoryDesignation.trim()].filter(Boolean).join(', '), { gapAfter: 4, key: 'con.sig.name' });
+		para(ctx, `Date: ${sig ? sig.date : ''}`, { gapAfter: 12, key: 'con.sig.date' });
 
 		para(ctx, `I have read, understood and accepted the above: I understand that the terms and conditions are pre - conditions to my being offered employment with the company. I am under no obligation or duress to accept these terms and conditions of employment. I accept them of my own free choice and will.`, { gapAfter: 14, key: 'con.accept.read' });
 		para(ctx, `Name:`, { font: ctx.fontB, gapAfter: 14, key: 'con.accept.name' });
