@@ -433,6 +433,45 @@ export const BRANDS: BrandTheme[] = [
 		logo: { src: '/brands/iconic-build-studio.png', monogram: 'IBS', hasWordmark: true }
 	},
 	{
+		// From the supplied letterhead (CBC Letterhead.pdf), "a company of Champion
+		// Infratech". The logo is the letterhead's vector art rendered straight onto
+		// transparency, so its edges are true anti-aliasing, not a cutout. Primary
+		// is the letterhead's own type colour and accent the green end of the
+		// wordmark's blue-to-green gradient. The letterhead has no dark tone, so
+		// `ink` (footer band, hero) is a deeper shade of the same ocean blue, dark
+		// enough for the band's white type. The name keeps the plural "Champions"
+		// as the letterhead and logo spell it; the legal
+		// entity is "City", singular, though the artwork reads "Cities".
+		slug: 'champions-beach-city',
+		name: 'Champions Beach City',
+		legalName: 'Champions Beach City Pvt Ltd',
+		tagline: 'Coastal beach-city living, from the Champion Infratech family.',
+		colors: {
+			primary: '#1596C6',
+			primaryDark: '#0E7199',
+			accent: '#27AD7A',
+			ink: '#0B5A7A',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#1A1A1A',
+			muted: '#5C6872',
+			border: '#E3EEF3',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #0B5A7A 0%, #1596C6 55%, #27AD7A 100%)'
+		},
+		fonts: {
+			heading: "'Montserrat', Arial, sans-serif",
+			body: "'Montserrat', Arial, sans-serif",
+			googleFamilies: ['Montserrat:wght@400;500;600;700;800']
+		},
+		buttonRadius: 6,
+		cardRadius: 12,
+		uppercaseCta: false,
+		// Address is the shared JS Tower desk (CONTACT_DEFAULTS), as the letterhead prints.
+		contact: { website: 'https://www.championsbeachcities.com/' },
+		logo: { src: '/brands/champions-beach-city.png', monogram: 'CBC', hasWordmark: true }
+	},
+	{
 		slug: '100x-longevity',
 		name: '100X Longevity',
 		legalName: '100X Longevity Pvt Ltd',

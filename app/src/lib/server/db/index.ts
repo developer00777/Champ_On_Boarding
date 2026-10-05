@@ -19,6 +19,7 @@ const COMPANIES = [
 	// hand-edited in /admin/entities is still matched.
 	{ name: 'Champion Luxury Resorts Pvt Ltd',  brandSlug: 'champions-luxury-resorts', aliases: ['Champion Luxury Resorts', 'Champions Luxury Resorts', 'Champions Luxury Resorts Pvt Ltd'] },
 	{ name: 'Iconic Build Studio Pvt Ltd',       brandSlug: 'iconic-build-studio', aliases: ['Iconic Build Studio'] },
+	{ name: 'Champions Beach City Pvt Ltd',      brandSlug: 'champions-beach-city', aliases: ['Champions Beach City', 'Champion Beach City', 'Champions Beach Cities', 'Champions Beach Cities Pvt Ltd'] },
 	// No brand entry in brands.ts yet — brandBySlug('cipl') falls back to the
 	// default theme. Rename/re-theme any time from /admin/entities.
 	{ name: 'CIPL',                              brandSlug: 'cipl',                aliases: [] },
