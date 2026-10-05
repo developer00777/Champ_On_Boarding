@@ -55,6 +55,7 @@ import { RELIGIONS } from '$lib/shared/demographics';
 import { sendItSetupMail } from '$lib/server/it-setup-mail';
 import { env } from '$env/dynamic/private';
 import { baseUrl } from '$lib/server/base-url';
+import { moveCandidate, moveImpact, resolveMove } from '$lib/server/entity-move';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -206,7 +207,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		offerLetter,
 		activeLinkToken,
 		fixedLists,
-		referenceFiles
+		referenceFiles,
+		entities,
+		lastMove
 	] = await Promise.all([
 		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
@@ -219,7 +222,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.sort({ createdAt: -1 })
 			.lean(),
 		getFixedLists(),
-		CandidateFile.find({ candidateId: candidate._id }).sort({ createdAt: -1 }).lean()
+		CandidateFile.find({ candidateId: candidate._id }).sort({ createdAt: -1 }).lean(),
+		// Where the candidate can be moved to: every live entity but their own.
+		Company.find({ active: { $ne: false }, _id: { $ne: candidate.companyId } }, 'name').sort({ name: 1 }).lean(),
+		AuditLog.findOne({ candidateId: candidate._id, action: 'entity_changed' }).sort({ createdAt: -1 }).lean()
 	]);
 
 	// The decision is stored against an Admin id; the page needs the email. A
@@ -362,6 +368,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		},
 		mailSends,
 		companyName: company?.name ?? '',
+		entityOptions: entities.map((e) => ({ value: String(e._id), label: e.name as string })),
+		/** The most recent move, so the record says it was moved and from where. */
+		lastEntityMove: lastMove
+			? {
+					fromName: lastMove.oldValue ?? '',
+					by: lastMove.actor as string,
+					at: (lastMove as unknown as { createdAt: Date }).createdAt.toISOString()
+				}
+			: null,
 		brand: brandBySlug(company?.brandSlug ?? undefined),
 		checklist: checklist.map((s) => ({
 			...s,
@@ -475,8 +490,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		 *  the same checks the actions and endpoints make, read once here so the
 		 *  page shows a button exactly when pressing it would work. */
 		can: await (async () => {
-			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false };
-			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent'] as const);
+			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false, entity: false };
+			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent', 'candidate.entity'] as const);
 			const at = (l: Level, min: Level) => ['none', 'view', 'act', 'approve'].indexOf(l) >= ['none', 'view', 'act', 'approve'].indexOf(min);
 			return {
 				edit: at(lv['candidate.edit'], 'act'),
@@ -485,7 +500,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				delete: at(lv['candidate.delete'], 'approve'),
 				upload: at(lv['offer.upload'], 'act'),
 				manual: at(lv['offer.manual'], 'act'),
-				markSent: at(lv['offer.markSent'], 'act')
+				markSent: at(lv['offer.markSent'], 'act'),
+				entity: at(lv['candidate.entity'], 'act')
 			};
 		})(),
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
@@ -1111,6 +1127,34 @@ ${brandSignoff(brand)}`,
 			ip: getClientAddress()
 		});
 		return { linkRegenerated: true, newLink: `${base}/c/${token}` };
+	},
+
+	/** Moves the candidate to another entity — the late "they are joining X, not
+	 *  Y" change — without a second onboarding. Two presses: the first (no
+	 *  `confirm`) only returns what the move would change for this person; the
+	 *  second makes it and returns the same notes as the to-do list. */
+	moveEntity: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = await requireCap(locals, 'candidate.entity');
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const toCompanyId = String(form.get('toCompanyId') ?? '');
+		const target = await resolveMove(row.candidate, toCompanyId);
+		if ('error' in target) return fail(400, { message: target.error, entityMoveError: true });
+		const { from, to } = target;
+
+		if (form.get('confirm') !== '1') {
+			return {
+				entityPreview: {
+					toCompanyId: String(to._id),
+					toName: to.name as string,
+					notes: await moveImpact(row.candidate, from, to)
+				}
+			};
+		}
+		const notes = await moveCandidate(row.candidate, from, to, locals.admin!.email, getClientAddress());
+		return { entityMoved: { fromName: (from?.name as string) ?? '', toName: to.name as string, notes } };
 	},
 
 	deleteCandidate: async ({ params, locals, getClientAddress }) => {

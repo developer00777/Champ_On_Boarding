@@ -248,6 +248,11 @@ export const MODULES: Module[] = [
 				surface: ['/admin/candidates/[id]::setUan'] },
 			{ key: 'candidate.delete', label: 'Candidates: delete a candidate record', kind: 'gate', enforced: true,
 				surface: ['/admin/candidates/[id]::deleteCandidate'] },
+			// Moves the one record to another entity when the hiring company changes
+			// late, so nobody is onboarded twice. Everything branded follows the
+			// record, so this re-letterheads the offer and re-rules the documents.
+			{ key: 'candidate.entity', label: 'Candidates: move to another entity', kind: 'write', enforced: true,
+				surface: ['/admin/candidates/[id]::moveEntity'] },
 			// Offer letter powers that were super-admin-only. Each works on top of
 			// being able to open the offer letter at all; hand-editing also needs
 			// the offer form to be editable for them (an HR admin's is).

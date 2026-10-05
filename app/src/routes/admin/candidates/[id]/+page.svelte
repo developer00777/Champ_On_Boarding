@@ -865,6 +865,17 @@
 	$effect(() => {
 		shiftChoice = shiftTiming;
 	});
+
+	// Moving to another entity. The preview comes back from the action's first
+	// press; it is only offered while the dropdown still names that entity, so
+	// changing the choice drops a stale preview rather than confirming it.
+	let entityChoice = $state('');
+	const entityPreview = $derived(
+		form?.entityPreview && form.entityPreview.toCompanyId === entityChoice ? form.entityPreview : null
+	);
+	$effect(() => {
+		if (form?.entityMoved) entityChoice = '';
+	});
 	const shiftOptions = $derived([
 		...SHIFT_TIMINGS.map((s) => ({ value: s, label: s })),
 		...(shiftTiming && !isShiftTiming(shiftTiming)
@@ -1725,6 +1736,60 @@
 				<div class="muted" style="font-size:11px;margin-top:4px">
 					Reviewed {new Date(c.reviewedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
 				</div>
+			{/if}
+		</section>
+
+		<!-- Entity: which company this person is joining, and moving them when
+		     that changes late. Same record and link, so no second onboarding. -->
+		<section class="card emp-card">
+			<div class="eyebrow" style="margin-bottom:10px">Entity</div>
+			<div class="shift-display">{data.companyName || '—'}</div>
+			{#if data.lastEntityMove}
+				<p class="it-link-note" style="margin-top:-4px">
+					Moved from {data.lastEntityMove.fromName} ·
+					{new Date(data.lastEntityMove.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+					· {data.lastEntityMove.by}
+				</p>
+			{/if}
+
+			{#if form?.entityMoved}
+				<p class="saved-chip" style="margin:0 0 8px">Moved to {form.entityMoved.toName} ✓</p>
+				<ul class="move-notes">
+					{#each form.entityMoved.notes as n}<li class={n.tone}>{n.text}</li>{/each}
+				</ul>
+			{/if}
+
+			{#if data.can.entity}
+				{#if data.entityOptions.length}
+					<form method="POST" action="?/moveEntity" use:enhance={() => async ({ update }) => update({ reset: false })} class="emp-form">
+						<GlassSelect
+							name="toCompanyId"
+							ariaLabel="Move to entity"
+							placeholder="Move to…"
+							bind:value={entityChoice}
+							options={data.entityOptions}
+						/>
+						<button class="btn small ghost" disabled={!entityChoice}>Review</button>
+					</form>
+				{:else}
+					<p class="muted" style="font-size:11.5px;margin:0">No other live entity to move to.</p>
+				{/if}
+
+				{#if entityPreview}
+					<div class="move-preview">
+						<div class="move-title">Moving to {entityPreview.toName}</div>
+						<ul class="move-notes">
+							{#each entityPreview.notes as n}<li class={n.tone}>{n.text}</li>{/each}
+						</ul>
+						<form method="POST" action="?/moveEntity" use:enhance={() => async ({ update }) => update({ reset: false })}>
+							<input type="hidden" name="toCompanyId" value={entityPreview.toCompanyId} />
+							<input type="hidden" name="confirm" value="1" />
+							<button class="btn small teal" style="width:100%">Move to {entityPreview.toName}</button>
+						</form>
+					</div>
+				{/if}
+			{:else}
+				<p class="it-link-note">Moving to another entity needs “Candidates: move to another entity” in Access &amp; org.</p>
 			{/if}
 		</section>
 
@@ -3830,6 +3895,28 @@
 		color: var(--ae-muted);
 		margin-bottom: 4px;
 	}
+	.move-preview {
+		margin-top: 10px;
+		padding: 10px;
+		border: 1px solid rgba(242,177,92,.3);
+		background: rgba(242,177,92,.08);
+		border-radius: 10px;
+	}
+	.move-title {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--ae-text);
+		margin-bottom: 6px;
+	}
+	.move-notes {
+		margin: 0 0 10px;
+		padding-left: 16px;
+		font-size: 11px;
+		line-height: 1.45;
+		color: var(--ae-text-2);
+	}
+	.move-notes li { margin-bottom: 4px; }
+	.move-notes li.todo { color: var(--ae-text); font-weight: 600; }
 	.emp-hint {
 		display: flex;
 		align-items: center;
