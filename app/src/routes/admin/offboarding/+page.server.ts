@@ -11,7 +11,7 @@ import { audit } from '$lib/server/audit';
 import { lacking, mayToday } from '$lib/server/access';
 import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
-import { RANGE_KEYS, rangeStart, type RangeKey } from '$lib/shared/ranges';
+import { listWindow, windowFilter } from '$lib/shared/ranges';
 import { EXIT_STATUS_META } from '$lib/shared/offboarding';
 import {
 	clearanceProgress,
@@ -28,14 +28,13 @@ function requireInitiator(locals: App.Locals) {
 }
 
 export const load: PageServerLoad = async ({ url, locals }) => {
-	const range = (url.searchParams.get('range') ?? 'all') as RangeKey;
-	const safeRange: RangeKey = RANGE_KEYS.includes(range) ? range : 'all';
+	const win = listWindow(url.searchParams, 'all');
 	const status = url.searchParams.get('status') ?? '';
 	const q = (url.searchParams.get('q') ?? '').trim();
 
 	const where: Record<string, unknown> = {};
-	const from = rangeStart(safeRange);
-	if (from) where.createdAt = { $gte: from };
+	const created = windowFilter(win);
+	if (created) where.createdAt = created;
 	if (status) where.status = status;
 	if (q) {
 		// Literal substring match (regex metacharacters escaped) against the three
@@ -83,7 +82,9 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			};
 		}),
 		total,
-		range: safeRange,
+		range: win.range,
+		fromDay: win.fromDay,
+		toDay: win.toDay,
 		status,
 		q,
 		statuses: Object.keys(EXIT_STATUS_META),

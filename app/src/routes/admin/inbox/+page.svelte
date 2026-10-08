@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
+	import DateRange from '$lib/components/DateRange.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 
@@ -32,7 +33,9 @@
 	function href(patch: Record<string, string>): string {
 		const p = new URLSearchParams();
 		const next = {
-			range: data.range,
+			range: data.range === 'custom' ? '' : data.range,
+			from: data.fromDay,
+			to: data.toDay,
 			direction: data.direction,
 			mailbox: data.mailbox,
 			q: data.q,
@@ -81,11 +84,12 @@
 <div class="filterbar">
 	<div class="seg" role="group" aria-label="Time range">
 		{#each RANGE_KEYS as k}
-			<a href={href({ range: k })} class="seg-b" class:on={data.range === k} data-sveltekit-noscroll>
+			<a href={href({ range: k, from: '', to: '' })} class="seg-b" class:on={data.range === k} data-sveltekit-noscroll>
 				{RANGE_LABELS[k]}
 			</a>
 		{/each}
 	</div>
+	<DateRange fromDay={data.fromDay} toDay={data.toDay} active={data.range === 'custom'} hrefFor={href} />
 
 	<div class="filter-select">
 		<GlassSelect
@@ -109,7 +113,9 @@
 	     inputs carry the active filters so a search doesn't silently drop them.
 	     page is deliberately omitted — a new search starts on page 1. -->
 	<form class="searchbox" method="GET" action="/admin/inbox" role="search" data-sveltekit-noscroll data-sveltekit-keepfocus>
-		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.range !== 'all' && data.range !== 'custom'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.fromDay}<input type="hidden" name="from" value={data.fromDay} />{/if}
+		{#if data.toDay}<input type="hidden" name="to" value={data.toDay} />{/if}
 		{#if data.direction && data.direction !== 'all'}<input type="hidden" name="direction" value={data.direction} />{/if}
 		{#if data.mailbox}<input type="hidden" name="mailbox" value={data.mailbox} />{/if}
 		<SearchTypeahead

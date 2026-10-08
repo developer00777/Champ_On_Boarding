@@ -1,11 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { Candidate, Company, OfferLetter } from '$lib/server/db/schema';
 import { TRACKS } from '$lib/shared/matrix';
-import { RANGE_KEYS, rangeStart, type RangeKey } from '$lib/shared/ranges';
+import { listWindow, windowFilter } from '$lib/shared/ranges';
 
 export const load: PageServerLoad = async ({ url }) => {
-	const range = (url.searchParams.get('range') ?? 'all') as RangeKey;
-	const safeRange: RangeKey = RANGE_KEYS.includes(range) ? range : 'all';
+	// A button range, or a custom From/To window that replaces it.
+	const win = listWindow(url.searchParams, 'all');
 	const track = url.searchParams.get('track') ?? '';
 	const status = url.searchParams.get('status') ?? '';
 	// The entity, as a company id. Filtering on the id rather than the name
@@ -17,8 +17,8 @@ export const load: PageServerLoad = async ({ url }) => {
 	// Filter in the query, not the client: this list only grows, and the page
 	// should not ship every candidate to the browser to hide most of them.
 	const where: Record<string, unknown> = {};
-	const from = rangeStart(safeRange);
-	if (from) where.createdAt = { $gte: from };
+	const created = windowFilter(win);
+	if (created) where.createdAt = created;
 	if (track) where.track = track;
 	if (status) where.status = status;
 	// Only when it is a plausible ObjectId. Mongoose throws a CastError on
@@ -78,7 +78,9 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}),
 		total,
-		range: safeRange,
+		range: win.range,
+		fromDay: win.fromDay,
+		toDay: win.toDay,
 		track,
 		status,
 		entity,

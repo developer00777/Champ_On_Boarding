@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
+	import DateRange from '$lib/components/DateRange.svelte';
 	import { EXIT_STATUS_META } from '$lib/shared/offboarding';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
@@ -18,7 +19,7 @@
 	 *  refresh. Build links rather than posting — this is a read. */
 	function href(patch: Record<string, string>): string {
 		const p = new URLSearchParams();
-		const next = { range: data.range, status: data.status, q: data.q, ...patch };
+		const next = { range: data.range === 'custom' ? '' : data.range, from: data.fromDay, to: data.toDay, status: data.status, q: data.q, ...patch };
 		for (const [k, v] of Object.entries(next)) if (v && v !== 'all') p.set(k, v);
 		const qs = p.toString();
 		return qs ? `?${qs}` : '?';
@@ -143,11 +144,12 @@
 <div class="filterbar">
 	<div class="seg" role="group" aria-label="Time range">
 		{#each RANGE_KEYS as k}
-			<a href={href({ range: k })} class="seg-b" class:on={data.range === k} data-sveltekit-noscroll>
+			<a href={href({ range: k, from: '', to: '' })} class="seg-b" class:on={data.range === k} data-sveltekit-noscroll>
 				{RANGE_LABELS[k]}
 			</a>
 		{/each}
 	</div>
+	<DateRange fromDay={data.fromDay} toDay={data.toDay} active={data.range === 'custom'} hrefFor={href} />
 
 	<div class="filter-select">
 		<GlassSelect
@@ -171,7 +173,9 @@
 		data-sveltekit-noscroll
 		data-sveltekit-keepfocus
 	>
-		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.range !== 'all' && data.range !== 'custom'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.fromDay}<input type="hidden" name="from" value={data.fromDay} />{/if}
+		{#if data.toDay}<input type="hidden" name="to" value={data.toDay} />{/if}
 		{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}
 		<input
 			name="q"

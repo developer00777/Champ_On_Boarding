@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { TRACK_LABELS, type Track } from '$lib/shared/matrix';
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
+	import DateRange from '$lib/components/DateRange.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 
@@ -23,7 +24,7 @@
 	 *  refresh. Build links rather than posting — this is a read. */
 	function href(patch: Record<string, string>): string {
 		const p = new URLSearchParams();
-		const next = { range: data.range, entity: data.entity, track: data.track, status: data.status, q: data.q, ...patch };
+		const next = { range: data.range === 'custom' ? '' : data.range, from: data.fromDay, to: data.toDay, entity: data.entity, track: data.track, status: data.status, q: data.q, ...patch };
 		for (const [k, v] of Object.entries(next)) if (v && v !== 'all') p.set(k, v);
 		const qs = p.toString();
 		return qs ? `?${qs}` : '?';
@@ -65,11 +66,12 @@
 <div class="filterbar">
 	<div class="seg" role="group" aria-label="Time range">
 		{#each RANGE_KEYS as k}
-			<a href={href({ range: k })} class="seg-b" class:on={data.range === k} data-sveltekit-noscroll>
+			<a href={href({ range: k, from: '', to: '' })} class="seg-b" class:on={data.range === k} data-sveltekit-noscroll>
 				{RANGE_LABELS[k]}
 			</a>
 		{/each}
 	</div>
+	<DateRange fromDay={data.fromDay} toDay={data.toDay} active={data.range === 'custom'} hrefFor={href} />
 
 	<!-- Entity leads the three: which company someone is joining is the widest
 	     cut of this list, and the one HR reaches for first when a desk only
@@ -113,7 +115,9 @@
 	<!-- GET form keeps the search in the URL like the other filters; hidden
 	     inputs carry the active filters so a search doesn't silently drop them. -->
 	<form class="searchbox" method="GET" action="/admin/candidates" role="search" data-sveltekit-noscroll data-sveltekit-keepfocus>
-		{#if data.range !== 'all'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.range !== 'all' && data.range !== 'custom'}<input type="hidden" name="range" value={data.range} />{/if}
+		{#if data.fromDay}<input type="hidden" name="from" value={data.fromDay} />{/if}
+		{#if data.toDay}<input type="hidden" name="to" value={data.toDay} />{/if}
 		{#if data.entity}<input type="hidden" name="entity" value={data.entity} />{/if}
 		{#if data.track}<input type="hidden" name="track" value={data.track} />{/if}
 		{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}

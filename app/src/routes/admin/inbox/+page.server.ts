@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { Candidate, EmailMessage } from '$lib/server/db/schema';
-import { RANGE_KEYS, rangeStart, type RangeKey } from '$lib/shared/ranges';
+import { RANGE_KEYS, listWindow, windowFilter } from '$lib/shared/ranges';
 
 const DIRECTIONS = ['all', 'outbound', 'inbound'] as const;
 type Direction = (typeof DIRECTIONS)[number];
@@ -8,7 +8,10 @@ type Direction = (typeof DIRECTIONS)[number];
 const PAGE_SIZE = 50;
 
 export const load: PageServerLoad = async ({ url }) => {
-	const range = (url.searchParams.get('range') as RangeKey) || 'all';
+	// A button range, or a custom From/To window. Also validates `range`, which
+	// was taken as given here and turned an unknown value into an invalid date.
+	const win = listWindow(url.searchParams, 'all');
+	const range = win.range;
 	const direction = (url.searchParams.get('direction') as Direction) || 'all';
 	const mailbox = url.searchParams.get('mailbox') ?? '';
 	const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1);
@@ -22,8 +25,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		// either side is what "everything through this mailbox" means to HR.
 		query.$or = [{ from: { $regex: mailbox, $options: 'i' } }, { to: { $regex: mailbox, $options: 'i' } }];
 	}
-	const start = rangeStart(range);
-	if (start) query.createdAt = { $gte: start };
+	const created = windowFilter(win);
+	if (created) query.createdAt = created;
 
 	if (q) {
 		// Literal substring match (regex metacharacters escaped), case-insensitive,
@@ -81,6 +84,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		page,
 		pageSize: PAGE_SIZE,
 		range,
+		fromDay: win.fromDay,
+		toDay: win.toDay,
 		direction,
 		mailbox,
 		q,
