@@ -7,7 +7,8 @@ import type { Actions, PageServerLoad } from './$types';
 import { Candidate, Company, EmailMessage, BgvRequest } from '$lib/server/db/schema';
 import { isBgvEligible, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
-import { isValidEmail } from '$lib/shared/validation';
+import { isValidEmail, titleCase } from '$lib/shared/validation';
+import { isoToDDMMYYYY } from '$lib/shared/dates';
 import { sendMail, brandFromHeader, mailboxFor } from '$lib/server/mailer';
 import { getOrCreateBgv, bgvFormPdf, bgvEmailText, bgvRequestHtml, defaultBgvEmail, BGV_PARTICULARS, BGV_EXTRAS } from '$lib/server/bgv';
 import { addDays, firstReminderAt, sendBgvReminder } from '$lib/server/bgv-reminders';
@@ -33,6 +34,12 @@ const BGV_CAPS = ['bgv.view', 'bgv.thread', 'bgv.send', 'bgv.remind', 'bgv.plan'
 /** The two answers stored as an enum; every other verification input is text. */
 const YES_NO_KEYS = new Set(['rehireEligible', 'exitFormalitiesPending']);
 const VERIFY_ROWS = [...BGV_PARTICULARS, ...BGV_EXTRAS].map((r) => ({ key: r.verify as string, label: r.label as string }));
+/** The left column: what the candidate declared, which lives on the candidate
+ *  record itself. Posted as `d_<field>` so it cannot collide with a
+ *  verification key. */
+const DECLARED_ROWS = BGV_PARTICULARS.map((r) => ({ field: r.field as string, label: r.label as string }));
+const DECLARED_DATES = new Set(['prevDoj', 'prevDol']);
+const DDMMYYYY = /^\d{2}\/\d{2}\/\d{4}$/;
 
 function escapeRegex(v: string): string {
 	return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -101,6 +108,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		companyName,
 		particulars: BGV_PARTICULARS.map((r) => ({
 			key: r.verify as string,
+			field: r.field as string,
 			label: r.label,
 			declared: c[r.field] ?? null,
 			verified: verification[r.verify] ?? null
@@ -330,10 +338,13 @@ export const actions: Actions = {
 		return { planSaved: true };
 	},
 
-	/** Fills in or corrects the employer's "Your Verification Inputs" column by
-	 *  hand, for when the AI mapping of their reply missed or misread a row (or
-	 *  they answered by phone). Blank clears a row. `complete` marks the BGV
-	 *  verified and stops the chase; unticking it reopens a completed one. */
+	/** Corrects both columns of the BGV table by hand. The right column is the
+	 *  employer's verification inputs, for when the AI mapping of their reply
+	 *  missed or misread a row (or they answered by phone); blank clears a row.
+	 *  The left column is what the candidate declared, which is the candidate
+	 *  record itself, so a correction there shows on the candidate page and in
+	 *  the next BGV mail too. `complete` marks the BGV verified and stops the
+	 *  chase; unticking it reopens a completed one. */
 	saveVerification: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = await requireCap(locals, 'bgv.edit');
 		if (forbidden) return forbidden;
@@ -354,9 +365,43 @@ export const actions: Actions = {
 		}
 		const changed = VERIFY_ROWS.filter(({ key }) => (before[key] ?? null) !== next[key]).map((r) => r.label);
 
+		// Left column — only fields actually posted are touched, so a form that
+		// does not carry them (an older page) cannot blank the candidate.
+		const cand = row.candidate as unknown as Record<string, string | null | undefined>;
+		const declared: Record<string, string> = {};
+		for (const { field, label } of DECLARED_ROWS) {
+			if (!form.has(`d_${field}`)) continue;
+			let v = String(form.get(`d_${field}`) ?? '').trim().slice(0, 300);
+			if (DECLARED_DATES.has(field) && v) {
+				v = isoToDDMMYYYY(v);
+				if (!DDMMYYYY.test(v)) return fail(400, { message: `${label} must be a date as DD/MM/YYYY.` });
+			}
+			if (field === 'fullName') {
+				if (!v) return fail(400, { message: "Candidate's Name cannot be blank." });
+				v = titleCase(v);
+			}
+			if ((cand[field] ?? '') !== v) declared[field] = v;
+		}
+		const declaredChanged = DECLARED_ROWS.filter(({ field }) => field in declared).map((r) => r.label);
+
 		const complete = form.get('complete') === 'on';
 		const wasComplete = bgv.status === 'completed';
-		if (!changed.length && complete === wasComplete) return { verificationSaved: true, changed: 0 };
+		if (!changed.length && !declaredChanged.length && complete === wasComplete)
+			return { verificationSaved: true, changed: 0 };
+
+		if (declaredChanged.length) {
+			await Candidate.findByIdAndUpdate(params.id, declared);
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'bgv_particulars_edited',
+				field: declaredChanged.join(', '),
+				newValue: `${declaredChanged.length} declared particular${declaredChanged.length === 1 ? '' : 's'} corrected from BGV`,
+				ip: getClientAddress()
+			});
+		}
+		if (!changed.length && complete === wasComplete)
+			return { verificationSaved: true, changed: declaredChanged.length };
 
 		bgv.set('verification', next);
 		if (changed.length) {
@@ -386,7 +431,7 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 
-		return { verificationSaved: true, changed: changed.length };
+		return { verificationSaved: true, changed: changed.length + declaredChanged.length };
 	},
 
 	// Same scope as the list-page delete: removes the candidate from the BGV

@@ -126,7 +126,8 @@
 			<p class="hint">
 				Left column: what the candidate declared in onboarding. Right column: the previous employer's
 				verification inputs — filled in automatically when they reply to the BGV email (their reply is
-				read by AI and mapped here). If the mapping misses or misreads something, edit it by hand.
+				read by AI and mapped here). Either column can be corrected by hand with Edit; a change on the
+				left updates the candidate's record too.
 			</p>
 			{#if editingVerify}
 				<form
@@ -149,7 +150,13 @@
 						<div class="vrow">
 							<span>
 								<span class="vlabel">{row.label}</span>
-								<span class="vvalue">{row.declared || '—'}</span>
+								<input
+									class="vinput"
+									name="d_{row.field}"
+									value={row.declared ?? ''}
+									placeholder={row.field === 'prevDoj' || row.field === 'prevDol' ? 'DD/MM/YYYY' : ''}
+									aria-label="{row.label} — candidate's particular"
+								/>
 							</span>
 							<input class="vinput" name={row.key} value={row.verified ?? ''} aria-label="{row.label} — verification input" />
 						</div>
@@ -176,7 +183,7 @@
 					</label>
 					{#if form?.message}<p class="error">{form.message}</p>{/if}
 					<div class="rem-actions">
-						<button class="btn small" type="submit" disabled={savingVerify}>{savingVerify ? 'Saving…' : 'Save verification inputs'}</button>
+						<button class="btn small" type="submit" disabled={savingVerify}>{savingVerify ? 'Saving…' : 'Save table'}</button>
 						<button class="btn ghost small" type="button" onclick={() => (editingVerify = false)} disabled={savingVerify}>Cancel</button>
 					</div>
 				</form>
@@ -205,12 +212,12 @@
 				{#if data.can.edit}
 					<div class="rem-actions">
 						<button class="btn ghost small" type="button" onclick={() => (editingVerify = true)}>
-							Edit verification inputs
+							Edit table
 						</button>
 					</div>
 				{/if}
 			{/if}
-			{#if form?.verificationSaved}<p class="sent-ok">Verification inputs saved ✓</p>{/if}
+			{#if form?.verificationSaved}<p class="sent-ok">Table saved ✓</p>{/if}
 			{#if data.bgv.editedBy}
 				<p class="hint" style="margin:8px 0 0">
 					Last filled in by hand by {data.bgv.editedBy} · {fmt(data.bgv.editedAt)}

@@ -278,9 +278,10 @@ export const MODULES: Module[] = [
 				surface: ['/admin/bgv/[id]::remindNow'] },
 			{ key: 'bgv.plan', label: 'BGV: set the automatic reminder plan', kind: 'write', enforced: true,
 				surface: ['/admin/bgv/[id]::saveReminderPlan'] },
-			// The employer's answers are AI-mapped from their reply, which does not
-			// always land; this lets someone fill in or correct that column by hand.
-			{ key: 'bgv.edit', label: 'BGV: fill in or correct the verification inputs', kind: 'write', enforced: true,
+			// Both columns of the BGV table, by hand: the employer's answers, which are
+			// AI-mapped from their reply and do not always land, and the candidate's
+			// declared particulars beside them.
+			{ key: 'bgv.edit', label: 'BGV: correct the particulars and verification inputs', kind: 'write', enforced: true,
 				surface: ['/admin/bgv/[id]::saveVerification'] },
 			{ key: 'bgv.close', label: 'BGV: remove a candidate from BGV', kind: 'gate', enforced: true,
 				surface: ['/admin/bgv::deleteBgv', '/admin/bgv/[id]::deleteBgv'] },
