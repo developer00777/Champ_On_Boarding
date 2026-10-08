@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { untrack } from 'svelte';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
 
@@ -12,6 +13,10 @@
 	let body = $state(untrack(() => data.compose.body));
 	let sending = $state(false);
 	let reminding = $state(false);
+	// Filling in the employer's column by hand, when the AI mapping of their
+	// reply missed or misread something.
+	let editingVerify = $state(false);
+	let savingVerify = $state(false);
 
 	/** Seeded once, like the compose draft above: these are fields HR is editing,
 	 *  and a re-render must not overwrite a half-typed number. Bound so the
@@ -121,29 +126,96 @@
 			<p class="hint">
 				Left column: what the candidate declared in onboarding. Right column: the previous employer's
 				verification inputs — filled in automatically when they reply to the BGV email (their reply is
-				read by AI and mapped here).
+				read by AI and mapped here). If the mapping misses or misreads something, edit it by hand.
 			</p>
-			<div class="vrow vhead">
-				<span>Candidate's Particulars</span>
-				<span>Your Verification Inputs</span>
-			</div>
-			{#each data.particulars as row}
-				<div class="vrow">
-					<span>
-						<span class="vlabel">{row.label}</span>
-						<span class="vvalue">{row.declared || '—'}</span>
-					</span>
-					<span class="vverify" class:filled={!!row.verified}>{row.verified || (data.bgv.status === 'completed' ? '—' : 'Awaiting employer')}</span>
+			{#if editingVerify}
+				<form
+					method="POST"
+					action="?/saveVerification"
+					use:enhance={() => {
+						savingVerify = true;
+						return async ({ result, update }) => {
+							savingVerify = false;
+							await update({ reset: false });
+							if (result.type === 'success') editingVerify = false;
+						};
+					}}
+				>
+					<div class="vrow vhead">
+						<span>Candidate's Particulars</span>
+						<span>Your Verification Inputs</span>
+					</div>
+					{#each data.particulars as row}
+						<div class="vrow">
+							<span>
+								<span class="vlabel">{row.label}</span>
+								<span class="vvalue">{row.declared || '—'}</span>
+							</span>
+							<input class="vinput" name={row.key} value={row.verified ?? ''} aria-label="{row.label} — verification input" />
+						</div>
+					{/each}
+					{#each data.extras as row}
+						<div class="vrow">
+							<span><span class="vlabel">{row.label}</span></span>
+							{#if row.yesNo}
+								<GlassSelect
+									name={row.key}
+									value={row.verified ?? ''}
+									ariaLabel="{row.label} — verification input"
+									placeholder="—"
+									options={[{ value: '', label: '—' }, { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
+								/>
+							{:else}
+								<input class="vinput" name={row.key} value={row.verified ?? ''} aria-label="{row.label} — verification input" />
+							{/if}
+						</div>
+					{/each}
+					<label class="rem-switch" style="margin-top:12px">
+						<input type="checkbox" name="complete" checked={data.bgv.status === 'completed'} />
+						<span>Verification complete (stops the reminders)</span>
+					</label>
+					{#if form?.message}<p class="error">{form.message}</p>{/if}
+					<div class="rem-actions">
+						<button class="btn small" type="submit" disabled={savingVerify}>{savingVerify ? 'Saving…' : 'Save verification inputs'}</button>
+						<button class="btn ghost small" type="button" onclick={() => (editingVerify = false)} disabled={savingVerify}>Cancel</button>
+					</div>
+				</form>
+			{:else}
+				<div class="vrow vhead">
+					<span>Candidate's Particulars</span>
+					<span>Your Verification Inputs</span>
 				</div>
-			{/each}
-			{#each data.extras as row}
-				<div class="vrow">
-					<span><span class="vlabel">{row.label}</span></span>
-					<span class="vverify" class:filled={!!row.verified}>
-						{(row.verified && (yesNo[row.verified] ?? row.verified)) || (data.bgv.status === 'completed' ? '—' : 'Awaiting employer')}
-					</span>
-				</div>
-			{/each}
+				{#each data.particulars as row}
+					<div class="vrow">
+						<span>
+							<span class="vlabel">{row.label}</span>
+							<span class="vvalue">{row.declared || '—'}</span>
+						</span>
+						<span class="vverify" class:filled={!!row.verified}>{row.verified || (data.bgv.status === 'completed' ? '—' : 'Awaiting employer')}</span>
+					</div>
+				{/each}
+				{#each data.extras as row}
+					<div class="vrow">
+						<span><span class="vlabel">{row.label}</span></span>
+						<span class="vverify" class:filled={!!row.verified}>
+							{(row.verified && (yesNo[row.verified] ?? row.verified)) || (data.bgv.status === 'completed' ? '—' : 'Awaiting employer')}
+						</span>
+					</div>
+				{/each}
+				{#if data.can.edit}
+					<div class="rem-actions">
+						<button class="btn ghost small" type="button" onclick={() => (editingVerify = true)}>
+							Edit verification inputs
+						</button>
+					</div>
+				{/if}
+			{/if}
+			{#if form?.verificationSaved}<p class="sent-ok">Verification inputs saved ✓</p>{/if}
+			{#if data.bgv.editedBy}
+				<p class="hint" style="margin:8px 0 0">
+					Last filled in by hand by {data.bgv.editedBy} · {fmt(data.bgv.editedAt)}
+				</p>
+			{/if}
 			{#if data.bgv.status === 'completed'}
 				<div class="done-note">
 					✓ Verification completed {fmt(data.bgv.completedAt)}{data.bgv.verifierName ? ` by ${data.bgv.verifierName}` : ''}.
@@ -478,6 +550,17 @@
 
 	/* compose */
 	.cfield { display: block; margin-bottom: 12px; }
+	.vinput {
+		width: 100%;
+		min-width: 0;
+		font: inherit;
+		font-size: 13px;
+		padding: 6px 8px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 8px;
+		background: transparent;
+		color: var(--ae-text);
+	}
 	.cfield span {
 		display: block;
 		font-size: 11px;

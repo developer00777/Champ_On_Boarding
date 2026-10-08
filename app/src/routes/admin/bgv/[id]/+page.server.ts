@@ -28,7 +28,11 @@ async function requireCap(locals: App.Locals, cap: string, min: Level = 'act') {
 	return message ? fail(403, { message }) : null;
 }
 
-const BGV_CAPS = ['bgv.view', 'bgv.thread', 'bgv.send', 'bgv.remind', 'bgv.plan', 'bgv.close'] as const;
+const BGV_CAPS = ['bgv.view', 'bgv.thread', 'bgv.send', 'bgv.remind', 'bgv.plan', 'bgv.close', 'bgv.edit'] as const;
+
+/** The two answers stored as an enum; every other verification input is text. */
+const YES_NO_KEYS = new Set(['rehireEligible', 'exitFormalitiesPending']);
+const VERIFY_ROWS = [...BGV_PARTICULARS, ...BGV_EXTRAS].map((r) => ({ key: r.verify as string, label: r.label as string }));
 
 function escapeRegex(v: string): string {
 	return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -96,18 +100,26 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		},
 		companyName,
 		particulars: BGV_PARTICULARS.map((r) => ({
+			key: r.verify as string,
 			label: r.label,
 			declared: c[r.field] ?? null,
 			verified: verification[r.verify] ?? null
 		})),
-		extras: BGV_EXTRAS.map((r) => ({ label: r.label, verified: verification[r.verify] ?? null })),
+		extras: BGV_EXTRAS.map((r) => ({
+			key: r.verify as string,
+			label: r.label,
+			verified: verification[r.verify] ?? null,
+			yesNo: YES_NO_KEYS.has(r.verify)
+		})),
 		bgv: {
 			status: bgv.status as 'pending' | 'sent' | 'completed',
 			sentAt: bgv.sentAt?.toISOString() ?? null,
 			sentCount: bgv.sentCount ?? 0,
 			replyReceivedAt: bgv.replyReceivedAt?.toISOString() ?? null,
 			completedAt: bgv.completedAt?.toISOString() ?? null,
-			verifierName: verification.verifierName ?? null
+			verifierName: verification.verifierName ?? null,
+			editedBy: bgv.verificationEditedBy ?? null,
+			editedAt: bgv.verificationEditedAt?.toISOString() ?? null
 		},
 		reminders: {
 			// This candidate's own cadence — the only place it is set.
@@ -145,7 +157,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			remind: lv['bgv.remind'] === 'act',
 			planSee: lv['bgv.plan'] !== 'none',
 			plan: lv['bgv.plan'] === 'act',
-			close: lv['bgv.close'] === 'approve'
+			close: lv['bgv.close'] === 'approve',
+			edit: lv['bgv.edit'] === 'act'
 		}
 	};
 };
@@ -315,6 +328,65 @@ export const actions: Actions = {
 		});
 
 		return { planSaved: true };
+	},
+
+	/** Fills in or corrects the employer's "Your Verification Inputs" column by
+	 *  hand, for when the AI mapping of their reply missed or misread a row (or
+	 *  they answered by phone). Blank clears a row. `complete` marks the BGV
+	 *  verified and stops the chase; unticking it reopens a completed one. */
+	saveVerification: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = await requireCap(locals, 'bgv.edit');
+		if (forbidden) return forbidden;
+
+		const row = await getBgvCandidate(params.id);
+		if (!row) return fail(404, { message: 'Candidate not found.' });
+
+		const form = await request.formData();
+		const bgv = await getOrCreateBgv(params.id);
+		const before = (bgv.toObject().verification ?? {}) as Record<string, string | null>;
+
+		const next: Record<string, string | null> = {};
+		for (const { key, label } of VERIFY_ROWS) {
+			const v = String(form.get(key) ?? '').trim().slice(0, 1000);
+			if (YES_NO_KEYS.has(key) && v && v !== 'yes' && v !== 'no')
+				return fail(400, { message: `${label} must be Yes, No or blank.` });
+			next[key] = v || null;
+		}
+		const changed = VERIFY_ROWS.filter(({ key }) => (before[key] ?? null) !== next[key]).map((r) => r.label);
+
+		const complete = form.get('complete') === 'on';
+		const wasComplete = bgv.status === 'completed';
+		if (!changed.length && complete === wasComplete) return { verificationSaved: true, changed: 0 };
+
+		bgv.set('verification', next);
+		if (changed.length) {
+			bgv.verificationEditedBy = locals.admin!.email;
+			bgv.verificationEditedAt = new Date();
+		}
+		if (complete && !wasComplete) {
+			bgv.status = 'completed';
+			bgv.completedAt = new Date();
+			// A verified BGV has nothing left to chase.
+			bgv.nextReminderAt = null;
+		} else if (!complete && wasComplete) {
+			bgv.status = bgv.sentAt ? 'sent' : 'pending';
+			bgv.completedAt = null;
+		}
+		await bgv.save();
+
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'bgv_verification_edited',
+			field: changed.join(', ') || undefined,
+			oldValue: wasComplete ? 'completed' : null,
+			newValue: `${changed.length} row${changed.length === 1 ? '' : 's'} edited by hand${
+				complete !== wasComplete ? (complete ? ' · marked verified' : ' · reopened') : ''
+			}`,
+			ip: getClientAddress()
+		});
+
+		return { verificationSaved: true, changed: changed.length };
 	},
 
 	// Same scope as the list-page delete: removes the candidate from the BGV

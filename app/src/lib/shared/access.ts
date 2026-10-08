@@ -278,6 +278,10 @@ export const MODULES: Module[] = [
 				surface: ['/admin/bgv/[id]::remindNow'] },
 			{ key: 'bgv.plan', label: 'BGV: set the automatic reminder plan', kind: 'write', enforced: true,
 				surface: ['/admin/bgv/[id]::saveReminderPlan'] },
+			// The employer's answers are AI-mapped from their reply, which does not
+			// always land; this lets someone fill in or correct that column by hand.
+			{ key: 'bgv.edit', label: 'BGV: fill in or correct the verification inputs', kind: 'write', enforced: true,
+				surface: ['/admin/bgv/[id]::saveVerification'] },
 			{ key: 'bgv.close', label: 'BGV: remove a candidate from BGV', kind: 'gate', enforced: true,
 				surface: ['/admin/bgv::deleteBgv', '/admin/bgv/[id]::deleteBgv'] },
 			{ key: 'exit.reopen', label: 'Exits: reopen or delete an exit', kind: 'gate', enforced: true,
@@ -357,7 +361,7 @@ export const PRESETS: Record<string, Preset> = {
 			'export.run': 'none',
 			// BGV is the HR desk's casework end to end, as it was under the role.
 			'bgv.view': 'view', 'bgv.thread': 'view', 'bgv.send': 'act', 'bgv.remind': 'act',
-			'bgv.plan': 'act', 'bgv.close': 'approve',
+			'bgv.plan': 'act', 'bgv.close': 'approve', 'bgv.edit': 'act',
 			'team.invite': 'none', 'team.permissions': 'none',
 			// The team page is super-admin-only today; the Access & org module's
 			// View ceiling would otherwise claim an HR admin can open it.
@@ -370,7 +374,9 @@ export const PRESETS: Record<string, Preset> = {
 		// The entities page opens for every login today, finance included.
 		over: { ...SETTINGS_BASELINE, 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none', 'entity.view': 'view',
 			// The BGV pages open for every login today, finance included, read-only.
-			'bgv.view': 'view', 'bgv.thread': 'view' } },
+			'bgv.view': 'view', 'bgv.thread': 'view',
+			// Correcting a mis-mapped employer answer is open to everyone by default.
+			'bgv.edit': 'act' } },
 
 	hr_manager: { name: 'HR manager', tone: 'verdant',
 		note: 'Runs a desk. Signs off the things their executives should not sign off themselves.',

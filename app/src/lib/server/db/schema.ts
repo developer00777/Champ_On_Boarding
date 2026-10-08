@@ -614,6 +614,11 @@ const bgvRequestSchema = new Schema(
 			additionalComments: { type: String, default: null },
 			verifierName: { type: String, default: null }
 		},
+		/** Who last filled in or corrected the column above by hand, and when —
+		 *  set by HR's edit, never by the employer's reply or form, so the page
+		 *  can tell a typed-in answer from one the employer gave. */
+		verificationEditedBy: { type: String, default: null },
+		verificationEditedAt: { type: Date, default: null },
 		completedAt: { type: Date, default: null },
 		completedIp: { type: String, default: null }
 	},
