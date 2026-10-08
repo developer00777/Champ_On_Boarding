@@ -18,14 +18,17 @@ import {
 	resolveCadence
 } from '$lib/shared/bgv-cadence';
 import { audit } from '$lib/server/audit';
+import { lacking, levelsToday } from '$lib/server/access';
+import type { Level } from '$lib/shared/access';
 
-/** Sending a BGV request is recruiter/HR work, same rule as approving a
- *  candidate — finance_team can look but not send. */
-function requireApprover(locals: App.Locals) {
-	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
-		return fail(403, { message: 'Only HR or a super admin can send BGV requests.' });
-	return null;
+/** Each BGV power is its own row in Access & org (the bgv.* capabilities),
+ *  handed out per person; this is the refusal when the login lacks one. */
+async function requireCap(locals: App.Locals, cap: string, min: Level = 'act') {
+	const message = await lacking(locals.admin, cap, min);
+	return message ? fail(403, { message }) : null;
 }
+
+const BGV_CAPS = ['bgv.view', 'bgv.thread', 'bgv.send', 'bgv.remind', 'bgv.plan', 'bgv.close'] as const;
 
 function escapeRegex(v: string): string {
 	return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -42,6 +45,9 @@ async function getBgvCandidate(id: string) {
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
+	if (!locals.admin) redirect(303, '/admin/login');
+	const lv = await levelsToday(locals.admin, BGV_CAPS);
+	if (lv['bgv.view'] === 'none') redirect(303, '/admin');
 	const row = await getBgvCandidate(params.id);
 	if (!row) error(404, 'No BGV-eligible candidate with this id.');
 	const { candidate, company } = row;
@@ -69,9 +75,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (candidate.prevHrEmail) {
 		or.push({ direction: 'inbound', from: new RegExp(escapeRegex(candidate.prevHrEmail), 'i') });
 	}
-	const messages = await EmailMessage.find({ candidateId: candidate._id, $or: or })
-		.sort({ createdAt: 1 })
-		.lean();
+	// The thread carries the previous employer's own replies, so it is only
+	// read for a login that may see it.
+	const messages =
+		lv['bgv.thread'] === 'view'
+			? await EmailMessage.find({ candidateId: candidate._id, $or: or }).sort({ createdAt: 1 }).lean()
+			: [];
 
 	const c = candidate as unknown as Record<string, string | null>;
 	const verification = (bgv.verification ?? {}) as Record<string, string | null>;
@@ -127,13 +136,23 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			purpose: m.purpose,
 			at: (m as unknown as { createdAt: Date }).createdAt.toISOString()
 		})),
-		canSend: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
+		/** What this login may do on the case, per row in Access & org. A write
+		 *  row at View shows its section read-only; at none the section is hidden. */
+		can: {
+			thread: lv['bgv.thread'] === 'view',
+			sendSee: lv['bgv.send'] !== 'none',
+			send: lv['bgv.send'] === 'act',
+			remind: lv['bgv.remind'] === 'act',
+			planSee: lv['bgv.plan'] !== 'none',
+			plan: lv['bgv.plan'] === 'act',
+			close: lv['bgv.close'] === 'approve'
+		}
 	};
 };
 
 export const actions: Actions = {
 	send: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireApprover(locals);
+		const forbidden = await requireCap(locals, 'bgv.send');
 		if (forbidden) return forbidden;
 
 		const row = await getBgvCandidate(params.id);
@@ -222,7 +241,7 @@ export const actions: Actions = {
 	 *  the cadence, and restarts the run — the same mail the sweep would send,
 	 *  so a chased employer sees one consistent conversation. */
 	remindNow: async ({ params, locals }) => {
-		const forbidden = requireApprover(locals);
+		const forbidden = await requireCap(locals, 'bgv.remind');
 		if (forbidden) return forbidden;
 
 		const row = await getBgvCandidate(params.id);
@@ -241,9 +260,9 @@ export const actions: Actions = {
 	/** This candidate's reminder plan: on/off, how often, and how many times.
 	 *  Set here rather than org-wide because the recruiter working the case is
 	 *  the one who knows whether this employer needs chasing every two days or
-	 *  every fortnight. Open to HR, not just super admins — it is casework. */
+	 *  every fortnight. Its own row in Access & org (bgv.plan). */
 	saveReminderPlan: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireApprover(locals);
+		const forbidden = await requireCap(locals, 'bgv.plan');
 		if (forbidden) return forbidden;
 
 		const row = await getBgvCandidate(params.id);
@@ -301,7 +320,7 @@ export const actions: Actions = {
 	// Same scope as the list-page delete: removes the candidate from the BGV
 	// section (bgvExcluded) and drops their BgvRequest. Onboarding data stays.
 	deleteBgv: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireApprover(locals);
+		const forbidden = await requireCap(locals, 'bgv.close', 'approve');
 		if (forbidden) return forbidden;
 
 		const row = await getBgvCandidate(params.id);

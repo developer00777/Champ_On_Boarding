@@ -79,20 +79,25 @@
 			<a class="review-cta" href="/admin/bgv/{row.id}">
 				{row.bgvStatus === 'pending' ? 'Start BGV' : 'Open'} →
 			</a>
-			<form
-				method="POST"
-				action="?/deleteBgv"
-				use:enhance
-				onsubmit={(e) => {
-					if (!confirm(`Delete ${row.name} from BGV? Their verification data and form link are removed; the onboarding record is kept.`))
-						e.preventDefault();
-				}}
-			>
-				<input type="hidden" name="candidateId" value={row.id} />
-				<button class="del-btn" title="Delete from BGV" aria-label="Delete {row.name} from BGV">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
-				</button>
-			</form>
+			{#if data.can.close}
+				<form
+					method="POST"
+					action="?/deleteBgv"
+					use:enhance
+					onsubmit={(e) => {
+						if (!confirm(`Delete ${row.name} from BGV? Their verification data and form link are removed; the onboarding record is kept.`))
+							e.preventDefault();
+					}}
+				>
+					<input type="hidden" name="candidateId" value={row.id} />
+					<button class="del-btn" title="Delete from BGV" aria-label="Delete {row.name} from BGV">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+					</button>
+				</form>
+			{:else}
+				<!-- Holds the delete column, or the next row's cells shift into it. -->
+				<span></span>
+			{/if}
 		</div>
 	{:else}
 		<div class="empty">

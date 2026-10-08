@@ -161,19 +161,9 @@ export const MODULES: Module[] = [
 				surface: [], wired: false }
 		]
 	},
-	{
-		key: 'bgv',
-		name: 'Background verification',
-		tone: 'azure',
-		caps: [
-			{ key: 'bgv.view', label: 'Open BGV cases', kind: 'read',
-				surface: ['/admin/bgv', '/admin/bgv/[id]'] },
-			{ key: 'bgv.send', label: 'Send and chase a verification request', kind: 'write',
-				surface: ['/admin/bgv/[id]::send', '/admin/bgv/[id]::remindNow', '/admin/bgv/[id]::saveReminderPlan'] },
-			{ key: 'bgv.close', label: 'Delete a BGV case', kind: 'gate',
-				surface: ['/admin/bgv::deleteBgv', '/admin/bgv/[id]::deleteBgv'] }
-		]
-	},
+	// Background verification was a module of its own, recorded here but still
+	// decided by role. Its rows are in Access & org now, one per section of the
+	// BGV pages, and the app checks them.
 	{
 		key: 'exit',
 		name: 'Exit & clearance',
@@ -274,6 +264,22 @@ export const MODULES: Module[] = [
 				surface: ['/admin/entities::setCompanyBrand', '/admin/entities::setCompanyLogo'] },
 			{ key: 'entity.archive', label: 'Entities: archive or restore a company', kind: 'gate', enforced: true,
 				surface: ['/admin/entities::deleteCompany', '/admin/entities::restoreCompany'] },
+			// Background verification, one row per section of the BGV pages. The
+			// keys bgv.view, bgv.send and bgv.close are kept from the module these
+			// came from, so any grant already recorded on them carries over. View
+			// on a write row shows that section read-only; none hides it.
+			{ key: 'bgv.view', label: 'BGV: open the BGV list and case pages', kind: 'read', enforced: true,
+				surface: ['/admin/bgv', '/admin/bgv/[id]'] },
+			{ key: 'bgv.thread', label: 'BGV: read the mail thread with the previous employer', kind: 'read', enforced: true,
+				surface: ['/admin/bgv/[id] (mail thread)'] },
+			{ key: 'bgv.send', label: 'BGV: write and send the verification request', kind: 'write', enforced: true,
+				surface: ['/admin/bgv/[id]::send'] },
+			{ key: 'bgv.remind', label: 'BGV: send a reminder now', kind: 'write', enforced: true,
+				surface: ['/admin/bgv/[id]::remindNow'] },
+			{ key: 'bgv.plan', label: 'BGV: set the automatic reminder plan', kind: 'write', enforced: true,
+				surface: ['/admin/bgv/[id]::saveReminderPlan'] },
+			{ key: 'bgv.close', label: 'BGV: remove a candidate from BGV', kind: 'gate', enforced: true,
+				surface: ['/admin/bgv::deleteBgv', '/admin/bgv/[id]::deleteBgv'] },
 			{ key: 'exit.reopen', label: 'Exits: reopen or delete an exit', kind: 'gate', enforced: true,
 				surface: ['/admin/offboarding/[id]::reopen', '/admin/offboarding::deleteExit'] },
 			// One per section of /admin/settings, so a super admin can hand the IT
@@ -339,7 +345,7 @@ export const PRESETS: Record<string, Preset> = {
 
 	hr_admin: { name: 'HR admin', tone: 'verdant', legacy: true,
 		note: 'What requireApprover allows today: the onboarding job end to end, minus the destructive and settings-level actions.',
-		mods: { candidates: 'act', offer: 'act', docs: 'act', it: 'act', empid: 'act', bgv: 'act',
+		mods: { candidates: 'act', offer: 'act', docs: 'act', it: 'act', empid: 'act',
 			exit: 'act', entities: 'view', comms: 'view', data: 'view', access: 'view' },
 		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'approve', 'candidate.decision': 'approve',
 			'candidate.edit': 'none', 'candidate.link': 'none', 'candidate.delete': 'none',
@@ -349,6 +355,9 @@ export const PRESETS: Record<string, Preset> = {
 			'exit.fnf': 'act', 'exit.closure': 'none', 'exit.reopen': 'none',
 			'entity.create': 'none', 'entity.brand': 'none', 'entity.archive': 'none',
 			'export.run': 'none',
+			// BGV is the HR desk's casework end to end, as it was under the role.
+			'bgv.view': 'view', 'bgv.thread': 'view', 'bgv.send': 'act', 'bgv.remind': 'act',
+			'bgv.plan': 'act', 'bgv.close': 'approve',
 			'team.invite': 'none', 'team.permissions': 'none',
 			// The team page is super-admin-only today; the Access & org module's
 			// View ceiling would otherwise claim an HR admin can open it.
@@ -356,21 +365,23 @@ export const PRESETS: Record<string, Preset> = {
 
 	finance_team: { name: 'Finance team', tone: 'amber', legacy: true,
 		note: 'What the app gives this role today: it passes requireAnyAdmin only, so it can look and run the cross-check.',
-		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view', bgv: 'view',
+		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'view', access: 'none' },
 		// The entities page opens for every login today, finance included.
-		over: { ...SETTINGS_BASELINE, 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none', 'entity.view': 'view' } },
+		over: { ...SETTINGS_BASELINE, 'docs.sync': 'act', 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none', 'entity.view': 'view',
+			// The BGV pages open for every login today, finance included, read-only.
+			'bgv.view': 'view', 'bgv.thread': 'view' } },
 
 	hr_manager: { name: 'HR manager', tone: 'verdant',
 		note: 'Runs a desk. Signs off the things their executives should not sign off themselves.',
-		mods: { candidates: 'max', offer: 'max', docs: 'act', it: 'act', empid: 'max', bgv: 'act',
+		mods: { candidates: 'max', offer: 'max', docs: 'act', it: 'act', empid: 'max',
 			exit: 'act', entities: 'view', comms: 'act', data: 'view', access: 'view' },
 		over: { ...SETTINGS_BASELINE, 'docs.reveal': 'approve', 'docs.zip': 'approve', 'exit.closure': 'approve',
 			'candidate.delete': 'none', 'export.run': 'approve', 'offer.upload': 'none', 'offer.manual': 'none' } },
 
 	hr_exec: { name: 'HR executive', tone: 'azure',
 		note: 'Does the onboarding work. Everything that needs a second pair of eyes routes upwards.',
-		mods: { candidates: 'act', offer: 'act', docs: 'act', it: 'act', empid: 'act', bgv: 'act',
+		mods: { candidates: 'act', offer: 'act', docs: 'act', it: 'act', empid: 'act',
 			exit: 'act', entities: 'view', comms: 'view', data: 'none', access: 'none' },
 		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'view', 'candidate.decision': 'none', 'candidate.delete': 'none',
 			'offer.approve': 'none', 'offer.manual': 'none', 'offer.upload': 'none',
@@ -379,7 +390,7 @@ export const PRESETS: Record<string, Preset> = {
 
 	recruiter: { name: 'Recruiter', tone: 'amber',
 		note: 'Owns the candidates they bring in, up to the point the offer goes out.',
-		mods: { candidates: 'act', offer: 'act', docs: 'view', it: 'none', empid: 'none', bgv: 'view',
+		mods: { candidates: 'act', offer: 'act', docs: 'view', it: 'none', empid: 'none',
 			exit: 'none', entities: 'view', comms: 'view', data: 'none', access: 'none' },
 		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'none', 'candidate.decision': 'none', 'candidate.delete': 'none',
 			'offer.approve': 'none', 'offer.send': 'none', 'offer.manual': 'none', 'offer.upload': 'none',
@@ -387,19 +398,19 @@ export const PRESETS: Record<string, Preset> = {
 
 	it_coord: { name: 'IT coordinator', tone: 'violet',
 		note: 'Provisioning and nothing else, but across every entity.',
-		mods: { candidates: 'view', offer: 'none', docs: 'none', it: 'max', empid: 'view', bgv: 'none',
+		mods: { candidates: 'view', offer: 'none', docs: 'none', it: 'max', empid: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'none', access: 'none' },
 		over: { ...SETTINGS_BASELINE, 'empid.notify': 'act', 'exit.clearance': 'act' } },
 
 	finance: { name: 'Finance & payroll', tone: 'amber',
 		note: 'Settles the money. Cannot close what it settles.',
-		mods: { candidates: 'view', offer: 'view', docs: 'none', it: 'none', empid: 'view', bgv: 'none',
+		mods: { candidates: 'view', offer: 'view', docs: 'none', it: 'none', empid: 'view',
 			exit: 'act', entities: 'view', comms: 'none', data: 'view', access: 'none' },
 		over: { ...SETTINGS_BASELINE, 'empid.uan': 'act', 'exit.fnf': 'approve', 'exit.closure': 'none', 'export.run': 'approve' } },
 
 	auditor: { name: 'Auditor', tone: 'azure',
 		note: 'Reads everything, changes nothing, and cannot take the data out.',
-		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view', bgv: 'view',
+		mods: { candidates: 'view', offer: 'view', docs: 'view', it: 'view', empid: 'view',
 			exit: 'view', entities: 'view', comms: 'view', data: 'view', access: 'view' },
 		over: { ...SETTINGS_BASELINE, 'docs.reveal': 'none', 'docs.zip': 'none', 'export.run': 'none', 'offer.upload': 'none' } }
 };

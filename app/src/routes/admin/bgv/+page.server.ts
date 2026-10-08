@@ -1,13 +1,20 @@
 // BGV dashboard — restricted by HR decision to the four BGV entities
 // (see BGV_ENTITY_SLUGS in matrix.ts) and the Experienced track only.
 // Candidates HR has deleted from BGV (bgvExcluded) stay hidden.
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Candidate, Company, BgvRequest } from '$lib/server/db/schema';
 import { BGV_ENTITY_SLUGS } from '$lib/shared/matrix';
 import { audit } from '$lib/server/audit';
+import { lacking, levelsToday } from '$lib/server/access';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
+	// Who may open BGV, and remove someone from it, is set per person in
+	// Access & org (the bgv.* rows) rather than read off the role.
+	if (!locals.admin) redirect(303, '/admin/login');
+	const lv = await levelsToday(locals.admin, ['bgv.view', 'bgv.close'] as const);
+	if (lv['bgv.view'] === 'none') redirect(303, '/admin');
+
 	const companies = await Company.find({}).lean();
 	const eligibleCompanyIds = companies
 		.filter((c) => c.brandSlug && BGV_ENTITY_SLUGS.includes(c.brandSlug))
@@ -36,6 +43,7 @@ export const load: PageServerLoad = async () => {
 	}
 
 	return {
+		can: { close: lv['bgv.close'] === 'approve' },
 		entityNames: [...nameBySlug.values()].sort(),
 		rows: candidates.map((c) => {
 			const bgv = bgvByCandidate.get(String(c._id));
@@ -65,8 +73,8 @@ export const actions: Actions = {
 	// record itself is untouched — full candidate deletion lives on the
 	// candidate page and stays super_admin-only.
 	deleteBgv: async ({ request, locals, getClientAddress }) => {
-		if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
-			return fail(403, { message: 'Only HR or a super admin can delete a BGV.' });
+		const no = await lacking(locals.admin, 'bgv.close', 'approve');
+		if (no) return fail(403, { message: no });
 
 		const form = await request.formData();
 		const candidateId = String(form.get('candidateId') ?? '');

@@ -95,7 +95,7 @@
 		</p>
 	</div>
 	<span class="pill big {statusMeta[data.bgv.status].cls}">{statusMeta[data.bgv.status].label}</span>
-	{#if data.canSend}
+	{#if data.can.close}
 		<form
 			method="POST"
 			action="?/deleteBgv"
@@ -154,7 +154,9 @@
 		<!-- Mail thread -->
 		<section class="card">
 			<div class="eyebrow">BGV mail thread</div>
-			{#if data.messages.length === 0}
+			{#if !data.can.thread}
+				<p class="hint" style="margin-bottom:0">Reading the thread with the previous employer needs “BGV: read the mail thread with the previous employer” in Access &amp; org.</p>
+			{:else if data.messages.length === 0}
 				<p class="hint" style="margin-bottom:0">Nothing sent yet. The request you send and every reply from the previous employer will appear here (and in the Inbox).</p>
 			{/if}
 			{#each data.messages as m}
@@ -172,66 +174,68 @@
 
 	<div class="col">
 		<!-- Compose -->
-		<section class="card">
-			<div class="eyebrow">BGV request email</div>
-			<p class="hint">
-				Pre-addressed to the previous-company HR contact the candidate declared
-				{#if data.candidate.prevHrEmail}(<strong>{data.candidate.prevHrEmail}</strong>){/if}
-				— edit anything before sending. The verification table is embedded in the email body
-				itself (plus a printable PDF copy attached); the employer just hits Reply and their
-				answers are mapped into the table automatically. You can re-send at any time.
-			</p>
-			{#if !data.candidate.prevHrEmail && !to}
-				<p class="warn">The candidate hasn't submitted their previous-employment details yet — no HR email to auto-address. You can still enter one manually.</p>
-			{/if}
-			<form
-				method="POST"
-				action="?/send"
-				use:enhance={() => {
-					sending = true;
-					return async ({ update }) => {
-						sending = false;
-						await update({ reset: false });
-					};
-				}}
-			>
-				<fieldset disabled={!data.canSend || sending} style="border:none;padding:0;margin:0">
-					<label class="cfield">
-						<span>To (previous employer)</span>
-						<input name="to" bind:value={to} placeholder="hr@previous-company.com" required />
-					</label>
-					<label class="cfield">
-						<span>Cc — HRD, department manager (optional, comma-separated)</span>
-						<input name="cc" bind:value={cc} placeholder="hrd@company.com, manager@company.com" />
-					</label>
-					<label class="cfield">
-						<span>Subject</span>
-						<input name="subject" bind:value={subject} required />
-					</label>
-					<label class="cfield">
-						<span>Body</span>
-						<textarea name="body" rows="14" bind:value={body} required></textarea>
-					</label>
-					<div class="attach-note">
-						📋 Added automatically on send: the <strong>Candidate's Particulars · Your Verification Inputs</strong>
-						table inside the email body, plus a printable <strong>BGV form (PDF)</strong> attachment.
-						🤖 The employer's email reply is read by AI and filled into the verification column here.
-					</div>
-					{#if form?.message}<p class="error">{form.message}</p>{/if}
-					{#if form?.sent}<p class="sent-ok">Sent ✓ — it's now tracked in the thread and the Inbox.</p>{/if}
-					{#if data.canSend}
-						<button class="btn" disabled={sending}>
-							{sending ? 'Sending…' : data.bgv.sentCount > 0 ? 'Re-send BGV request' : 'Send BGV request'}
-						</button>
-						{#if data.bgv.sentAt}
-							<span class="sent-meta">Last sent {fmt(data.bgv.sentAt)} · {data.bgv.sentCount}×</span>
+		{#if data.can.sendSee}
+			<section class="card">
+				<div class="eyebrow">BGV request email</div>
+				<p class="hint">
+					Pre-addressed to the previous-company HR contact the candidate declared
+					{#if data.candidate.prevHrEmail}(<strong>{data.candidate.prevHrEmail}</strong>){/if}
+					— edit anything before sending. The verification table is embedded in the email body
+					itself (plus a printable PDF copy attached); the employer just hits Reply and their
+					answers are mapped into the table automatically. You can re-send at any time.
+				</p>
+				{#if !data.candidate.prevHrEmail && !to}
+					<p class="warn">The candidate hasn't submitted their previous-employment details yet — no HR email to auto-address. You can still enter one manually.</p>
+				{/if}
+				<form
+					method="POST"
+					action="?/send"
+					use:enhance={() => {
+						sending = true;
+						return async ({ update }) => {
+							sending = false;
+							await update({ reset: false });
+						};
+					}}
+				>
+					<fieldset disabled={!data.can.send || sending} style="border:none;padding:0;margin:0">
+						<label class="cfield">
+							<span>To (previous employer)</span>
+							<input name="to" bind:value={to} placeholder="hr@previous-company.com" required />
+						</label>
+						<label class="cfield">
+							<span>Cc — HRD, department manager (optional, comma-separated)</span>
+							<input name="cc" bind:value={cc} placeholder="hrd@company.com, manager@company.com" />
+						</label>
+						<label class="cfield">
+							<span>Subject</span>
+							<input name="subject" bind:value={subject} required />
+						</label>
+						<label class="cfield">
+							<span>Body</span>
+							<textarea name="body" rows="14" bind:value={body} required></textarea>
+						</label>
+						<div class="attach-note">
+							📋 Added automatically on send: the <strong>Candidate's Particulars · Your Verification Inputs</strong>
+							table inside the email body, plus a printable <strong>BGV form (PDF)</strong> attachment.
+							🤖 The employer's email reply is read by AI and filled into the verification column here.
+						</div>
+						{#if form?.message}<p class="error">{form.message}</p>{/if}
+						{#if form?.sent}<p class="sent-ok">Sent ✓ — it's now tracked in the thread and the Inbox.</p>{/if}
+						{#if data.can.send}
+							<button class="btn" disabled={sending}>
+								{sending ? 'Sending…' : data.bgv.sentCount > 0 ? 'Re-send BGV request' : 'Send BGV request'}
+							</button>
+							{#if data.bgv.sentAt}
+								<span class="sent-meta">Last sent {fmt(data.bgv.sentAt)} · {data.bgv.sentCount}×</span>
+							{/if}
+						{:else}
+							<p class="warn">You can read this request but not send it. That needs “BGV: write and send the verification request” in Access &amp; org.</p>
 						{/if}
-					{:else}
-						<p class="warn">Your role can view BGV but not send requests.</p>
-					{/if}
-				</fieldset>
-			</form>
-		</section>
+					</fieldset>
+				</form>
+			</section>
+		{/if}
 
 		<!-- Automatic chase -->
 		<section class="card">
@@ -263,65 +267,71 @@
 				</div>
 			{/if}
 
-			{#if data.canSend}
+			{#if data.can.planSee}
 				<form method="POST" action="?/saveReminderPlan" use:enhance={() => async ({ update }) => update({ reset: false })}>
-					<label class="rem-switch">
-						<input type="checkbox" name="enabled" bind:checked={remEnabled} />
-						<span>Chase this employer automatically</span>
-					</label>
-
-					<div class="rem-grid" class:muted-off={!remEnabled}>
-						<label class="rem-field">
-							<span>Remind every</span>
-							<div class="rem-input">
-								<input
-									type="number"
-									name="everyDays"
-									bind:value={remEveryDays}
-									min={data.reminders.bounds.everyDays.min}
-									max={data.reminders.bounds.everyDays.max}
-									required
-								/>
-								<em>days</em>
-							</div>
+					<fieldset disabled={!data.can.plan} style="border:none;padding:0;margin:0">
+						<label class="rem-switch">
+							<input type="checkbox" name="enabled" bind:checked={remEnabled} />
+							<span>Chase this employer automatically</span>
 						</label>
-						<label class="rem-field">
-							<span>Stop after</span>
-							<div class="rem-input">
-								<input
-									type="number"
-									name="maxReminders"
-									bind:value={remMax}
-									min={data.reminders.bounds.maxReminders.min}
-									max={data.reminders.bounds.maxReminders.max}
-									required
-								/>
-								<em>reminders</em>
+
+						<div class="rem-grid" class:muted-off={!remEnabled}>
+							<label class="rem-field">
+								<span>Remind every</span>
+								<div class="rem-input">
+									<input
+										type="number"
+										name="everyDays"
+										bind:value={remEveryDays}
+										min={data.reminders.bounds.everyDays.min}
+										max={data.reminders.bounds.everyDays.max}
+										required
+									/>
+									<em>days</em>
+								</div>
+							</label>
+							<label class="rem-field">
+								<span>Stop after</span>
+								<div class="rem-input">
+									<input
+										type="number"
+										name="maxReminders"
+										bind:value={remMax}
+										min={data.reminders.bounds.maxReminders.min}
+										max={data.reminders.bounds.maxReminders.max}
+										required
+									/>
+									<em>reminders</em>
+								</div>
+							</label>
+						</div>
+
+						<p class="hint rem-foot">
+							{#if remEnabled}
+								This employer will be chased <strong>{remMax}</strong> times over about
+								<strong>{remEveryDays * remMax} days</strong>, then left alone.
+							{:else}
+								Nothing goes out automatically for this candidate. You can still send one by hand.
+							{/if}
+							{#if data.reminders.isDefault}
+								<span class="rem-default">
+									Currently the default ({data.reminders.defaults.everyDays} days ×
+									{data.reminders.defaults.maxReminders}) — change either number to set it for this
+									candidate.
+								</span>
+							{/if}
+						</p>
+
+						{#if data.can.plan}
+							<div class="rem-actions">
+								<button class="btn small" type="submit">Save reminder plan</button>
 							</div>
-						</label>
-					</div>
-
-					<p class="hint rem-foot">
-						{#if remEnabled}
-							This employer will be chased <strong>{remMax}</strong> times over about
-							<strong>{remEveryDays * remMax} days</strong>, then left alone.
-						{:else}
-							Nothing goes out automatically for this candidate. You can still send one by hand.
 						{/if}
-						{#if data.reminders.isDefault}
-							<span class="rem-default">
-								Currently the default ({data.reminders.defaults.everyDays} days ×
-								{data.reminders.defaults.maxReminders}) — change either number to set it for this
-								candidate.
-							</span>
-						{/if}
-					</p>
-
-					<div class="rem-actions">
-						<button class="btn small" type="submit">Save reminder plan</button>
-					</div>
+					</fieldset>
 				</form>
+			{/if}
 
+			{#if data.can.remind}
 				<div class="rem-actions rem-manual">
 					<form
 						method="POST"
@@ -342,11 +352,12 @@
 						Re-asks straight away and restarts the {remEveryDays}-day cadence from today.
 					</span>
 				</div>
+			{/if}
 
-				{#if form?.planSaved}<p class="sent-ok">Reminder plan saved ✓</p>{/if}
-				{#if form?.reminded}<p class="sent-ok">Reminder sent ✓ — it's in the thread below.</p>{/if}
-			{:else}
-				<p class="warn" style="margin-bottom:0">Your role can view BGV but not change reminders.</p>
+			{#if form?.planSaved}<p class="sent-ok">Reminder plan saved ✓</p>{/if}
+			{#if form?.reminded}<p class="sent-ok">Reminder sent ✓ — it's in the thread below.</p>{/if}
+			{#if !data.can.plan && !data.can.remind}
+				<p class="warn" style="margin-bottom:0">Changing the reminder plan or sending a reminder needs its row under BGV in Access &amp; org.</p>
 			{/if}
 		</section>
 	</div>
