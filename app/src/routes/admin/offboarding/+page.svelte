@@ -82,6 +82,10 @@
 		>
 			<div class="fgrid">
 				<label class="f">
+					<span>Reference no. <b class="req">*</b></span>
+					<input name="refNo" required placeholder="e.g. Ref\2026\RL\CIPL-00239" />
+				</label>
+				<label class="f">
 					<span>Employee ID <b class="req">*</b></span>
 					<input name="employeeId" required placeholder="e.g. CIPL1042" />
 				</label>
@@ -240,7 +244,7 @@
 				<div>
 					<div style="font-weight:500;font-size:14px;color:var(--ae-text)">{e.fullName}</div>
 					<div style="font-family:var(--ae-font-mono);font-size:11px;color:var(--ae-muted)">
-						{e.employeeId}{e.designation ? ` · ${e.designation}` : ''}
+						{e.employeeId}{e.refNo ? ` · ${e.refNo}` : ''}{e.designation ? ` · ${e.designation}` : ''}
 					</div>
 				</div>
 				<div class="tcell">{e.company}</div>

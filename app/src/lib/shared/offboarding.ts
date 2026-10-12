@@ -178,11 +178,11 @@ export const NDC_SECTION_BY_DEPT = new Map(NDC_SECTIONS.map((s) => [s.dept, s]))
 
 /** The full & final figures, and who supplies them.
  *
- *  These are payroll's numbers, not HR's: HR was re-keying a settlement it had
- *  been told over mail, which is a transcription step that can only introduce
- *  errors into a figure somebody gets paid. Payroll now enters them on the
- *  clearance page they already have to visit to sign the exit off, and HR reads
- *  them back.
+ *  HR fills these first — the F&F and the leave position are HR's step in the
+ *  exit chain (FLOW_STEPS) — and payroll then gets the whole set prefilled on
+ *  their clearance page, where they can correct any of it, record a loan or
+ *  advance recovery, and sign. Payroll's save is the last word; HR's card turns
+ *  read-only once payroll has signed.
  *
  *  `date: true` fields are backed by a date input and stored DD/MM/YYYY like
  *  every other date in this module. */
@@ -193,6 +193,9 @@ export const FNF_PAYROLL_FIELDS = [
 	{ key: 'leaveEncashmentAmount', label: 'Leave encashment', money: true },
 	{ key: 'noticePayRecovery', label: 'Notice pay recovery', money: true },
 	{ key: 'assetRecovery', label: 'Asset recovery', money: true },
+	{ key: 'loanOutstanding', label: 'Loan / advance outstanding', money: true },
+	{ key: 'loanRecovery', label: 'Loan / advance recovered in F&F', money: true },
+	{ key: 'loanRemarks', label: 'Loan / advance remarks' },
 	{ key: 'otherDeductions', label: 'Other deductions', money: true },
 	{ key: 'netAmount', label: 'Net F&F payable', money: true },
 	{ key: 'settlementDate', label: 'Settlement date', date: true },
@@ -608,40 +611,94 @@ export const CLOSURE_CHECKLIST_KEYS = CLOSURE_CHECKLIST.flatMap((g) => g.items.m
 // LWD. `applicableWhen` names the Exit flag that gates it — a document is only
 // offered to the employee when its condition holds, so an exit with no PF exit
 // processed simply does not show a PF section.
+//
+// `legacy` slots are no longer offered for upload: the relieving letter is now
+// generated and sent by the release (EXIT_DOCS). The slot stays so a letter
+// uploaded before that still reaches the employee's handover page.
 export const HANDOVER_DOCS = [
-	{ docType: 'payslip_1', label: 'Payslip — month 1', applicableWhen: null },
-	{ docType: 'payslip_2', label: 'Payslip — month 2', applicableWhen: null },
-	{ docType: 'payslip_3', label: 'Payslip — month 3', applicableWhen: null },
-	{ docType: 'fnf_statement', label: 'Full & Final settlement statement', applicableWhen: null },
-	{ docType: 'relieving_letter', label: 'Relieving Letter', applicableWhen: null },
-	{ docType: 'pf_statement', label: 'PF withdrawal / transfer details', applicableWhen: 'pfExitProcessed' },
-	{ docType: 'form_16', label: 'Form 16 / taxation details', applicableWhen: 'taxationApplicable' }
+	{ docType: 'payslip_1', label: 'Payslip — month 1', applicableWhen: null, legacy: false },
+	{ docType: 'payslip_2', label: 'Payslip — month 2', applicableWhen: null, legacy: false },
+	{ docType: 'payslip_3', label: 'Payslip — month 3', applicableWhen: null, legacy: false },
+	{ docType: 'fnf_statement', label: 'Full & Final settlement statement', applicableWhen: null, legacy: false },
+	{ docType: 'relieving_letter', label: 'Relieving Letter (uploaded)', applicableWhen: null, legacy: true },
+	{ docType: 'pf_statement', label: 'PF withdrawal / transfer details', applicableWhen: 'pfExitProcessed', legacy: false },
+	{ docType: 'form_16', label: 'Form 16 / taxation details', applicableWhen: 'taxationApplicable', legacy: false }
 ] as const;
 
 // ── Exit letters ─────────────────────────────────────────────────────────────
-// The letters HR issues at the close of an exit, chosen by the employee's track.
-// Source documents (repo root):
-//   Bonafide letter-Internship Status.docx                      → internship_status
-//   Bonafide letter.docx                                        → internship_bonafide
-//   Sagar Reliving & Experience Letter - Support Format.docx    → relieving_support
+// The three letters HR issues at the close of an exit, chosen by the employee's
+// track. Source documents (repo root):
 //   Mohan Reliving & Experience Letter - Sales & Data Format.docx → relieving_sales
-// Interns get the two bonafide letters; every other track gets the relieving &
-// experience letter, in whichever of its two formats fits their role.
-export type ExitLetterKey =
-	| 'internship_status'
-	| 'internship_bonafide'
-	| 'relieving_support'
-	| 'relieving_sales';
+//     (anyone who gained experience here: every track but intern)
+//   Bonafide letter-Internship Status.docx → internship_status (internship ongoing)
+//   Bonafide letter.docx                   → internship_bonafide (internship completed)
+export type ExitLetterKey = 'relieving_sales' | 'internship_status' | 'internship_bonafide';
 
-export const INTERN_LETTERS: ExitLetterKey[] = ['internship_status', 'internship_bonafide'];
-export const EMPLOYEE_LETTERS: ExitLetterKey[] = ['relieving_support', 'relieving_sales'];
+/** The Word template each letter reproduces — shown beside the letter on the
+ *  exit page, so HR can see which of their documents it stands in for. */
+export const LETTER_SOURCES: Record<ExitLetterKey, string> = {
+	relieving_sales: 'Relieving & Experience Letter — Sales & Data format',
+	internship_status: 'Bonafide letter — Internship Status',
+	internship_bonafide: 'Bonafide letter'
+};
+
+export const INTERN_LETTERS: ExitLetterKey[] = ['internship_bonafide', 'internship_status'];
+export const EMPLOYEE_LETTERS: ExitLetterKey[] = ['relieving_sales'];
 
 /** The letters a track receives. An exit whose track was never recorded (one
  *  created before the field existed, with no onboarding record to prefill it)
- *  gets the employee letters — the common case — until HR says otherwise. */
+ *  gets the employee letter — the common case — until HR says otherwise. */
 export function lettersForTrack(track: string | null | undefined): ExitLetterKey[] {
 	return track === 'intern' ? INTERN_LETTERS : EMPLOYEE_LETTERS;
 }
+
+/** What the final release sends when HR has not picked: the relieving letter,
+ *  or for an intern the completed-internship bonafide letter — an exit is the
+ *  end of the internship, so the "ongoing" certificate is the exception. */
+export function defaultReleaseLetters(track: string | null | undefined): ExitLetterKey[] {
+	return track === 'intern' ? ['internship_bonafide'] : ['relieving_sales'];
+}
+
+// ── The exit chain ───────────────────────────────────────────────────────────
+// The order the offboarding mails go out in. Each step starts only when the one
+// before it is done, so nobody is asked to sign before the person upstream of
+// them has: the reporting manager, then IT, then Salesforce (only when ticked),
+// then HR fills the F&F and leave, then payroll reviews it — with every document
+// attached — corrects anything, records loans and signs, and finally the
+// selected letters go to the employee on the cadence HR set.
+//
+// `dept` ties a mail step to the ExitClearance row it sends; `hr` and `letters`
+// are HR's own steps and send no clearance.
+export type FlowStepKey = 'manager' | 'it' | 'salesforce' | 'hr' | 'payroll' | 'letters';
+
+export const FLOW_STEPS: {
+	key: FlowStepKey;
+	label: string;
+	hint: string;
+	dept?: ClearanceDept;
+	optional?: boolean;
+}[] = [
+	{ key: 'manager', label: 'Reporting manager', hint: 'Knowledge transfer sign-off', dept: 'manager' },
+	{ key: 'it', label: 'IT team', hint: 'Assets, logins and access', dept: 'it' },
+	{ key: 'salesforce', label: 'Salesforce team', hint: 'Sales tools and leads', dept: 'salesforce', optional: true },
+	{ key: 'hr', label: 'HR — F&F & leave', hint: 'Settlement and leave filled in' },
+	{ key: 'payroll', label: 'Payroll', hint: 'Reviews, loans, signs off', dept: 'payroll' },
+	{ key: 'letters', label: 'Letters to employee', hint: 'Sent on the set cadence' }
+];
+
+/** Who each mail step goes to. Set per exit at the bottom of the exit page,
+ *  starting from the saved defaults. The manager has no default — it differs
+ *  for every employee. */
+export const ROUTING_KEYS = ['manager', 'it', 'salesforce', 'hr', 'payroll'] as const;
+export type RoutingKey = (typeof ROUTING_KEYS)[number];
+
+export const ROUTING_LABELS: Record<RoutingKey, string> = {
+	manager: 'Reporting manager',
+	it: 'IT team',
+	salesforce: 'Salesforce team',
+	hr: 'HR desk',
+	payroll: 'Payroll team'
+};
 
 /** Drives the pronouns the letters print. Left unset, they read "they/their". */
 export const LETTER_SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.'] as const;

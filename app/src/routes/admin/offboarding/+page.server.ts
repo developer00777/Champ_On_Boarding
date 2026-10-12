@@ -21,6 +21,7 @@ import {
 	prefillFromOnboarding,
 	serviceLabel
 } from '$lib/server/offboarding/exit';
+import { initialRouting } from '$lib/server/offboarding/flow';
 
 function requireInitiator(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
@@ -41,7 +42,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		// Literal substring match (regex metacharacters escaped) against the three
 		// things HR searches an exit by.
 		const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-		where.$or = [{ fullName: rx }, { employeeId: rx }, { personalEmail: rx }];
+		where.$or = [{ fullName: rx }, { employeeId: rx }, { personalEmail: rx }, { refNo: rx }];
 	}
 
 	const [rows, total, companies] = await Promise.all([
@@ -70,6 +71,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			return {
 				id: String(e._id),
 				employeeId: e.employeeId,
+				refNo: (e.refNo as string | null) ?? null,
 				fullName: e.fullName,
 				personalEmail: e.personalEmail,
 				company: companyName.get(String(e.companyId)) ?? '',
@@ -110,6 +112,7 @@ export const actions: Actions = {
 		const get = (k: string) => String(form.get(k) ?? '').trim();
 
 		const employeeId = get('employeeId');
+		const refNo = get('refNo');
 		const fullName = titleCase(get('fullName'));
 		const personalEmail = get('personalEmail').toLowerCase();
 		const personalMobile = get('personalMobile');
@@ -122,6 +125,7 @@ export const actions: Actions = {
 		const trackInput = TRACKS.includes(get('track') as Track) ? get('track') : null;
 
 		const errors: string[] = [];
+		if (!refNo) errors.push('Reference number is required.');
 		if (!employeeId) errors.push('Employee ID is required.');
 		if (!fullName) errors.push('Employee name is required.');
 		if (!personalEmail) errors.push('Personal email is required.');
@@ -144,6 +148,15 @@ export const actions: Actions = {
 				initiateError: true
 			});
 
+		// The reference number is printed on the exit letters, so two exits must
+		// never share one.
+		const refTaken = await Exit.findOne({ refNo }, 'fullName').lean();
+		if (refTaken)
+			return fail(409, {
+				message: `Reference number ${refNo} is already used by the offboarding of ${refTaken.fullName}.`,
+				initiateError: true
+			});
+
 		const match = await findOnboardingMatch(employeeId, personalEmail);
 		const prefill = prefillFromOnboarding(
 			match?.candidate as Record<string, unknown> | null,
@@ -156,8 +169,13 @@ export const actions: Actions = {
 		const doj = dojInput || prefill.doj || null;
 		const applicable = gratuityApplicable(doj, lwd || null);
 
+		// Mail settings start from the saved defaults; the manager's name comes
+		// from the onboarding record when there is one.
+		const start = await initialRouting((prefill.reportingManager as string | null) ?? null);
+
 		const exit = await Exit.create({
 			companyId,
+			refNo,
 			candidateId: match?.candidate?._id ?? null,
 			employeeId,
 			fullName,
@@ -170,6 +188,8 @@ export const actions: Actions = {
 			track: trackInput ?? prefill.track ?? null,
 			doj,
 			gratuity: { applicable: applicable === true },
+			routing: start.routing,
+			flow: start.flow,
 			status: 'initiated',
 			createdBy: locals.admin!.id
 		});

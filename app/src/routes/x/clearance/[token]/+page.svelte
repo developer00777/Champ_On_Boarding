@@ -225,15 +225,19 @@
 							</label>
 						</div>
 						{#if data.collectsFnf}
-							<!-- Payroll only. These figures used to be relayed to HR by mail and
-							     re-typed into the portal; a settlement somebody gets paid should
-							     not pass through a transcription step. Entered here, read back
-							     everywhere else. -->
+							<!-- Payroll only. HR fills the settlement first; payroll gets it
+							     prefilled here, corrects what needs correcting, adds any loan or
+							     advance recovery, and their save is the final figure. -->
 							<div class="fnf">
 								<div class="fnf-h">Full &amp; final settlement</div>
 								<p class="fnf-sub">
-									Your figures go straight onto the exit record and the settlement statement.
-									Leave anything you do not hold blank.
+									{#if data.fnfPrefilled}
+										Prefilled by HR — check each figure, change anything that needs it, and record any
+										loan or salary advance being recovered. What you save is final.
+									{:else}
+										Your figures go straight onto the exit record and the settlement statement.
+										Leave anything you do not hold blank.
+									{/if}
 								</p>
 								<div class="fnf-grid">
 									{#each data.fnfFields as f (f.key)}

@@ -1,0 +1,622 @@
+// The exit chain: who is mailed next, and when the letters go out.
+//
+// FLOW_STEPS (shared/offboarding.ts) is the order. Nothing here is sent in
+// parallel: each step's mail goes out only once the step before it is done, so
+// IT is never asked to sign before the manager has, and payroll gets the
+// settlement only after HR has filled it. advanceFlow() is the one function
+// that moves an exit along — called when the chain starts, when an approver
+// signs, when HR hands over to payroll, and when HR fixes a missing address —
+// and it is idempotent: calling it twice never mails anyone twice.
+//
+// The last step is the release: the letters HR picked go to the employee a set
+// number of days after payroll signs. A ticker (like the BGV reminders') sends
+// whatever has come due; HR can also release by hand at any point.
+import { env } from '$env/dynamic/private';
+import { connectDb } from '$lib/server/db';
+import { Admin, AppSetting, Exit, ExitClearance, ExitDocument } from '$lib/server/db/schema';
+import { audit } from '$lib/server/audit';
+import { baseUrl } from '$lib/server/base-url';
+import { getGridFSBytes } from '$lib/server/storage';
+import { brandBySlug } from '$lib/shared/brands';
+import {
+	FLOW_STEPS,
+	HANDOVER_DOCS,
+	defaultReleaseLetters,
+	lettersForTrack,
+	type ClearanceDept,
+	type FlowStepKey,
+	type RoutingKey
+} from '$lib/shared/offboarding';
+import { createExitToken, exitCompany } from './exit';
+import { EXIT_DOCS, EXIT_DOC_BY_KEY, extFor, loadPdfInput, renderExitDoc, safeFilename } from './documents';
+import { noDuesPdf } from './pdf';
+import { sendClearanceMail, sendExitAlert, sendHandoverMail } from './mail';
+
+type Lean = Record<string, any>;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// ── Routing defaults ─────────────────────────────────────────────────────────
+// What a new exit's mail settings start from. Saved from any exit's settings
+// card ("use as the default"), so the desk sets them once rather than per exit.
+// The manager is never defaulted: it is a different person for every employee.
+
+interface Addr {
+	email: string;
+	name: string;
+}
+export interface RoutingDefaults {
+	it: Addr;
+	salesforce: Addr & { enabled: boolean };
+	hr: Addr;
+	payroll: Addr;
+	releaseAfterDays: number;
+}
+
+const ROUTING_SETTING_KEY = 'exit_routing';
+
+export const ROUTING_FALLBACK: RoutingDefaults = {
+	it: { email: 'ithelpdesk@championsmail.com', name: 'IT Helpdesk' },
+	salesforce: { email: '', name: '', enabled: false },
+	hr: { email: 'hrd.jst@championsmail.com', name: 'HR desk' },
+	payroll: { email: '', name: '' },
+	releaseAfterDays: 30
+};
+
+export async function getRoutingDefaults(): Promise<RoutingDefaults> {
+	const row = await AppSetting.findOne({ key: ROUTING_SETTING_KEY }).lean<Lean>();
+	const v = (row?.value ?? {}) as Partial<RoutingDefaults>;
+	const addr = (a: Partial<Addr> | undefined, f: Addr): Addr => ({
+		email: a?.email ?? f.email,
+		name: a?.name ?? f.name
+	});
+	return {
+		it: addr(v.it, ROUTING_FALLBACK.it),
+		salesforce: {
+			...addr(v.salesforce, ROUTING_FALLBACK.salesforce),
+			enabled: v.salesforce?.enabled ?? ROUTING_FALLBACK.salesforce.enabled
+		},
+		hr: addr(v.hr, ROUTING_FALLBACK.hr),
+		payroll: addr(v.payroll, ROUTING_FALLBACK.payroll),
+		releaseAfterDays: Number.isFinite(v.releaseAfterDays) ? Number(v.releaseAfterDays) : ROUTING_FALLBACK.releaseAfterDays
+	};
+}
+
+export async function saveRoutingDefaults(value: RoutingDefaults, adminId: string) {
+	await AppSetting.findOneAndUpdate(
+		{ key: ROUTING_SETTING_KEY },
+		{ key: ROUTING_SETTING_KEY, value, updatedBy: adminId },
+		{ upsert: true }
+	);
+}
+
+/** The routing and cadence a brand-new exit starts with. */
+export async function initialRouting(reportingManager: string | null) {
+	const d = await getRoutingDefaults();
+	return {
+		routing: {
+			manager: { email: null, name: reportingManager || null },
+			it: { email: d.it.email || null, name: d.it.name || null },
+			salesforce: { email: d.salesforce.email || null, name: d.salesforce.name || null, enabled: d.salesforce.enabled },
+			hr: { email: d.hr.email || null, name: d.hr.name || null },
+			payroll: { email: d.payroll.email || null, name: d.payroll.name || null }
+		},
+		flow: { releaseAfterDays: d.releaseAfterDays, autoRelease: true }
+	};
+}
+
+// ── Where the chain stands ───────────────────────────────────────────────────
+
+export type StepStatus = 'done' | 'active' | 'blocked' | 'waiting' | 'skipped';
+
+export interface StepState {
+	key: FlowStepKey;
+	label: string;
+	hint: string;
+	status: StepStatus;
+	/** Who this step mails, when it mails anyone. */
+	to: string | null;
+	/** When it was sent (active) or finished (done), ISO. */
+	sentAt: string | null;
+	doneAt: string | null;
+	/** One line under the label: a verdict, a due date, what is missing. */
+	detail: string | null;
+	clearanceId: string | null;
+}
+
+const fmt = (d: Date | string | null | undefined) =>
+	d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '';
+
+/** The letters the release sends: HR's pick, else the track's default — and
+ *  never one the track does not have. An empty pick is honoured (HR may send
+ *  only uploaded documents). */
+export function releaseLetterKeys(exit: Lean): string[] {
+	const allowed = lettersForTrack(exit.track) as string[];
+	const picked = exit.flow?.letterKeys as string[] | undefined | null;
+	return (picked ?? defaultReleaseLetters(exit.track)).filter((k) => allowed.includes(k));
+}
+
+/** Pure: the state of every step, from the exit and its clearance rows. The
+ *  first step that is not done or skipped is the active one; everything after
+ *  it is waiting. Before the chain starts, every step waits. */
+export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
+	const started = !!exit.flow?.startedAt;
+	const byDept = new Map(clearances.map((c) => [String(c.department), c]));
+	let reached = !started;
+	return FLOW_STEPS.map((def) => {
+		const base: StepState = {
+			key: def.key,
+			label: def.label,
+			hint: def.hint,
+			status: 'waiting',
+			to: null,
+			sentAt: null,
+			doneAt: null,
+			detail: null,
+			clearanceId: null
+		};
+		const route = exit.routing?.[def.key as RoutingKey] as Lean | undefined;
+
+		if (def.dept) {
+			base.to = route?.email || null;
+			if (def.key === 'salesforce' && !route?.enabled) {
+				return { ...base, status: 'skipped', detail: 'Not part of this exit' };
+			}
+			const row = byDept.get(def.dept);
+			base.clearanceId = row ? String(row._id) : null;
+			base.sentAt = row?.sentAt ? new Date(row.sentAt).toISOString() : null;
+			if (row?.status === 'completed') {
+				return {
+					...base,
+					status: 'done',
+					doneAt: row.completedAt ? new Date(row.completedAt).toISOString() : null,
+					detail: `${row.verdict === 'dues' ? 'Dues outstanding' : 'No dues'}${row.approverName ? ` · ${row.approverName}` : ''}`
+				};
+			}
+			if (reached) return base;
+			reached = true;
+			if (!base.to) return { ...base, status: 'blocked', detail: 'Add an email in Mail settings' };
+			return {
+				...base,
+				status: 'active',
+				detail: row?.status === 'sent' ? `Awaiting sign-off · sent ${fmt(row.sentAt)}` : 'Sending…'
+			};
+		}
+
+		if (def.key === 'hr') {
+			base.to = route?.email || null;
+			if (exit.flow?.hrDoneAt)
+				return {
+					...base,
+					status: 'done',
+					doneAt: new Date(exit.flow.hrDoneAt).toISOString(),
+					detail: exit.flow.hrDoneBy ? `Sent to payroll by ${exit.flow.hrDoneBy}` : 'Sent to payroll'
+				};
+			if (reached) return base;
+			reached = true;
+			return { ...base, status: 'active', detail: 'Fill the F&F and leave, then send to payroll' };
+		}
+
+		// letters
+		base.to = exit.personalEmail ?? null;
+		if (exit.flow?.releasedAt)
+			return {
+				...base,
+				status: 'done',
+				doneAt: new Date(exit.flow.releasedAt).toISOString(),
+				detail: `Sent${exit.flow.releasedBy ? ` · ${exit.flow.releasedBy}` : ''}`
+			};
+		if (reached) {
+			return {
+				...base,
+				detail: exit.flow?.autoRelease === false ? 'Manual release' : `${exit.flow?.releaseAfterDays ?? 30} days after payroll`
+			};
+		}
+		reached = true;
+		return {
+			...base,
+			status: 'active',
+			detail:
+				exit.flow?.autoRelease === false
+					? 'Waiting for HR to release'
+					: exit.flow?.scheduledAt
+						? `Scheduled for ${fmt(exit.flow.scheduledAt)}`
+						: 'Scheduling…'
+		};
+	});
+}
+
+// ── Moving along ─────────────────────────────────────────────────────────────
+
+/** The exit's status follows the chain, but never moves a closed exit. */
+const STATUS_FOR: Record<FlowStepKey, string> = {
+	manager: 'clearances',
+	it: 'clearances',
+	salesforce: 'clearances',
+	hr: 'cleared',
+	payroll: 'fnf',
+	letters: 'fnf'
+};
+const MOVABLE = ['in_progress', 'submitted', 'changes_requested', 'clearances', 'cleared', 'fnf'];
+
+async function setLastError(exitId: string, step: string | null, message: string | null) {
+	await Exit.findByIdAndUpdate(exitId, {
+		'flow.lastError': { step, message, at: step ? new Date() : null }
+	});
+}
+
+/** Moves the exit to its next step: mails that step's recipient, or tells HR
+ *  it is their turn, or schedules the release. Safe to call at any time and
+ *  any number of times. Errors are recorded on the exit, never thrown. */
+export async function advanceFlow(exitId: string): Promise<void> {
+	try {
+		const exit = await Exit.findById(exitId).lean<Lean>();
+		if (!exit?.flow?.startedAt || exit.status === 'completed') return;
+		const clearances = await ExitClearance.find({ exitId }).lean<Lean[]>();
+		const steps = flowSteps(exit, clearances);
+		const current = steps.find((s) => s.status === 'active' || s.status === 'blocked');
+		if (!current) return;
+
+		const status = STATUS_FOR[current.key];
+		if (MOVABLE.includes(exit.status) && exit.status !== status)
+			await Exit.findByIdAndUpdate(exitId, { status });
+		if (current.status === 'blocked') return;
+
+		const def = FLOW_STEPS.find((d) => d.key === current.key)!;
+		if (def.dept) {
+			const row = clearances.find((c) => c.department === def.dept);
+			if (row?.status === 'sent') return; // already with them
+			await mailStep(exitId, current.key);
+			return;
+		}
+		if (current.key === 'hr') {
+			await notifyHrTurn(exit);
+			return;
+		}
+		await scheduleRelease(exitId);
+	} catch (e) {
+		console.error(`[exit-flow] advance failed for exit=${exitId}:`, e);
+	}
+}
+
+/** Starts the chain — on accepting the submission, or by hand for an exit that
+ *  was accepted before the chain existed. */
+export async function startFlow(exitId: string) {
+	await Exit.updateOne({ _id: exitId, 'flow.startedAt': null }, { $set: { 'flow.startedAt': new Date() } });
+	await advanceFlow(exitId);
+}
+
+/** Every generated exit document except the letters, plus every file uploaded
+ *  against the exit — what payroll gets attached to their request. */
+async function payrollAttachments(exitId: string) {
+	const out: { filename: string; content: Buffer }[] = [];
+	const input = await loadPdfInput(exitId);
+	if (input) {
+		for (const def of EXIT_DOCS) {
+			if (def.letter || !def.applies(input.exit)) continue;
+			try {
+				const bytes = await def.render(input);
+				out.push({ filename: `${def.slug}.pdf`, content: Buffer.from(bytes) });
+			} catch (e) {
+				console.error(`[exit-flow] payroll pack: ${def.key} failed:`, e);
+			}
+		}
+	}
+	const files = await ExitDocument.find({ exitId }).lean<Lean[]>();
+	const counts: Record<string, number> = {};
+	for (const f of files) {
+		try {
+			const bytes = await getGridFSBytes(f.gridfsId);
+			const base = safeFilename(String(f.docType));
+			counts[base] = (counts[base] ?? 0) + 1;
+			const suffix = counts[base] > 1 ? `_${counts[base]}` : '';
+			out.push({
+				filename: `${f.source === 'hr' ? 'Handover' : 'Employee'}-${base}${suffix}.${extFor(f.mime)}`,
+				content: Buffer.from(bytes)
+			});
+		} catch {
+			// One unreadable upload must not hold the whole request back.
+		}
+	}
+	return out;
+}
+
+/** Sends (or, with `reminder`, re-sends) one clearance step's mail to the
+ *  address in the exit's mail settings. The first send is claimed atomically
+ *  — pending → sent — so two signatures landing at once cannot mail the next
+ *  approver twice. */
+export async function mailStep(
+	exitId: string,
+	key: FlowStepKey,
+	opts: { reminder?: boolean } = {}
+): Promise<{ ok: true } | { error: string }> {
+	const def = FLOW_STEPS.find((d) => d.key === key);
+	if (!def?.dept) return { error: 'That step does not send a clearance.' };
+	const dept = def.dept as ClearanceDept;
+	const exit = await Exit.findById(exitId).lean<Lean>();
+	if (!exit) return { error: 'Exit not found.' };
+	const route = (exit.routing?.[key as RoutingKey] ?? {}) as Lean;
+	const email = String(route.email ?? '').trim().toLowerCase();
+	if (!email) return { error: `Add the ${def.label} email in Mail settings first.` };
+
+	const existing = await ExitClearance.findOne({ exitId, department: dept }).lean<Lean>();
+	if (existing?.status === 'completed') return { error: `The ${def.label} has already signed.` };
+	// The row follows the mail settings: an address corrected there is the one
+	// the next send uses.
+	await ExitClearance.findOneAndUpdate(
+		{ exitId, department: dept },
+		{
+			$set: { approverEmail: email, approverName: route.name || null },
+			$setOnInsert: { exitId, department: dept }
+		},
+		{ upsert: true }
+	);
+
+	let row: Lean | null;
+	if (opts.reminder) {
+		row = await ExitClearance.findOneAndUpdate(
+			{ exitId, department: dept, status: { $ne: 'completed' } },
+			{ $set: { status: 'sent', sentAt: new Date() }, $inc: { sentCount: 1 } },
+			{ new: true }
+		).lean<Lean>();
+	} else {
+		row = await ExitClearance.findOneAndUpdate(
+			{ exitId, department: dept, status: 'pending' },
+			{ $set: { status: 'sent', sentAt: new Date() }, $inc: { sentCount: 1 } },
+			{ new: true }
+		).lean<Lean>();
+		if (!row) return { ok: true }; // someone else just sent it
+	}
+	if (!row) return { error: 'Nothing to send.' };
+
+	const company = await exitCompany(exit.companyId);
+	const brand = brandBySlug(company?.brandSlug ?? undefined);
+	const token = await createExitToken(exitId, 'clearance', String(row._id));
+	const url = `${baseUrl()}/x/clearance/${token}`;
+
+	try {
+		let attachments: { filename: string; content: Buffer }[] | undefined;
+		if (dept === 'payroll') {
+			attachments = await payrollAttachments(exitId);
+		} else {
+			const input = await loadPdfInput(exitId);
+			if (input)
+				attachments = [{ filename: `No-Dues-${exit.employeeId}.pdf`, content: Buffer.from(await noDuesPdf(input)) }];
+		}
+		await sendClearanceMail({
+			to: email,
+			approverName: route.name || null,
+			department: dept,
+			employeeName: exit.fullName,
+			employeeId: exit.employeeId,
+			lwd: exit.lwd ?? null,
+			brand,
+			url,
+			attachments,
+			reminder: opts.reminder,
+			...(dept === 'payroll'
+				? {
+						extraIntro: [
+							'HR has filled in the full & final settlement and the leave position. They are prefilled on your ' +
+								'page — correct anything that needs it, record any loan or salary advance recovery, and sign off.',
+							'Every exit document for this employee is attached to this mail.'
+						],
+						note: {
+							title: 'Your figures are the final ones',
+							text:
+								'What you save on the clearance page is what the employee’s settlement statement shows, and signing ' +
+								'it starts the countdown to their relieving documents.'
+						}
+					}
+				: {})
+		});
+	} catch (e) {
+		console.error(`[exit-flow] ${key} mail failed for exit=${exitId}:`, e);
+		// Put a first send back so the next advance retries it.
+		if (!opts.reminder)
+			await ExitClearance.updateOne({ _id: row._id, status: 'sent' }, { $set: { status: 'pending' }, $inc: { sentCount: -1 } });
+		await setLastError(exitId, key, `The ${def.label} mail to ${email} could not be sent. Check the address and press Resend.`);
+		return { error: `The mail to ${email} could not be sent.` };
+	}
+	if (exit.flow?.lastError?.step) await setLastError(exitId, null, null);
+	return { ok: true };
+}
+
+async function hrRecipients(exit: Lean): Promise<string[]> {
+	const to = new Set<string>();
+	if (exit.routing?.hr?.email) to.add(String(exit.routing.hr.email).toLowerCase());
+	if (exit.createdBy) {
+		const admin = await Admin.findById(exit.createdBy, 'email').lean<Lean>();
+		if (admin?.email) to.add(String(admin.email).toLowerCase());
+	}
+	return [...to];
+}
+
+async function notifyHrTurn(exit: Lean) {
+	const claimed = await Exit.updateOne(
+		{ _id: exit._id, 'flow.hrNotifiedAt': null },
+		{ $set: { 'flow.hrNotifiedAt': new Date() } }
+	);
+	if (!claimed.modifiedCount) return;
+	try {
+		const company = await exitCompany(exit.companyId);
+		await sendExitAlert({
+			to: await hrRecipients(exit),
+			subject: `Your turn: F&F and leave for ${exit.fullName}`,
+			lines: [
+				`The departmental clearances for ${exit.fullName} (${exit.employeeId}) are signed.`,
+				'Fill in the full & final settlement and the leave position on the exit page, then send it to payroll — ' +
+					'they get it prefilled, with every exit document attached.'
+			],
+			brand: brandBySlug(company?.brandSlug ?? undefined),
+			url: `${baseUrl()}/admin/offboarding/${String(exit._id)}`
+		});
+	} catch (e) {
+		console.error('[exit-flow] HR turn alert failed:', e);
+	}
+}
+
+/** When payroll signed off — the release counts from here. */
+async function payrollSignedAt(exitId: string): Promise<Date | null> {
+	const row = await ExitClearance.findOne({ exitId, department: 'payroll', status: 'completed' }, 'completedAt').lean<Lean>();
+	return row?.completedAt ? new Date(row.completedAt) : null;
+}
+
+/** Sets (or, after HR changes the cadence, resets) when the release is due,
+ *  and releases straight away if that is already past. */
+export async function scheduleRelease(exitId: string, opts: { reset?: boolean } = {}) {
+	const exit = await Exit.findById(exitId).lean<Lean>();
+	if (!exit || exit.flow?.releasedAt || exit.status === 'completed') return;
+	const signed = await payrollSignedAt(exitId);
+	if (!signed || exit.flow?.autoRelease === false) {
+		if (exit.flow?.scheduledAt) await Exit.findByIdAndUpdate(exitId, { 'flow.scheduledAt': null });
+		return;
+	}
+	if (exit.flow?.scheduledAt && !opts.reset) {
+		if (new Date(exit.flow.scheduledAt) <= new Date()) await releaseLetters(exitId, 'Scheduled release');
+		return;
+	}
+	const days = Math.max(0, Number(exit.flow?.releaseAfterDays ?? 30));
+	const due = new Date(signed.getTime() + days * DAY_MS);
+	const first = !exit.flow?.scheduledAt;
+	await Exit.findByIdAndUpdate(exitId, { 'flow.scheduledAt': due });
+	if (due <= new Date()) {
+		await releaseLetters(exitId, 'Scheduled release');
+		return;
+	}
+	if (first) {
+		try {
+			const company = await exitCompany(exit.companyId);
+			await sendExitAlert({
+				to: await hrRecipients(exit),
+				subject: `Payroll signed: ${exit.fullName}`,
+				lines: [
+					`Payroll has signed off the full & final settlement for ${exit.fullName} (${exit.employeeId}).`,
+					`Their letters go out automatically on ${fmt(due)}. Change the selection or the date on the exit page.`
+				],
+				brand: brandBySlug(company?.brandSlug ?? undefined),
+				url: `${baseUrl()}/admin/offboarding/${exitId}`
+			});
+		} catch (e) {
+			console.error('[exit-flow] release-scheduled alert failed:', e);
+		}
+	}
+}
+
+// ── The release ──────────────────────────────────────────────────────────────
+
+/** Sends the employee their letters and the handover link, and closes the
+ *  exit. Claimed atomically on `flow.releasedAt`, so the ticker and a manual
+ *  press can never both send. */
+export async function releaseLetters(
+	exitId: string,
+	actor: string
+): Promise<{ ok: true; url: string } | { error: string }> {
+	const exit = await Exit.findOneAndUpdate(
+		{ _id: exitId, 'flow.releasedAt': null, status: { $ne: 'completed' } },
+		{ $set: { 'flow.releasedAt': new Date(), 'flow.releasedBy': actor } },
+		{ new: true }
+	).lean<Lean>();
+	if (!exit) return { error: 'This exit has already been released or closed.' };
+
+	try {
+		const keys = releaseLetterKeys(exit);
+		const files = await ExitDocument.find({ exitId, source: 'hr' }).lean<Lean[]>();
+		if (!keys.length && !files.length)
+			throw new Error('Nothing to send — pick at least one letter or upload a handover document.');
+
+		const input = await loadPdfInput(exitId);
+		if (!input) throw new Error('Exit not found.');
+		const attachments: { filename: string; content: Buffer }[] = [];
+		for (const key of keys) {
+			const rendered = await renderExitDoc(key, input);
+			if (rendered) attachments.push({ filename: rendered.filename, content: Buffer.from(rendered.bytes) });
+		}
+
+		const company = await exitCompany(exit.companyId);
+		const brand = brandBySlug(company?.brandSlug ?? undefined);
+		const token = await createExitToken(exitId, 'handover');
+		const url = `${baseUrl()}/x/final/${token}`;
+		const fileLabel = new Map<string, string>(HANDOVER_DOCS.map((d) => [d.docType, d.label]));
+		await sendHandoverMail({
+			to: exit.personalEmail,
+			employeeName: exit.fullName,
+			brand,
+			url,
+			fnfAmount: exit.fnf?.netAmount ?? null,
+			fnfDate: exit.fnf?.settlementDate ?? null,
+			documents: [
+				...keys.map((k) => EXIT_DOC_BY_KEY.get(k as never)?.label ?? k),
+				...new Set(files.map((f) => fileLabel.get(f.docType) ?? f.label ?? f.docType))
+			],
+			attachments
+		});
+
+		await Exit.findByIdAndUpdate(exitId, {
+			status: 'completed',
+			completedAt: new Date(),
+			handoverMailSentAt: new Date(),
+			// What actually went, so the employee's portal lists exactly these.
+			'flow.letterKeys': keys,
+			'flow.lastError': { step: null, message: null, at: null }
+		});
+		await audit({
+			candidateId: exit.candidateId ? String(exit.candidateId) : null,
+			actor,
+			action: 'exit_letters_released',
+			field: keys.join(', ') || 'uploads only',
+			newValue: exit.personalEmail
+		});
+		return { ok: true, url };
+	} catch (e) {
+		const message = e instanceof Error ? e.message : 'The release could not be sent.';
+		console.error(`[exit-flow] release failed for exit=${exitId}:`, e);
+		await Exit.findByIdAndUpdate(exitId, {
+			'flow.releasedAt': null,
+			'flow.releasedBy': null,
+			'flow.lastError': { step: 'letters', message, at: new Date() }
+		});
+		return { error: message };
+	}
+}
+
+// ── Ticker ───────────────────────────────────────────────────────────────────
+// Same shape as the BGV reminder ticker: a long-running server sweeps every
+// fifteen minutes, and a missed tick only delays a release, never drops it.
+
+export async function sweepDueReleases() {
+	// The ticker can fire before any request has opened the connection.
+	await connectDb();
+	const due = await Exit.find(
+		{
+			'flow.scheduledAt': { $lte: new Date() },
+			'flow.releasedAt': null,
+			'flow.autoRelease': { $ne: false },
+			status: { $ne: 'completed' }
+		},
+		'_id'
+	).lean<Lean[]>();
+	for (const row of due) await releaseLetters(String(row._id), 'Scheduled release');
+	return due.length;
+}
+
+const TICK_MS = 15 * 60_000;
+const FIRST_TICK_MS = 60_000;
+let ticking = false;
+
+export function startExitReleaseTicker() {
+	if (ticking) return;
+	if (env.EXIT_RELEASE_TICKER === 'off') return;
+	if (process.env.VERCEL) return;
+	ticking = true;
+	const schedule = (ms: number) => {
+		const t = setTimeout(run, ms);
+		t.unref?.();
+	};
+	const run = () => {
+		sweepDueReleases()
+			.then((n) => n && console.log(`[exit-release] released ${n} due exit(s)`))
+			.catch((e) => console.error('[exit-release] sweep failed:', e))
+			.finally(() => schedule(TICK_MS));
+	};
+	schedule(FIRST_TICK_MS);
+}

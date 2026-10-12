@@ -17,7 +17,9 @@
 		NDC_EMPLOYEE_DECLARATION_LABELS,
 		NDC_EMPLOYEE_SECTIONS,
 		LETTER_SALUTATIONS,
-		RELIEVING_ITEMS
+		RELIEVING_ITEMS,
+		ROUTING_KEYS,
+		ROUTING_LABELS
 	} from '$lib/shared/offboarding';
 	import { TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 
@@ -159,7 +161,32 @@
 		}
 	]);
 
-	const pendingClearances = $derived(data.clearances.filter((c) => c.status !== 'completed'));
+	// ── The exit-chain map ──────────────────────────────────────────────────
+	/** Steps that send a clearance mail, and so offer Send / Remind / Copy link. */
+	const MAIL_STEPS = new Set(['manager', 'it', 'salesforce', 'payroll']);
+	const hrStep = $derived(data.steps.find((s) => s.key === 'hr'));
+
+	/** The employee's own forms, drawn as the map's first node. */
+	const formsNode = $derived.by(() => {
+		if (e.reviewedAt) return { status: 'done', detail: `Accepted ${stamp(e.reviewedAt)}` };
+		if (e.submittedAt) return { status: 'active', detail: 'Submitted — review and accept below' };
+		if (e.status === 'initiated') return { status: 'active', detail: 'Send the employee their forms link' };
+		return { status: 'active', detail: 'Employee is filling their forms' };
+	});
+
+	/** Share of the chain finished, counting the forms and every step not skipped. */
+	const chainPct = $derived.by(() => {
+		const counted = data.steps.filter((s) => s.status !== 'skipped');
+		const done = counted.filter((s) => s.status === 'done').length + (formsNode.status === 'done' ? 1 : 0);
+		return Math.round((done / (counted.length + 1)) * 100);
+	});
+
+	// Mirrors the Salesforce tick in the mail settings, so its row dims as it is
+	// switched off rather than only after a save.
+	let salesforceOn = $state(false);
+	$effect(() => {
+		salesforceOn = data.salesforceEnabled;
+	});
 </script>
 
 <a href="/admin/offboarding" class="back">
@@ -173,6 +200,7 @@
 		<div class="submeta">
 			<span class="pill {statusMeta.cls}">{statusMeta.label}</span>
 			<span class="mono">{e.employeeId}</span>
+			{#if e.refNo}<span>·</span><span class="mono">{e.refNo}</span>{/if}
 			<span>·</span>
 			<span>{e.companyName}</span>
 			{#if e.designation}<span>·</span><span>{e.designation}</span>{/if}
@@ -195,6 +223,97 @@
 {/if}
 
 <div class="cols">
+	<!-- ─────────────── Far left: the exit chain, as a map ─────────────── -->
+	<aside class="flowmap">
+		<section class="card mapcard">
+			<div class="map-head">
+				<div class="eyebrow">Exit chain</div>
+				<span class="map-pct">{chainPct}%</span>
+			</div>
+			<div class="map-bar"><span style="width:{chainPct}%"></span></div>
+			{#if e.refNo}<div class="map-ref">{e.refNo}</div>{/if}
+
+			<ol class="map">
+				<li class="node {formsNode.status}">
+					<span class="dot">
+						{#if formsNode.status === 'done'}
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M20 6L9 17l-5-5" /></svg>
+						{:else}
+							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></svg>
+						{/if}
+					</span>
+					<div class="nbody">
+						<div class="nlabel">Employee exit forms</div>
+						<div class="nto">{e.personalEmail}</div>
+						<div class="ndetail">{formsNode.detail}</div>
+					</div>
+				</li>
+				{#each data.steps as s, i (s.key)}
+					<li class="node {s.status}">
+						<span class="dot">
+							{#if s.status === 'done'}
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M20 6L9 17l-5-5" /></svg>
+							{:else if s.status === 'skipped'}
+								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14" /></svg>
+							{:else if s.status === 'blocked'}
+								!
+							{:else}
+								{i + 1}
+							{/if}
+						</span>
+						<div class="nbody">
+							<div class="nlabel">
+								{s.label}
+								{#if s.key === 'salesforce'}<span class="opt">optional</span>{/if}
+							</div>
+							{#if s.to && s.status !== 'skipped'}<div class="nto">{s.to}</div>{/if}
+							<div class="ndetail">
+								{#if s.status === 'done' && s.doneAt}{s.detail} · {stamp(s.doneAt)}{:else}{s.detail ?? s.hint}{/if}
+							</div>
+
+							{#if s.status === 'blocked'}
+								<a class="nact" href="#mail-settings">Set the email ↓</a>
+							{:else if s.status === 'active' && MAIL_STEPS.has(s.key)}
+								<div class="nacts">
+									<form method="POST" action="?/resendStep" use:enhance={track(`step-${s.key}`)}>
+										<input type="hidden" name="step" value={s.key} />
+										<button class="nact" disabled={!data.isHr || sending[`step-${s.key}`]}>
+											{sending[`step-${s.key}`] ? 'Sending…' : s.sentAt ? 'Remind' : 'Send'}
+										</button>
+									</form>
+									{#if s.link}
+										<button class="nact" type="button" onclick={() => copy(s.link!, `link-${s.key}`)}>
+											{copied === `link-${s.key}` ? 'Copied ✓' : 'Copy link'}
+										</button>
+									{/if}
+								</div>
+							{:else if s.status === 'active' && s.key === 'hr'}
+								<a class="nact" href="#fnf">Fill the F&amp;F ↓</a>
+							{:else if s.status === 'active' && s.key === 'letters'}
+								<a class="nact" href="#release">Release settings ↓</a>
+							{/if}
+						</div>
+					</li>
+				{/each}
+			</ol>
+
+			{#if !data.flow.startedAt}
+				{#if e.reviewedAt}
+					<form method="POST" action="?/startChain" use:enhance={track('chain')}>
+						<button class="btn small teal" style="width:100%" disabled={!data.isHr || sending['chain']}>
+							{sending['chain'] ? 'Starting…' : 'Start the chain'}
+						</button>
+					</form>
+				{:else}
+					<p class="map-note">The chain starts when you accept the employee's submission.</p>
+				{/if}
+			{/if}
+			{#if data.flow.lastError}<p class="map-err">{data.flow.lastError.message}</p>{/if}
+			{#if form?.stepResent}<p class="map-ok">Sent to the {form.stepResent} ✓</p>{/if}
+			<a class="map-settings" href="#mail-settings">Mail settings ↓</a>
+		</section>
+	</aside>
+
 	<!-- ─────────────── Left: the flow, step by step ─────────────── -->
 	<div class="main">
 		<!-- 1. Particulars -->
@@ -215,6 +334,7 @@
 			<form method="POST" action="?/saveParticulars" use:enhance={track('particulars')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
 					<div class="fgrid">
+						<label class="f"><span>Reference no.</span><input name="refNo" required value={e.refNo ?? ''} placeholder="Ref\2026\RL\CIPL-00239" /></label>
 						<label class="f"><span>Employee name</span><input name="fullName" value={e.fullName} /></label>
 						<label class="f"><span>Personal email</span><input name="personalEmail" type="email" value={e.personalEmail} /></label>
 						<label class="f"><span>Personal mobile</span><input name="personalMobile" value={e.personalMobile ?? ''} /></label>
@@ -504,7 +624,7 @@
 			<form method="POST" action="?/acceptSubmission" use:enhance={track('accept')}>
 				<div class="btn-row" style="margin-top:4px">
 					<button class="btn teal" disabled={!data.isHr || sending['accept']}>
-						{sending['accept'] ? 'Accepting…' : 'Accept & request clearances'}
+						{sending['accept'] ? 'Accepting…' : 'Accept & start the exit chain'}
 					</button>
 					{#if !data.formsComplete}
 						<span class="muted tiny">
@@ -513,246 +633,74 @@
 					{/if}
 				</div>
 			</form>
-			{#if form?.accepted}<p class="ok">Submission accepted. Request the departmental clearances below.</p>{/if}
+			{#if form?.accepted}<p class="ok">Submission accepted — the chain has started with the reporting manager (see the map).</p>{/if}
 			{#if form?.changesRequested}<p class="ok">Sent back to {e.personalEmail}.</p>{/if}
 		</section>
 
-		<!-- 4. Clearances -->
-		<section class="card">
-			<div class="sec-head">
-				<span class="section-num">04</span>
-				<div>
-					<h2>Departmental clearances</h2>
-					<p class="muted">
-						Each approver gets their own link — no login needed. They tick their No Dues rows, add
-						remarks and upload a signature, which lands on the live certificate.
-					</p>
-				</div>
-				{#if data.clearanceProgress.total}
-					<span class="pill {data.clearanceProgress.allDone ? 'teal' : 'gold'}">
-						{data.clearanceProgress.done}/{data.clearanceProgress.total} SIGNED
-					</span>
-				{/if}
-			</div>
-
-			<form method="POST" action="?/sendClearances" use:enhance={track('clearances')}>
-				<fieldset class="rbac" disabled={!data.isHr}>
-					<div class="approvers">
-						{#each data.ndcSections as section}
-							{@const existing = data.clearances.find((c) => c.department === section.dept)}
-							<div class="approver" class:signed={existing?.status === 'completed'}>
-								<div class="atop">
-									<div class="alabel">
-										{section.label}
-										{#if section.optional}<span class="opt">optional</span>{/if}
-									</div>
-									{#if existing}
-										<span class="pill {existing.status === 'completed' ? 'teal' : existing.status === 'sent' ? 'gold' : ''}">
-											{existing.status === 'completed'
-												? (existing.verdict ? VERDICT_LABEL[existing.verdict] : 'SIGNED')
-												: existing.status === 'sent'
-													? 'AWAITING'
-													: 'NOT SENT'}
-										</span>
-									{/if}
-								</div>
-								<div class="arow">
-									<input
-										name={`email_${section.dept}`}
-										type="email"
-										placeholder="approver@championsmail.com"
-										value={existing?.approverEmail ?? ''}
-									/>
-									<input
-										name={`name_${section.dept}`}
-										placeholder="Name"
-										value={existing?.approverName ?? ''}
-									/>
-									<input
-										name={`designation_${section.dept}`}
-										placeholder="Designation"
-										value={existing?.approverDesignation ?? ''}
-									/>
-								</div>
-								{#if existing}
-									<div class="ameta">
-										{#if existing.completedAt}
-											<span>Signed {stamp(existing.completedAt)}</span>
-											{#if existing.hasSignature}<span>· signature on file</span>{/if}
-											{#if existing.remarks}<span class="rem">“{existing.remarks}”</span>{/if}
-										{:else if existing.sentAt}
-											<span>Sent {stamp(existing.sentAt)}{existing.sentCount > 1 ? ` · ${existing.sentCount} times` : ''}</span>
-										{/if}
-										{#if existing.link}
-											<button class="linkbtn" type="button" onclick={() => copy(existing.link!, existing.id)}>
-												{copied === existing.id ? 'Copied ✓' : 'Copy link'}
-											</button>
-										{/if}
-									</div>
-								{/if}
-							</div>
-						{/each}
-					</div>
-					{#if form?.clearanceError && form?.message}<p class="error">{form.message}</p>{/if}
-					<div class="btn-row">
-						<button class="btn" disabled={sending['clearances']}>
-							{sending['clearances'] ? 'Sending…' : 'Save & send clearance requests'}
-						</button>
-						<span class="muted tiny">Leave an address blank to skip that department.</span>
-					</div>
-				</fieldset>
-			</form>
-
-			{#if typeof form?.clearancesSent === 'number'}
-				<p class="ok">
-					Sent {form.clearancesSent} clearance request{form.clearancesSent === 1 ? '' : 's'}.
-					{#if form.clearancesFailed?.length}
-						Failed: {form.clearancesFailed.join(', ')}.
-					{/if}
-				</p>
-			{/if}
-
-			{#if pendingClearances.length}
-				<div class="reminders">
-					<div class="eyebrow">Still outstanding</div>
-					{#each pendingClearances as c}
-						<div class="remrow">
-							<span>{c.label} — {c.approverEmail}</span>
-							<div class="remacts">
-								<form method="POST" action="?/remindClearance" use:enhance={track(`remind-${c.id}`)}>
-									<input type="hidden" name="clearanceId" value={c.id} />
-									<button class="btn small ghost" disabled={!data.isHr || sending[`remind-${c.id}`]}>
-										{sending[`remind-${c.id}`] ? 'Sending…' : 'Remind'}
-									</button>
-								</form>
-								<form
-									method="POST"
-									action="?/removeClearance"
-									use:enhance={track(`rm-${c.id}`)}
-									onsubmit={(ev) => {
-										if (!confirm(`Remove the ${c.label} clearance from this exit?`)) ev.preventDefault();
-									}}
-								>
-									<input type="hidden" name="clearanceId" value={c.id} />
-									<button class="btn small ghost" disabled={!data.isHr}>Remove</button>
-								</form>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</section>
-
-		<!-- 4b. Send the paperwork to payroll -->
-		<section class="card">
-			<div class="sec-head">
-				<span class="section-num">04b</span>
-				<div>
-					<h2>Send documents to payroll</h2>
-					<p class="muted">
-						Attaches the chosen documents to one mail. Separate from the employee's handover
-						link: payroll needs the internal papers the employee never sees.
-					</p>
-				</div>
-				{#if form?.payrollSent}<span class="saved">Sent ✓</span>{/if}
-			</div>
-
-			<form method="POST" action="?/sendDocsToPayroll" use:enhance={track('payroll')}>
-				<fieldset class="rbac" disabled={!data.isHr}>
-					<div class="pk-list">
-						{#each data.documents as d (d.key)}
-							<label class="pk-row">
-								<input type="checkbox" name="docKey" value={d.key} checked={!d.letter} />
-								<span>{d.label}</span>
-								<span class="pk-tag">generated</span>
-							</label>
-						{/each}
-						{#each data.handoverFiles as f (f.id)}
-							<label class="pk-row">
-								<input type="checkbox" name="fileId" value={f.id} checked />
-								<span>{f.label}</span>
-								<span class="pk-tag">uploaded</span>
-							</label>
-						{/each}
-						{#each data.employeeFiles as f (f.id)}
-							<label class="pk-row">
-								<input type="checkbox" name="fileId" value={f.id} />
-								<span>{f.label}</span>
-								<span class="pk-tag">from employee</span>
-							</label>
-						{/each}
-					</div>
-
-					<label class="f" style="margin-top:12px;max-width:340px">
-						<span>Payroll team email</span>
-						<input name="to" type="email" required value={data.payrollEmail} placeholder="payroll@…" />
-					</label>
-
-					<div class="btn-row">
-						<button class="btn teal" disabled={sending['payroll']}>
-							{sending['payroll'] ? 'Sending…' : 'Send to payroll'}
-						</button>
-						{#if data.payrollDispatch}
-							<span class="muted tiny">
-								Last sent {stamp(data.payrollDispatch.sentAt)} · {data.payrollDispatch.count}
-								{data.payrollDispatch.count === 1 ? 'document' : 'documents'} to
-								{data.payrollDispatch.sentTo}
-							</span>
-						{/if}
-					</div>
-				</fieldset>
-			</form>
-		</section>
-
-		<!-- 5. F&F -->
-		<section class="card">
+		<!-- 5. HR's step: F&F, leave and loans -->
+		<section class="card" id="fnf">
 			<div class="sec-head">
 				<span class="section-num">05</span>
 				<div>
-					<h2>Payroll & full and final settlement</h2>
+					<h2>F&amp;F, leave &amp; loans</h2>
 					<p class="muted">
-						What payroll settles and what the employee sees on their closing statement.
+						HR's step in the chain. Fill in the settlement and the leave position, then send it to
+						payroll — they get it prefilled with every exit document attached, can correct any figure
+						and record loan recovery, and their sign-off is final.
 					</p>
 				</div>
-				{#if form?.fnfSaved}<span class="saved">Saved ✓</span>{/if}
+				{#if form?.handedToPayroll}
+					<span class="saved">Sent to payroll ✓</span>
+				{:else if form?.fnfSaved}
+					<span class="saved">Saved ✓</span>
+				{/if}
 			</div>
 
 			<form method="POST" action="?/saveFnf" use:enhance={track('fnf')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
-					<!-- Payroll's figures, read back. They are entered by the payroll team
-					     on the clearance page they already sign the exit off from; HR
-					     re-keying a settlement it was told over mail is a transcription
-					     step, and the only thing a transcription step can add to a figure
-					     somebody gets paid is an error. -->
-					<div class="fnf-read">
-						<div class="fnf-read-h">
-							<span>Full &amp; final figures</span>
-							{#if e.fnf?.submittedByPayrollAt}
+					{#if data.payrollSigned}
+						<div class="fnf-read">
+							<div class="fnf-read-h">
+								<span>Final figures</span>
 								<span class="fnf-src">
-									from payroll{e.fnf.submittedByPayrollName ? ' — ' + e.fnf.submittedByPayrollName : ''} ·
-									{stamp(e.fnf.submittedByPayrollAt)}
+									signed by payroll{e.fnf?.submittedByPayrollName ? ' — ' + e.fnf.submittedByPayrollName : ''} ·
+									{stamp(e.fnf?.submittedByPayrollAt ?? null)}
 								</span>
-							{:else}
-								<span class="fnf-src waiting">not submitted yet</span>
-							{/if}
-						</div>
-						{#if e.fnf?.submittedByPayrollAt}
+							</div>
 							<div class="fnf-read-grid">
-								{#each data.fnfPayrollFields as f (f.key)}
+								{#each data.fnfForm as f (f.key)}
 									<div class="fnf-cell">
 										<span class="fnf-k">{f.label}</span>
-										<span class="fnf-v">{f.value || '—'}</span>
+										<span class="fnf-v">{f.display || '—'}</span>
 									</div>
 								{/each}
 							</div>
-						{:else}
-							<p class="fnf-empty">
-								The payroll team fills these in on their clearance page. If their clearance has
-								not gone out yet, send it from <b>Departmental clearances</b> above; if it has,
-								a reminder from there is the way to chase it.
+						</div>
+					{:else}
+						<div class="fgrid">
+							{#each data.fnfForm as f (f.key)}
+								<label class="f">
+									<span>{f.label}</span>
+									{#if f.date}
+										<input type="date" name={f.key} value={f.value} />
+									{:else}
+										<input
+											name={f.key}
+											value={f.value}
+											inputmode={f.money ? 'decimal' : undefined}
+											placeholder={f.money ? 'e.g. 1,42,300' : ''}
+										/>
+									{/if}
+								</label>
+							{/each}
+						</div>
+						{#if hrStep?.status === 'done'}
+							<p class="muted tiny" style="margin:10px 0 0">
+								With payroll since {stamp(data.flow.hrDoneAt)}. Changes saved here show on their page
+								until they sign.
 							</p>
 						{/if}
-					</div>
+					{/if}
 
 					<div class="subblock">
 						<label class="check">
@@ -773,10 +721,24 @@
 						<label class="f"><span>Taxation remarks</span><input name="taxationRemarks" value={e.fnf?.taxationRemarks ?? ''} /></label>
 					</div>
 
+					{#if form?.fnfError && form?.message}<p class="error">{form.message}</p>{/if}
 					<div class="row-actions">
 						<button class="btn" disabled={sending['fnf']}>
-							{sending['fnf'] ? 'Saving…' : 'Save settlement'}
+							{sending['fnf'] ? 'Saving…' : 'Save'}
 						</button>
+						{#if !data.payrollSigned && hrStep?.status !== 'done'}
+							<button
+								class="btn teal"
+								name="handToPayroll"
+								value="1"
+								disabled={sending['fnf'] || hrStep?.status !== 'active'}
+							>
+								Save &amp; send to payroll
+							</button>
+							{#if hrStep?.status !== 'active'}
+								<span class="muted tiny">Opens once the clearances before it are signed.</span>
+							{/if}
+						{/if}
 					</div>
 				</fieldset>
 			</form>
@@ -791,13 +753,15 @@
 					<p class="muted">
 						{#if e.track}
 							{TRACK_LABELS[e.track as Track]} track —
-							{isIntern ? 'the two bonafide letters' : 'the relieving & experience letter, in either format'}.
+							{isIntern
+								? 'the bonafide letter (internship completed) or the internship status certificate (ongoing).'
+								: 'the relieving & experience letter.'}
 						{:else}
-							Track not set, so these are the employee letters. Set the track in
+							Track not set, so this is the relieving & experience letter. Set the track in
 							<b>Employment particulars</b> if this is an intern.
 						{/if}
-						Name, code, designation, dates and supervisor come from the particulars above; print,
-						get them signed, and upload the signed copy to the handover below.
+						Reference number, name, code, designation, dates and supervisor come from the particulars
+						above. Which letters go out, and when, is set under <b>Release</b> below.
 					</p>
 				</div>
 				{#if form?.lettersSaved}<span class="saved">Saved ✓</span>{/if}
@@ -814,14 +778,6 @@
 									<option value={s} selected={e.letters.salutation === s}>{s}</option>
 								{/each}
 							</select>
-						</label>
-						<label class="f">
-							<span>Letter ref. no.</span>
-							<input
-								name="refNo"
-								value={e.letters.refNo ?? ''}
-								placeholder={isIntern ? 'REF\\2026\\BL-004' : 'Ref\\2026\\RL\\CIPL-00239'}
-							/>
 						</label>
 						{#if isIntern}
 							<label class="f"><span>USN</span><input name="usn" value={e.letters.usn ?? ''} placeholder="ENG22CT0005" /></label>
@@ -866,68 +822,126 @@
 			</form>
 		</section>
 
-		<!-- 6. Handover -->
-		<section class="card">
+		<!-- 6. Release to the employee -->
+		<section class="card" id="release">
 			<div class="sec-head">
 				<span class="section-num">06</span>
 				<div>
-					<h2>Final document handover</h2>
+					<h2>Release to the employee</h2>
 					<p class="muted">
-						Upload the closing documents, then send the employee their download link — usually 30-45
-						days after the last working day.
+						The last step. The letters ticked here go to {e.personalEmail} with their handover link —
+						automatically, the set number of days after payroll signs off, or now by hand.
 					</p>
+				</div>
+				{#if form?.releaseSaved}<span class="saved">Saved ✓</span>{/if}
+			</div>
+
+			<form method="POST" action="?/saveRelease" use:enhance={track('release')}>
+				<fieldset class="rbac" disabled={!data.isHr || e.status === 'completed'}>
+					<div class="tiny-eyebrow" style="margin-bottom:8px">Letters to send</div>
+					<div class="pk-list">
+						{#each data.releaseOptions as o (o.key)}
+							<label class="pk-row">
+								<input type="checkbox" name="letterKey" value={o.key} checked={data.flow.letterKeys.includes(o.key)} />
+								<span>
+									{o.label}
+									<small class="muted" style="display:block;font-weight:400">Generated from “{o.source}”</small>
+								</span>
+								<a class="pk-tag" href="/admin/offboarding/{e.id}/doc/{o.key}" data-sveltekit-preload-data="off">preview</a>
+							</label>
+						{/each}
+					</div>
+
+					<div class="cadence">
+						<label class="check">
+							<input type="checkbox" name="autoRelease" checked={data.flow.autoRelease} />
+							<span>Send automatically</span>
+						</label>
+						<label class="f days">
+							<span>Days after payroll signs off</span>
+							<input name="releaseAfterDays" type="number" min="0" max="365" value={data.flow.releaseAfterDays} />
+						</label>
+						<label class="check">
+							<input type="checkbox" name="saveDefault" />
+							<span>Use this cadence for new offboardings</span>
+						</label>
+					</div>
+
+					<p class="release-state">
+						{#if data.flow.releasedAt}
+							Sent {stamp(data.flow.releasedAt)}{data.flow.releasedBy ? ` · ${data.flow.releasedBy}` : ''}.
+						{:else if !data.flow.autoRelease}
+							Manual — nothing goes out until you press <b>Release now</b>.
+						{:else if data.flow.scheduledAt}
+							Scheduled for <b>{stamp(data.flow.scheduledAt)}</b>.
+						{:else}
+							Will be scheduled {data.flow.releaseAfterDays} days after payroll signs off.
+						{/if}
+					</p>
+
+					{#if form?.releaseError && form?.message}<p class="error">{form.message}</p>{/if}
+					<div class="row-actions">
+						<button class="btn" disabled={sending['release']}>
+							{sending['release'] ? 'Saving…' : 'Save release settings'}
+						</button>
+					</div>
+				</fieldset>
+			</form>
+
+			<div class="subblock">
+				<div class="tiny-eyebrow" style="margin-bottom:4px">Other handover documents (optional)</div>
+				<p class="muted tiny" style="margin:0 0 10px">
+					Payslips, the F&amp;F statement, PF and tax papers. Anything uploaded here is listed on the
+					employee's handover link.
+				</p>
+				<div class="slots">
+					{#each data.handoverSlots.filter((s) => !s.legacy || data.handoverFiles.some((f) => f.docType === s.docType)) as slot}
+						{@const uploaded = data.handoverFiles.find((f) => f.docType === slot.docType)}
+						{@const gated =
+							slot.applicableWhen === 'pfExitProcessed'
+								? !!e.fnf?.pfExitProcessed
+								: slot.applicableWhen === 'taxationApplicable'
+									? !!e.fnf?.taxationApplicable
+									: true}
+						<div class="slot" class:muted-slot={!gated}>
+							<div class="slot-main">
+								<div class="slot-label">
+									{slot.label}
+									{#if !gated}<span class="opt">not applicable</span>{/if}
+								</div>
+								{#if uploaded}
+									<div class="slot-file">
+										<a href="/admin/offboarding/{e.id}/file/{uploaded.id}" target="_blank" rel="noreferrer">View</a>
+										<span class="muted tiny">{kb(uploaded.sizeBytes)} · {stamp(uploaded.createdAt)}</span>
+									</div>
+								{:else if uploadError[slot.docType]}
+									<div class="slot-file"><span class="error tiny">{uploadError[slot.docType]}</span></div>
+								{/if}
+							</div>
+							<div class="slot-actions">
+								<label class="upload" class:busy={uploading[slot.docType]}>
+									{uploading[slot.docType] ? 'Uploading…' : uploaded ? 'Replace' : 'Upload'}
+									<input
+										type="file"
+										accept="application/pdf,image/jpeg,image/png,image/webp"
+										disabled={!data.isHr || uploading[slot.docType]}
+										onchange={(ev) => uploadHandover(slot.docType, ev.currentTarget)}
+									/>
+								</label>
+								{#if uploaded}
+									<form method="POST" action="?/removeHandoverFile" use:enhance={track(`rmf-${uploaded.id}`)}>
+										<input type="hidden" name="fileId" value={uploaded.id} />
+										<button class="btn small ghost" disabled={!data.isHr}>Remove</button>
+									</form>
+								{/if}
+							</div>
+						</div>
+					{/each}
 				</div>
 			</div>
 
-			<div class="slots">
-				{#each data.handoverSlots as slot}
-					{@const uploaded = data.handoverFiles.find((f) => f.docType === slot.docType)}
-					{@const gated =
-						slot.applicableWhen === 'pfExitProcessed'
-							? !!e.fnf?.pfExitProcessed
-							: slot.applicableWhen === 'taxationApplicable'
-								? !!e.fnf?.taxationApplicable
-								: true}
-					<div class="slot" class:muted-slot={!gated}>
-						<div class="slot-main">
-							<div class="slot-label">
-								{slot.label}
-								{#if !gated}<span class="opt">not applicable</span>{/if}
-							</div>
-							{#if uploaded}
-								<div class="slot-file">
-									<a href="/admin/offboarding/{e.id}/file/{uploaded.id}" target="_blank" rel="noreferrer">
-										View
-									</a>
-									<span class="muted tiny">{kb(uploaded.sizeBytes)} · {stamp(uploaded.createdAt)}</span>
-								</div>
-							{:else if uploadError[slot.docType]}
-								<div class="slot-file"><span class="error tiny">{uploadError[slot.docType]}</span></div>
-							{/if}
-						</div>
-						<div class="slot-actions">
-							<label class="upload" class:busy={uploading[slot.docType]}>
-								{uploading[slot.docType] ? 'Uploading…' : uploaded ? 'Replace' : 'Upload'}
-								<input
-									type="file"
-									accept="application/pdf,image/jpeg,image/png,image/webp"
-									disabled={!data.isHr || uploading[slot.docType]}
-									onchange={(ev) => uploadHandover(slot.docType, ev.currentTarget)}
-								/>
-							</label>
-							{#if uploaded}
-								<form method="POST" action="?/removeHandoverFile" use:enhance={track(`rmf-${uploaded.id}`)}>
-									<input type="hidden" name="fileId" value={uploaded.id} />
-									<button class="btn small ghost" disabled={!data.isHr}>Remove</button>
-								</form>
-							{/if}
-						</div>
-					</div>
-				{/each}
-			</div>
-
 			{#if data.handoverLink}
-				<div class="linkbox">
+				<div class="linkbox" style="margin-top:14px">
 					<div class="linkrow">
 						<code>{data.handoverLink}</code>
 						<button class="btn small ghost" type="button" onclick={() => copy(data.handoverLink!, 'handover')}>
@@ -942,29 +956,100 @@
 
 			{#if form?.handoverError && form?.message}<p class="error">{form.message}</p>{/if}
 			<div class="btn-row">
-				<form method="POST" action="?/sendHandover" use:enhance={track('handover')}>
-					<button class="btn grad" disabled={!data.isHr || sending['handover']}>
-						{sending['handover']
-							? 'Sending…'
-							: e.handoverMailSentAt
-								? 'Resend handover link'
-								: 'Send handover link & close exit'}
-					</button>
-				</form>
+				{#if e.status !== 'completed'}
+					<form
+						method="POST"
+						action="?/sendHandover"
+						use:enhance={track('handover')}
+						onsubmit={(ev) => {
+							if (!confirm(`Send the selected letters and the handover link to ${e.personalEmail} now, and close this exit?`))
+								ev.preventDefault();
+						}}
+					>
+						<button class="btn grad" disabled={!data.isHr || sending['handover']}>
+							{sending['handover'] ? 'Sending…' : 'Release now'}
+						</button>
+					</form>
+				{/if}
 				{#if e.status === 'completed' && data.canReopen}
 					<form
 						method="POST"
 						action="?/reopen"
 						use:enhance={track('reopen')}
 						onsubmit={(ev) => {
-							if (!confirm('Reopen this closed exit?')) ev.preventDefault();
+							if (!confirm('Reopen this closed exit? Its release will then only go out when you press Release now.'))
+								ev.preventDefault();
 						}}
 					>
 						<button class="btn ghost small">Reopen exit</button>
 					</form>
 				{/if}
 			</div>
-			{#if form?.handoverSent}<p class="ok">Handover link emailed to {e.personalEmail}. Exit closed.</p>{/if}
+			{#if form?.handoverSent}<p class="ok">Sent to {e.personalEmail}. Exit closed.</p>{/if}
+		</section>
+
+		<!-- 7. Mail settings: who each step of the chain emails -->
+		<section class="card" id="mail-settings">
+			<div class="sec-head">
+				<span class="section-num">07</span>
+				<div>
+					<h2>Mail settings</h2>
+					<p class="muted">
+						Who each step of the chain emails, in order. These start from the saved defaults — change
+						them here for this person alone, or tick the box to make them the default for new
+						offboardings.
+					</p>
+				</div>
+				{#if form?.routingSaved}
+					<span class="saved">Saved{form.routingDefaulted ? ' · default updated' : ''} ✓</span>
+				{/if}
+			</div>
+
+			<form method="POST" action="?/saveRouting" use:enhance={track('routing')}>
+				<fieldset class="rbac" disabled={!data.isHr}>
+					<div class="routes">
+						{#each ROUTING_KEYS as k, i (k)}
+							<div class="route" class:off={k === 'salesforce' && !salesforceOn}>
+								<div class="route-h">
+									<span class="route-n">{i + 1}</span>
+									<span class="route-l">{ROUTING_LABELS[k]}</span>
+									{#if k === 'salesforce'}
+										<label class="check inline">
+											<input type="checkbox" name="salesforce_enabled" bind:checked={salesforceOn} />
+											<span>Include in this exit</span>
+										</label>
+									{/if}
+									{#if k !== 'manager' && data.routing[k].email !== (data.routingDefaults[k as Exclude<typeof k, 'manager'>].email ?? '')}
+										<span class="opt">differs from default</span>
+									{/if}
+								</div>
+								<div class="arow">
+									<input
+										name="{k}_email"
+										type="email"
+										placeholder={k === 'manager' ? 'manager@championsmail.com' : `${k}@championsmail.com`}
+										value={data.routing[k].email}
+									/>
+									<input name="{k}_name" placeholder="Name" value={data.routing[k].name} />
+								</div>
+							</div>
+						{/each}
+					</div>
+					<label class="check">
+						<input type="checkbox" name="saveDefault" />
+						<span>
+							Also use these as the default for new offboardings
+							<small class="muted">(the reporting manager is never saved — it differs for every employee)</small>
+						</span>
+					</label>
+					{#if form?.routingError && form?.message}<p class="error">{form.message}</p>{/if}
+					<div class="row-actions">
+						<button class="btn" disabled={sending['routing']}>
+							{sending['routing'] ? 'Saving…' : 'Save mail settings'}
+						</button>
+					</div>
+				</fieldset>
+			</form>
 		</section>
 	</div>
 
@@ -1106,9 +1191,281 @@
 	}
 	.cols {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 300px;
+		grid-template-columns: 250px minmax(0, 1fr) 300px;
 		gap: 18px;
 		align-items: start;
+	}
+	@media (max-width: 1400px) {
+		.cols {
+			grid-template-columns: 240px minmax(0, 1fr);
+		}
+		.cols > .rail {
+			grid-column: 2;
+		}
+	}
+
+	/* ── The exit-chain map ─────────────────────────────────────────── */
+	.flowmap {
+		position: sticky;
+		top: 18px;
+		min-width: 0;
+	}
+	.mapcard {
+		padding: 16px 14px 14px;
+	}
+	.map-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.map-pct {
+		font-family: var(--ae-font-mono);
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--ae-verdant);
+	}
+	.map-bar {
+		height: 5px;
+		border-radius: 99px;
+		background: var(--ae-line-soft);
+		overflow: hidden;
+		margin: 10px 0 8px;
+	}
+	.map-bar span {
+		display: block;
+		height: 100%;
+		border-radius: inherit;
+		background: linear-gradient(90deg, var(--ae-verdant), var(--ae-azure));
+		transition: width 0.5s ease;
+	}
+	.map-ref {
+		font-family: var(--ae-font-mono);
+		font-size: 10.5px;
+		color: var(--ae-muted);
+		margin-bottom: 6px;
+		word-break: break-all;
+	}
+	.map {
+		list-style: none;
+		margin: 12px 0 0;
+		padding: 0;
+	}
+	.node {
+		position: relative;
+		display: grid;
+		grid-template-columns: 26px minmax(0, 1fr);
+		gap: 10px;
+		padding-bottom: 16px;
+	}
+	/* The connector to the next node: solid once this step is done. */
+	.node:not(:last-child)::before {
+		content: '';
+		position: absolute;
+		left: 12px;
+		top: 26px;
+		bottom: 0;
+		width: 2px;
+		background: var(--ae-line-soft);
+	}
+	.node.done:not(:last-child)::before {
+		background: var(--ae-verdant);
+	}
+	.node.skipped:not(:last-child)::before {
+		background: repeating-linear-gradient(var(--ae-line-soft) 0 3px, transparent 3px 6px);
+	}
+	.dot {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font-size: 11px;
+		font-weight: 800;
+		font-family: var(--ae-font-mono);
+		border: 2px solid var(--ae-line);
+		color: var(--ae-muted);
+		background: var(--ae-card-bg);
+		position: relative;
+		z-index: 1;
+	}
+	.node.done .dot {
+		background: var(--ae-verdant);
+		border-color: var(--ae-verdant);
+		color: #fff;
+	}
+	.node.active .dot {
+		border-color: var(--ae-amber);
+		color: var(--ae-amber);
+		box-shadow: 0 0 0 4px rgba(242, 177, 92, 0.16);
+		animation: map-pulse 2s ease-in-out infinite;
+	}
+	.node.blocked .dot {
+		border-color: var(--ae-ember);
+		background: var(--ae-ember);
+		color: #fff;
+	}
+	.node.skipped .dot {
+		border-style: dashed;
+	}
+	@keyframes map-pulse {
+		50% {
+			box-shadow: 0 0 0 7px rgba(242, 177, 92, 0.06);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.node.active .dot {
+			animation: none;
+		}
+	}
+	.nbody {
+		min-width: 0;
+		padding-top: 3px;
+	}
+	.nlabel {
+		font-size: 12.5px;
+		font-weight: 700;
+		color: var(--ae-text);
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.node.waiting .nlabel,
+	.node.skipped .nlabel {
+		color: var(--ae-muted);
+	}
+	.nto {
+		font-size: 10.5px;
+		font-family: var(--ae-font-mono);
+		color: var(--ae-text-2);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		margin-top: 2px;
+	}
+	.ndetail {
+		font-size: 11px;
+		color: var(--ae-muted);
+		margin-top: 2px;
+		line-height: 1.35;
+	}
+	.node.blocked .ndetail {
+		color: var(--ae-ember);
+	}
+	.nacts {
+		display: flex;
+		gap: 10px;
+		margin-top: 5px;
+	}
+	.nacts form {
+		display: contents;
+	}
+	.nact {
+		display: inline-block;
+		margin-top: 5px;
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--ae-azure);
+		cursor: pointer;
+		text-decoration: none;
+	}
+	.nacts .nact {
+		margin-top: 0;
+	}
+	.nact:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.map-note,
+	.map-err,
+	.map-ok {
+		font-size: 11px;
+		margin: 4px 0 8px;
+		line-height: 1.4;
+	}
+	.map-note {
+		color: var(--ae-muted);
+	}
+	.map-err {
+		color: var(--ae-ember);
+	}
+	.map-ok {
+		color: var(--ae-verdant);
+	}
+	.map-settings {
+		display: block;
+		margin-top: 6px;
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--ae-text-2);
+		text-decoration: none;
+	}
+
+	/* ── Release & mail settings ────────────────────────────────────── */
+	.cadence {
+		display: flex;
+		align-items: flex-end;
+		gap: 18px;
+		flex-wrap: wrap;
+		margin-top: 12px;
+	}
+	.cadence .check {
+		margin-top: 0;
+		padding-bottom: 9px;
+	}
+	.cadence .days {
+		width: 190px;
+	}
+	.release-state {
+		font-size: 12.5px;
+		color: var(--ae-text-2);
+		margin: 12px 0 0;
+	}
+	.routes {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.route {
+		border: 1px solid var(--ae-line-soft);
+		border-radius: 10px;
+		padding: 10px 12px;
+		transition: opacity 0.2s;
+	}
+	.route.off .arow {
+		opacity: 0.45;
+	}
+	.route-h {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-bottom: 8px;
+	}
+	.route-n {
+		width: 20px;
+		height: 20px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font-size: 10.5px;
+		font-weight: 800;
+		font-family: var(--ae-font-mono);
+		background: var(--ae-sub-bg, rgba(255, 255, 255, 0.05));
+		border: 1px solid var(--ae-line);
+	}
+	.route-l {
+		font-size: 12.5px;
+		font-weight: 700;
+	}
+	.check.inline {
+		margin-top: 0;
+		margin-left: auto;
+		font-size: 11.5px;
 	}
 	.main {
 		display: flex;
@@ -1123,11 +1480,15 @@
 		position: sticky;
 		top: 18px;
 	}
-	@media (max-width: 1080px) {
+	@media (max-width: 960px) {
 		.cols {
 			grid-template-columns: minmax(0, 1fr);
 		}
-		.rail {
+		.cols > .rail {
+			grid-column: auto;
+		}
+		.rail,
+		.flowmap {
 			position: static;
 		}
 	}
@@ -1378,32 +1739,6 @@
 		font-size: 12.5px;
 		flex-wrap: wrap;
 	}
-	.approvers {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-	.approver {
-		border: 1px solid var(--ae-line-soft);
-		border-radius: 10px;
-		padding: 12px 14px;
-	}
-	.approver.signed {
-		border-color: rgba(62, 207, 154, 0.3);
-		background: rgba(62, 207, 154, 0.04);
-	}
-	.atop {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		margin-bottom: 9px;
-	}
-	.alabel {
-		font-size: 12.5px;
-		font-weight: 500;
-		color: var(--ae-text);
-	}
 	.opt {
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
@@ -1414,7 +1749,7 @@
 	}
 	.arow {
 		display: grid;
-		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
 		gap: 8px;
 	}
 	@media (max-width: 720px) {
@@ -1425,48 +1760,6 @@
 		.rrow.static {
 			grid-template-columns: minmax(0, 1fr);
 		}
-	}
-	.ameta {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-top: 8px;
-		font-size: 11.5px;
-		color: var(--ae-muted);
-		flex-wrap: wrap;
-	}
-	.rem {
-		font-style: italic;
-		color: var(--ae-text-2);
-	}
-	.linkbtn {
-		background: none;
-		border: none;
-		box-shadow: none;
-		padding: 0;
-		font-size: 11.5px;
-		color: var(--ae-ember-glow);
-		cursor: pointer;
-		margin-left: auto;
-	}
-	.reminders {
-		margin-top: 18px;
-		padding-top: 14px;
-		border-top: 1px solid var(--ae-line-soft);
-	}
-	.remrow {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 7px 0;
-		font-size: 12.5px;
-		color: var(--ae-text-2);
-		flex-wrap: wrap;
-	}
-	.remacts {
-		display: flex;
-		gap: 6px;
 	}
 	.subblock {
 		margin-top: 18px;
@@ -1628,12 +1921,6 @@
 		font-size: 13px;
 		font-weight: 600;
 		overflow-wrap: anywhere;
-	}
-	.fnf-empty {
-		margin: 0;
-		font-size: 11.5px;
-		line-height: 1.55;
-		color: var(--ae-muted);
 	}
 	.ndclist {
 		display: flex;

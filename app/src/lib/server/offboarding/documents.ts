@@ -21,8 +21,7 @@ import {
 import {
 	internshipBonafidePdf,
 	internshipStatusPdf,
-	relievingSalesPdf,
-	relievingSupportPdf
+	relievingSalesPdf
 } from './letters';
 import { lettersForTrack, type ExitLetterKey } from '$lib/shared/offboarding';
 
@@ -45,8 +44,11 @@ export type ExitDocKey =
  *                    submission (Exit.reviewedAt). Before that the document is
  *                    a draft of unreviewed answers, and handing someone a
  *                    PDF of their own unchecked NDA invites them to treat it
- *                    as final. */
-type ExitDocAudience = 'internal' | 'after_approval';
+ *                    as final.
+ *  `on_release`      The exit letters: the employee sees the ones the final
+ *                    release sent them (Exit.flow.letterKeys), and only after
+ *                    it has gone. */
+type ExitDocAudience = 'internal' | 'after_approval' | 'on_release';
 
 interface ExitDocDef {
 	key: ExitDocKey;
@@ -63,8 +65,8 @@ interface ExitDocDef {
 	letter?: boolean;
 }
 
-/** An exit letter entry. Letters are internal: what goes to the employee is the
- *  signed copy HR uploads into the handover, never this unsigned draft. */
+/** An exit letter entry. HR sees every letter that applies to the track; the
+ *  employee sees only the ones the final release actually sent them. */
 function letterDoc(
 	key: ExitLetterKey,
 	label: string,
@@ -77,7 +79,7 @@ function letterDoc(
 		slug,
 		render,
 		applies: (e) => lettersForTrack(e.track).includes(key),
-		audience: 'internal',
+		audience: 'on_release',
 		letter: true
 	};
 }
@@ -143,19 +145,18 @@ export const EXIT_DOCS: ExitDocDef[] = [
 		applies: (e) => !!(e.fnf?.netAmount || e.fnf?.settlementDate || e.fnf?.salaryDueFrom),
 		audience: 'after_approval'
 	},
-	letterDoc('internship_status', 'Internship Status Certificate', 'Internship-Status-Certificate', internshipStatusPdf),
-	letterDoc('internship_bonafide', 'Bonafide Letter', 'Bonafide-Letter', internshipBonafidePdf),
+	letterDoc('relieving_sales', 'Relieving & Experience Letter', 'Relieving-Experience-Letter', relievingSalesPdf),
 	letterDoc(
-		'relieving_support',
-		'Relieving & Experience Letter — Support format',
-		'Relieving-Experience-Letter-Support',
-		relievingSupportPdf
+		'internship_bonafide',
+		'Bonafide Letter — internship completed',
+		'Bonafide-Letter',
+		internshipBonafidePdf
 	),
 	letterDoc(
-		'relieving_sales',
-		'Relieving & Experience Letter — Sales & Data format',
-		'Relieving-Experience-Letter-Sales-Data',
-		relievingSalesPdf
+		'internship_status',
+		'Internship Status Certificate — internship ongoing',
+		'Internship-Status-Certificate',
+		internshipStatusPdf
 	)
 ];
 
@@ -223,6 +224,10 @@ export function availableDocs(exit: Record<string, any>, viewer: 'hr' | 'employe
 export function canSee(def: ExitDocDef, exit: Record<string, any>, viewer: 'hr' | 'employee') {
 	if (viewer === 'hr') return true;
 	if (def.audience === 'internal') return false;
+	// A letter reaches the employee only by being released to them: until then
+	// it is an unsent draft, and afterwards only the ones actually sent.
+	if (def.audience === 'on_release')
+		return !!exit.flow?.releasedAt && ((exit.flow?.letterKeys ?? []) as string[]).includes(def.key);
 	return hrApproved(exit);
 }
 

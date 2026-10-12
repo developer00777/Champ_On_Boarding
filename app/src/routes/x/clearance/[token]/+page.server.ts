@@ -32,6 +32,7 @@ import {
 	serviceLabel
 } from '$lib/server/offboarding/exit';
 import { sendExitAlert } from '$lib/server/offboarding/mail';
+import { advanceFlow, flowSteps } from '$lib/server/offboarding/flow';
 import {
 	ACCEPTED_IMAGE_MIMES,
 	MAX_EXIT_FILE_BYTES,
@@ -143,6 +144,9 @@ export const load: PageServerLoad = async ({ params }) => {
 		 *  the full & final settlement is theirs to state, and HR reads it back
 		 *  rather than re-keying it from an email. */
 		collectsFnf: dept === 'payroll',
+		/** HR filled the settlement before handing it over (their step in the
+		 *  exit chain), so payroll is reviewing figures rather than entering them. */
+		fnfPrefilled: !!e.flow?.hrDoneAt,
 		fnfFields: FNF_PAYROLL_FIELDS.map((f) => ({
 			key: f.key,
 			label: f.label,
@@ -299,11 +303,27 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 
-		// Every clearance in, so the exit is cleared. Only advance from the
-		// clearance stages — never pull a completed exit backwards.
+		// An exit on the chain moves itself on: this signature is what sends the
+		// next step's mail (or hands the F&F to HR, or schedules the release).
+		// Exits from before the chain keep the old rule — every clearance in,
+		// so the exit is cleared — and never pull a completed exit backwards.
+		const onChain = !!(exit as unknown as { flow?: { startedAt?: Date | null } }).flow?.startedAt;
 		const all = await ExitClearance.find({ exitId: exit._id }).select('status').lean();
 		const progress = clearanceProgress(all.map((a) => ({ status: String(a.status) })));
-		if (progress.allDone && ['clearances', 'submitted'].includes(exit.status)) {
+		let next: string | null = null;
+		if (onChain) {
+			await advanceFlow(String(exit._id));
+			const [fresh, rows] = await Promise.all([
+				Exit.findById(exit._id).lean(),
+				ExitClearance.find({ exitId: exit._id }).lean()
+			]);
+			const step = fresh
+				? flowSteps(fresh as Record<string, unknown>, rows as Record<string, unknown>[]).find(
+						(s) => s.status === 'active' || s.status === 'blocked'
+					)
+				: null;
+			next = step ? `Next: ${step.label}${step.status === 'blocked' ? ' — no email set yet' : ''}.` : null;
+		} else if (progress.allDone && ['clearances', 'submitted'].includes(exit.status)) {
 			await Exit.findByIdAndUpdate(exit._id, { status: 'cleared' });
 		}
 
@@ -317,16 +337,18 @@ export const actions: Actions = {
 			}
 			await sendExitAlert({
 				to: recipients,
-				subject: progress.allDone
+				subject: !onChain && progress.allDone
 					? `All clearances signed: ${exit.fullName}`
 					: `Clearance signed: ${exit.fullName}`,
 				lines: [
 					`${approverName} signed the ${CLEARANCE_DEPT_LABELS[clearance.department as ClearanceDept]} ` +
 						`clearance for ${exit.fullName} (${exit.employeeId}).`,
 					`Verdict: ${verdict === 'no_dues' ? 'No dues outstanding' : 'Dues outstanding'}.`,
-					progress.allDone
-						? 'Every requested clearance is now in — the exit is ready for full and final settlement.'
-						: `${progress.done} of ${progress.total} clearances signed.`
+					onChain
+						? (next ?? 'The exit chain is complete.')
+						: progress.allDone
+							? 'Every requested clearance is now in — the exit is ready for full and final settlement.'
+							: `${progress.done} of ${progress.total} clearances signed.`
 				],
 				brand,
 				url: `${baseUrl()}/admin/offboarding/${String(exit._id)}`

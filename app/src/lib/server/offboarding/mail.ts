@@ -241,6 +241,11 @@ export async function sendClearanceMail(opts: {
 	url: string;
 	attachments?: MailAttachment[];
 	reminder?: boolean;
+	/** Paragraphs after the standard request — payroll's says what HR has
+	 *  already filled in and what is attached. */
+	extraIntro?: string[];
+	/** Replaces the boxed "what you are signing" aside. */
+	note?: { title: string; text: string };
 }) {
 	const s = await getExitMailSettings();
 	const deptLabel = CLEARANCE_DEPT_LABELS[opts.department] ?? opts.department;
@@ -269,7 +274,8 @@ export async function sendClearanceMail(opts: {
 			? `This is a reminder that the ${deptLabel} clearance for the exit below is still pending.`
 			: `${opts.employeeName} is leaving the organisation and we need your departmental clearance to close their exit.`,
 		'Please open the link below to review the items your section owns, mark each one as cleared or outstanding, ' +
-			'add any remarks, and sign off. It takes a couple of minutes and needs no login.'
+			'add any remarks, and sign off. It takes a couple of minutes and needs no login.',
+		...(opts.extraIntro ?? [])
 	];
 
 	const html = shell({
@@ -278,7 +284,7 @@ export async function sendClearanceMail(opts: {
 		intro,
 		bodyHtml: table,
 		cta: { label: 'Review & sign clearance', url: opts.url },
-		note: {
+		note: opts.note ?? {
 			title: 'What you are signing',
 			text:
 				'Your sign-off is recorded against the No Dues Certificate for this employee. A copy of the certificate ' +

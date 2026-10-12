@@ -5,11 +5,14 @@ import { rateLimited } from '$lib/server/rate-limit';
 import { resolveSession } from '$lib/server/auth';
 import { isAllowedAdminIp } from '$lib/server/ip-allowlist';
 import { startBgvReminderTicker } from '$lib/server/bgv-reminders';
+import { startExitReleaseTicker } from '$lib/server/offboarding/flow';
 
 // Module scope: runs once per server process, not once per request. This is
 // the only thing that chases unanswered BGV requests — there is no HTTP
 // trigger for it on purpose. Replicas coordinate through a Redis lock.
 startBgvReminderTicker();
+// Sends exit letters whose release date has come (see offboarding/flow.ts).
+startExitReleaseTicker();
 
 export const handle: Handle = async ({ event, resolve }) => {
 	try {

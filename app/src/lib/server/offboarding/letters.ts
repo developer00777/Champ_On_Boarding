@@ -74,7 +74,8 @@ async function begin(input: ExitPdfInput, docTitle: string): Promise<DocCtx> {
 		letter: true
 	});
 	const today = todayInIST();
-	const ref = sanitize(str(input.exit.letters?.refNo) || `Ref: ${BLANK}`);
+	// The exit's own reference number; older exits kept it with the letters.
+	const ref = sanitize(str(input.exit.refNo) || str(input.exit.letters?.refNo) || `Ref: ${BLANK}`);
 	const date = sanitize(`Date: ${ordinal(today.day)} ${MONTHS[today.month - 1]}, ${today.year}`);
 
 	ctx.y -= 8;
@@ -101,18 +102,20 @@ function signOff(ctx: DocCtx, company: string) {
 }
 
 // ── Relieving & Experience Letter ────────────────────────────────────────────
-// Both formats open identically; they differ only in the closing paragraph.
+// The Sales & Data format: for anyone who gained experience here.
 
-function relievingOpening(ctx: DocCtx, p: Particulars, worked: string) {
+export async function relievingSalesPdf(input: ExitPdfInput): Promise<Uint8Array> {
+	const p = particulars(input);
 	const { e, v } = p;
+	const ctx = await begin(input, 'Relieving & Experience Letter');
 	title(ctx, 'TO WHOMSOEVER IT MAY CONCERN', SIZE + 1);
 	gap(ctx, 10);
 	body(
 		ctx,
-		`${p.name} (Emp. Code: ${str(e.employeeId) || BLANK}) ${worked} in our company from ${p.doj}. ` +
+		`${p.name} (Emp. Code: ${str(e.employeeId) || BLANK}) ${v.has} worked in our company from ${p.doj}. ` +
 			`${cap(v.pos)} last day with our company was on ${p.lwd}.`
 	);
-	// The templates are written for a resignation. A termination keeps the same
+	// The template is written for a resignation. A termination keeps the same
 	// letter but must not say the employee resigned.
 	body(
 		ctx,
@@ -123,27 +126,6 @@ function relievingOpening(ctx: DocCtx, p: Particulars, worked: string) {
 					`${v.pos} personal reasons, and the company has relieved ${v.obj} effective closing business ` +
 					`hours of ${p.lwd}.`
 	);
-}
-
-/** Support format — closes on a note of appreciation. */
-export async function relievingSupportPdf(input: ExitPdfInput): Promise<Uint8Array> {
-	const p = particulars(input);
-	const ctx = await begin(input, 'Relieving & Experience Letter');
-	relievingOpening(ctx, p, 'worked');
-	body(
-		ctx,
-		`During ${p.v.pos} time with us, ${p.name} demonstrated professionalism and contributed significantly ` +
-			`to the organization in ${p.v.pos} role. We wish ${p.v.obj} success in all ${p.v.pos} future endeavors.`
-	);
-	signOff(ctx, p.company);
-	return finish(ctx);
-}
-
-/** Sales & Data format — closes on the non-compete and an HR contact. */
-export async function relievingSalesPdf(input: ExitPdfInput): Promise<Uint8Array> {
-	const p = particulars(input);
-	const ctx = await begin(input, 'Relieving & Experience Letter');
-	relievingOpening(ctx, p, `${p.v.has} worked`);
 	body(
 		ctx,
 		`${cap(p.v.sub)} ${p.v.has} a Non-Compete Agreement which precludes ${p.v.obj} from working for an ` +

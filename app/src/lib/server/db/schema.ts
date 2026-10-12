@@ -703,6 +703,11 @@ const exitSchema = new Schema(
 		// ── What HR types to initiate (SOP steps 1-2) ────────────────────────
 		employeeId: { type: String, required: true, index: true },
 		fullName: { type: String, required: true, index: true },
+		/** HR's reference number for this offboarding, set when it is started
+		 *  and printed on the exit letters, e.g. "Ref\2026\RL\CIPL-00239".
+		 *  Not required at the schema level: exits recorded before it existed
+		 *  carry it (if at all) on `letters.refNo`. */
+		refNo: { type: String, default: null, index: true },
 		/** Personal (non-company) address — company mail is revoked on LWD, so
 		 *  every exit link and the final document handover must go here. */
 		personalEmail: { type: String, required: true, index: true },
@@ -757,6 +762,55 @@ const exitSchema = new Schema(
 			internshipPeriod: { type: String, default: null },
 			/** Completes "During his internship, he has been actively involved in …". */
 			workSummary: { type: String, default: null }
+		},
+
+		// ── Who each step of the exit chain mails (FLOW_STEPS) ───────────────
+		// Copied from the saved defaults when the exit is created, then HR's to
+		// change for this person alone. A blank address holds the chain at that
+		// step until one is filled in.
+		routing: {
+			manager: { email: { type: String, default: null }, name: { type: String, default: null } },
+			it: { email: { type: String, default: null }, name: { type: String, default: null } },
+			salesforce: {
+				email: { type: String, default: null },
+				name: { type: String, default: null },
+				/** Salesforce clearance is for sales staff only, so it is opt-in. */
+				enabled: { type: Boolean, default: false }
+			},
+			/** Not a clearance: told when it is HR's turn to fill the F&F. */
+			hr: { email: { type: String, default: null }, name: { type: String, default: null } },
+			payroll: { email: { type: String, default: null }, name: { type: String, default: null } }
+		},
+
+		// ── Exit chain state ─────────────────────────────────────────────────
+		// The clearance steps keep their state on ExitClearance; these are the
+		// steps that have no clearance row behind them, plus the final release.
+		flow: {
+			/** The chain was started (on accepting the submission). Nothing is
+			 *  mailed to an approver before this. */
+			startedAt: { type: Date, default: null },
+			/** HR's step: the F&F and leave filled in and handed to payroll. */
+			hrNotifiedAt: { type: Date, default: null },
+			hrDoneAt: { type: Date, default: null },
+			hrDoneBy: { type: String, default: null },
+			/** Which letters the release sends; unset means the track's default
+			 *  (defaultReleaseLetters). */
+			letterKeys: { type: [String], default: undefined },
+			/** The cadence: days after payroll signs off that the letters go out. */
+			releaseAfterDays: { type: Number, default: 30 },
+			/** Off means HR releases by hand. Turned off by a reopen, so a
+			 *  corrected exit is never re-sent behind HR's back. */
+			autoRelease: { type: Boolean, default: true },
+			/** When the release is due — set once payroll has signed. */
+			scheduledAt: { type: Date, default: null, index: true },
+			releasedAt: { type: Date, default: null },
+			releasedBy: { type: String, default: null },
+			/** The last step that could not be mailed, shown on the map. */
+			lastError: {
+				step: { type: String, default: null },
+				message: { type: String, default: null },
+				at: { type: Date, default: null }
+			}
 		},
 
 		// ── Stage machine ────────────────────────────────────────────────────
@@ -943,6 +997,11 @@ const exitSchema = new Schema(
 			leaveEncashmentAmount: { type: String, default: null },
 			noticePayRecovery: { type: String, default: null },
 			assetRecovery: { type: String, default: null },
+			/** Any loan or salary advance still owed, and what the F&F recovers
+			 *  of it — HR's first figure, payroll's final one. */
+			loanOutstanding: { type: String, default: null },
+			loanRecovery: { type: String, default: null },
+			loanRemarks: { type: String, default: null },
 			otherDeductions: { type: String, default: null },
 			/** Net F&F payable and the date it is/was settled — printed on the
 			 *  final handover page and mailed with the closing documents. */

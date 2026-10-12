@@ -4,13 +4,18 @@
 //   saveParticulars   step 2   confirm LWD + the employment details the forms print
 //   sendFormsLink     step 5   email the employee their exit-documents link
 //   requestChanges    step 5   send them back to specific fields
-//   acceptSubmission  step 7   accept the submission and open the clearance round
-//   sendClearances    step 7   email each approver their clearance link
-//   remindClearance   step 7   nudge one approver
+//   acceptSubmission  step 7   accept the submission, which starts the exit chain
+//   startChain        step 7   start the chain on an exit accepted before it existed
+//   resendStep        step 7   re-send one step's mail (reminder or corrected address)
+//   saveRouting       —        who each step mails, for this exit (and the default)
 //   sendItBlockMail   step 5   the "block system access" mail to IT
-//   saveFnf           step 8   the payroll / F&F / PF / taxation block
+//   saveFnf           step 8   HR's F&F, leave and loans — and handing them to payroll
+//   saveRelease       step 9   which letters go to the employee, and the cadence
 //   saveClosure       step 10  the exit-completion checklist
-//   sendHandover      step 9   the final documents link, ~30-45 days after LWD
+//   sendHandover      step 9   release now: the letters and the handover link
+//
+// The order the mails go out in lives in offboarding/flow.ts, not here: each
+// step is sent when the one before it finishes.
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Admin, Exit, ExitClearance, ExitDocument, ExitToken } from '$lib/server/db/schema';
@@ -25,12 +30,17 @@ import {
 	CLEARANCE_DEPT_LABELS,
 	CLOSURE_CHECKLIST_KEYS,
 	EXIT_UPLOAD_DOCS,
-	HANDOVER_DOCS,
-	NDC_EMPLOYEE_ROW_KEYS,
+	FLOW_STEPS,
+	FNF_PAYROLL_DATE_KEYS,
 	FNF_PAYROLL_FIELDS,
+	HANDOVER_DOCS,
 	LETTER_SALUTATIONS,
-	NDC_SECTIONS,
-	type ClearanceDept
+	LETTER_SOURCES,
+	ROUTING_KEYS,
+	ROUTING_LABELS,
+	lettersForTrack,
+	type ClearanceDept,
+	type FlowStepKey
 } from '$lib/shared/offboarding';
 import {
 	allFormsComplete,
@@ -44,19 +54,24 @@ import {
 	gratuityApplicable,
 	liveExitToken,
 	ndcState,
-	serviceLabel,
-	upsertClearances
+	serviceLabel
 } from '$lib/server/offboarding/exit';
-import { availableDocs, loadPdfInput, renderExitDoc } from '$lib/server/offboarding/documents';
-import { getGridFSBytes } from '$lib/server/storage';
-import { sendMail, brandFromHeader } from '$lib/server/mailer';
-import { noDuesPdf } from '$lib/server/offboarding/pdf';
+import { EXIT_DOC_BY_KEY, availableDocs } from '$lib/server/offboarding/documents';
+import {
+	advanceFlow,
+	flowSteps,
+	getRoutingDefaults,
+	mailStep,
+	releaseLetterKeys,
+	releaseLetters,
+	saveRoutingDefaults,
+	scheduleRelease,
+	startFlow
+} from '$lib/server/offboarding/flow';
 import {
 	buildItExitMail,
 	getExitMailSettings,
-	sendClearanceMail,
 	sendExitFormsMail,
-	sendHandoverMail,
 	sendItExitMail
 } from '$lib/server/offboarding/mail';
 
@@ -64,13 +79,25 @@ import {
  *  read `form?.particularsError` (and friends) without TypeScript narrowing the
  *  key away on the branches that don't set it. `section` names which block
  *  should show the message inline; null means the page-level banner. */
-type Section = 'particulars' | 'letters' | 'changes' | 'clearance' | 'handover' | null;
+type Section =
+	| 'particulars'
+	| 'letters'
+	| 'changes'
+	| 'clearance'
+	| 'handover'
+	| 'routing'
+	| 'fnf'
+	| 'release'
+	| null;
 
 function no(status: number, message: string, section: Section = null) {
 	return fail(status, {
 		message,
 		particularsError: section === 'particulars',
 		lettersError: section === 'letters',
+		routingError: section === 'routing',
+		fnfError: section === 'fnf',
+		releaseError: section === 'release',
 		changesError: section === 'changes',
 		clearanceError: section === 'clearance',
 		handoverError: section === 'handover'
@@ -107,7 +134,9 @@ const PARTICULAR_FIELDS = {
 	uanNo: (v: string) => v,
 	panNo: (v: string) => v.toUpperCase(),
 	bankAccountName: titleCase,
-	noticePeriod: (v: string) => v
+	noticePeriod: (v: string) => v,
+	// Set when the exit was started; printed on the exit letters.
+	refNo: (v: string) => v
 } as const;
 
 /** What HR still fills on the F&F card: the statutory follow-ups. The
@@ -149,6 +178,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			companyName: company?.name ?? brand.legalName,
 			brandSlug: brand.slug,
 			employeeId: exit.employeeId,
+			refNo: (e.refNo as string | null) ?? (e.letters?.refNo as string | null) ?? null,
 			fullName: exit.fullName,
 			personalEmail: exit.personalEmail,
 			personalMobile: exit.personalMobile ?? null,
@@ -249,34 +279,57 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			link: exitTokenUrl(clearanceTokens[i])
 		})),
 		clearanceProgress: clearanceProgress(clearances.map((c) => ({ status: String(c.status) }))),
-		/** Where a "send to payroll" would go, and what went last time. The
-		 *  address comes from payroll's own clearance row, so HR is not asked to
-		 *  remember it — and it stays editable for the exit where it differs. */
-		payrollEmail: clearances.find((c) => c.department === 'payroll')?.approverEmail ?? '',
-		payrollDispatch: e.payrollDispatch?.sentAt
-			? {
-					sentAt: (e.payrollDispatch.sentAt as Date).toISOString(),
-					sentTo: e.payrollDispatch.sentTo ?? '',
-					sentBy: e.payrollDispatch.sentBy ?? '',
-					count:
-						((e.payrollDispatch.docKeys as string[])?.length ?? 0) +
-						((e.payrollDispatch.fileIds as unknown[])?.length ?? 0)
-				}
-			: null,
-		// Payroll's settlement, read-only for HR — label and value together so the
-		// card and the clearance form cannot drift apart on either.
-		fnfPayrollFields: FNF_PAYROLL_FIELDS.map((f) => ({
-			key: f.key,
-			label: f.label,
-			value: ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? ''
+		/** The exit chain, step by step — what the map on the left draws. Each
+		 *  step carries its clearance link (when it has one) so HR can copy it
+		 *  out of band when someone says the mail never arrived. */
+		steps: flowSteps(e, clearances as unknown as Record<string, unknown>[]).map((s) => {
+			const i = clearances.findIndex((c) => String(c._id) === s.clearanceId);
+			return { ...s, link: i >= 0 ? exitTokenUrl(clearanceTokens[i]) : null };
+		}),
+		flow: {
+			startedAt: e.flow?.startedAt ? new Date(e.flow.startedAt).toISOString() : null,
+			hrDoneAt: e.flow?.hrDoneAt ? new Date(e.flow.hrDoneAt).toISOString() : null,
+			scheduledAt: e.flow?.scheduledAt ? new Date(e.flow.scheduledAt).toISOString() : null,
+			releasedAt: e.flow?.releasedAt ? new Date(e.flow.releasedAt).toISOString() : null,
+			releasedBy: (e.flow?.releasedBy as string | null) ?? null,
+			releaseAfterDays: Number(e.flow?.releaseAfterDays ?? 30),
+			autoRelease: e.flow?.autoRelease !== false,
+			letterKeys: releaseLetterKeys(e),
+			lastError: e.flow?.lastError?.message
+				? { step: e.flow.lastError.step as string, message: e.flow.lastError.message as string }
+				: null
+		},
+		/** The letters this track can be sent, for the release card. */
+		releaseOptions: lettersForTrack(e.track).map((k) => ({
+			key: k,
+			label: EXIT_DOC_BY_KEY.get(k)?.label ?? k,
+			source: LETTER_SOURCES[k]
 		})),
-		ndcSections: NDC_SECTIONS.map((s) => ({
-			dept: s.dept,
-			label: s.label,
-			signatory: s.signatory,
-			optional: s.optional,
-			rows: s.rows.map((r) => ({ key: r.key, label: r.label }))
-		})),
+		/** Who each step mails, for this exit; and the saved default, so the card
+		 *  can say when this exit differs from it. */
+		routing: Object.fromEntries(
+			ROUTING_KEYS.map((k) => [
+				k,
+				{ email: (e.routing?.[k]?.email as string | null) ?? '', name: (e.routing?.[k]?.name as string | null) ?? '' }
+			])
+		) as Record<(typeof ROUTING_KEYS)[number], { email: string; name: string }>,
+		salesforceEnabled: !!e.routing?.salesforce?.enabled,
+		routingDefaults: await getRoutingDefaults(),
+		// HR's settlement form: HR fills it, payroll gets it prefilled and has
+		// the last word. Read-only here once payroll has signed.
+		fnfForm: FNF_PAYROLL_FIELDS.map((f) => {
+			const raw = ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? '';
+			const date = 'date' in f && !!f.date;
+			return {
+				key: f.key,
+				label: f.label,
+				date,
+				money: 'money' in f && !!f.money,
+				value: date ? (toIsoDate(raw) ?? '') : raw,
+				display: raw
+			};
+		}),
+		payrollSigned: !!e.fnf?.submittedByPayrollAt,
 		ndcState: ndcState(clearances as unknown as Record<string, unknown>[]),
 		employeeFiles: files
 			.filter((f) => f.source === 'employee')
@@ -302,7 +355,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		handoverSlots: HANDOVER_DOCS.map((d) => ({
 			docType: d.docType,
 			label: d.label,
-			applicableWhen: d.applicableWhen
+			applicableWhen: d.applicableWhen,
+			legacy: d.legacy
 		})),
 		uploadSlots: EXIT_UPLOAD_DOCS.map((d) => ({
 			docType: d.docType,
@@ -340,6 +394,9 @@ export const actions: Actions = {
 		else if (!isValidEmail(patch.personalEmail)) errors.push('Enter a valid personal email address.');
 		if (patch.personalMobile && !isValidMobile(patch.personalMobile))
 			errors.push('Mobile number must be 10 digits starting 6-9.');
+		if (!patch.refNo) errors.push('Reference number is required.');
+		else if (await Exit.exists({ refNo: patch.refNo, _id: { $ne: params.id } }))
+			errors.push(`Reference number ${patch.refNo} is already used by another offboarding.`);
 		if (errors.length) return no(400, errors.join(' '), 'particulars');
 
 		const doj = isoToDDMMYYYY(get('doj')) || null;
@@ -406,9 +463,9 @@ export const actions: Actions = {
 		return { particularsSaved: true };
 	},
 
-	/** The details only the exit letters print — salutation, reference number
-	 *  and, for interns, USN, period and the work summary. The rest of each
-	 *  letter comes from the particulars above. */
+	/** The details only the exit letters print — salutation and, for interns,
+	 *  USN, period and the work summary. The rest of each letter (the reference
+	 *  number included) comes from the particulars above. */
 	saveLetters: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
@@ -424,7 +481,6 @@ export const actions: Actions = {
 
 		const next: Record<string, string | null> = {
 			salutation,
-			refNo: get('refNo'),
 			usn: get('usn')?.toUpperCase() ?? null,
 			internshipPeriod: get('internshipPeriod'),
 			workSummary: get('workSummary')
@@ -616,199 +672,124 @@ export const actions: Actions = {
 			action: 'exit_submission_accepted',
 			ip: getClientAddress()
 		});
+		// Accepting is what starts the chain: the reporting manager is mailed
+		// now, and each step after them as the one before it signs.
+		await startFlow(params.id);
 		return { accepted: true };
 	},
 
-	/** SOP step 7 — save the approver list and email each of them their
-	 *  clearance link. Re-running only mails the ones still outstanding, so this
-	 *  doubles as "send the rest" after adding a department. */
-	sendClearances: async ({ params, request, locals, getClientAddress }) => {
+	/** Starts the exit chain for an exit accepted before the chain existed, or
+	 *  nudges it on after something was fixed. Safe to press twice. */
+	startChain: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit, company } = row;
+		if (!row.exit.reviewedAt)
+			return no(409, "Accept the employee's submission first — that is what starts the chain.");
+		if (row.exit.status === 'completed') return no(409, 'This exit is closed.');
+		await startFlow(params.id);
+		await audit({
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_chain_started',
+			ip: getClientAddress()
+		});
+		return { chainStarted: true };
+	},
 
-		// The employee has to have declared their handover before anyone can clear
-		// it: requesting clearances from a fresh exit would mail every approver a
-		// blank No-Dues certificate to sign off. `acceptSubmission` is the gate
-		// that opens this round, so only stages at or past it qualify.
-		if (!['submitted', 'changes_requested', 'clearances', 'cleared', 'fnf'].includes(exit.status))
-			return no(
-				409,
-				exit.status === 'completed'
-					? 'This exit is closed — reopen it before requesting clearances again.'
-					: 'The employee has not submitted their exit documents yet. Accept their submission first, ' +
-							'or the approvers would be asked to sign a blank certificate.',
-				'clearance'
-			);
+	/** Re-sends one clearance step's mail: after its address was corrected in
+	 *  the mail settings, or as a reminder to someone who has not signed. */
+	resendStep: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		const key = String((await request.formData()).get('step') ?? '') as FlowStepKey;
+		const def = FLOW_STEPS.find((s) => s.key === key && s.dept);
+		if (!def) return no(400, 'That step does not send a mail.');
+		const current = await ExitClearance.findOne({ exitId: params.id, department: def.dept }, 'status').lean();
+		const res = await mailStep(params.id, key, { reminder: current?.status === 'sent' });
+		if ('error' in res) return no(400, res.error);
+		await advanceFlow(params.id);
+		await audit({
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_step_resent',
+			field: key,
+			ip: getClientAddress()
+		});
+		return { stepResent: def.label };
+	},
 
+	/** The mail settings at the bottom of the page: who each step of this exit
+	 *  mails — and, when ticked, the starting point for exits created from now
+	 *  on. A step already signed keeps the address it was signed under; these
+	 *  only steer what is still to come. */
+	saveRouting: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
 		const form = await request.formData();
-		const approvers: {
-			department: ClearanceDept;
-			email: string;
-			name?: string | null;
-			designation?: string | null;
-		}[] = [];
+		const get = (k: string) => String(form.get(k) ?? '').trim();
+
+		const patch: Record<string, unknown> = {};
 		const errors: string[] = [];
-
-		for (const section of NDC_SECTIONS) {
-			const email = String(form.get(`email_${section.dept}`) ?? '').trim().toLowerCase();
-			// An optional section is only in scope when HR ticks it; a blank address
-			// on any section simply means "not this one".
-			if (!email) continue;
-			if (!isValidEmail(email)) {
-				errors.push(`${section.label}: "${email}" is not a valid email address.`);
-				continue;
-			}
-			approvers.push({
-				department: section.dept,
-				email,
-				name: String(form.get(`name_${section.dept}`) ?? '').trim() || null,
-				designation: String(form.get(`designation_${section.dept}`) ?? '').trim() || null
-			});
+		const value: Record<string, { email: string; name: string }> = {};
+		for (const key of ROUTING_KEYS) {
+			const email = get(`${key}_email`).toLowerCase();
+			const name = get(`${key}_name`);
+			if (email && !isValidEmail(email))
+				errors.push(`${ROUTING_LABELS[key]}: "${email}" is not a valid email address.`);
+			value[key] = { email, name };
+			patch[`routing.${key}.email`] = email || null;
+			patch[`routing.${key}.name`] = name || null;
 		}
-		if (errors.length) return no(400, errors.join(' '), 'clearance');
-		if (!approvers.length)
-			return no(400, 'Add at least one approver email before requesting clearances.', 'clearance');
+		const salesforceOn = form.get('salesforce_enabled') === 'on';
+		patch['routing.salesforce.enabled'] = salesforceOn;
+		if (errors.length) return no(400, errors.join(' '), 'routing');
 
-		// Skips departments whose clearance is already signed: their approver name
-		// is printed beside a stored signature on the certificate, and overwriting
-		// it from the form would caption one person's signature with another's.
-		const signed = new Set(
-			(await ExitClearance.find({ exitId: params.id, status: 'completed' }).select('department').lean())
-				.map((c) => String(c.department))
-		);
-		await upsertClearances(
-			params.id,
-			approvers.filter((a) => !signed.has(a.department))
-		);
-
-		const brand = brandBySlug(company?.brandSlug ?? undefined);
-		// The certificate as it currently stands travels with every request, so an
-		// approver can see what they are signing without opening the link.
-		let attachment;
-		try {
-			const input = await loadPdfInput(params.id);
-			if (input) {
-				const bytes = await noDuesPdf(input);
-				attachment = [{ filename: `No-Dues-${exit.employeeId}.pdf`, content: Buffer.from(bytes) }];
-			}
-		} catch (e) {
-			// A failed render must not stop the clearance request going out.
-			console.error('[exit] NDC attachment render failed:', e);
-		}
-
-		const rows = await ExitClearance.find({ exitId: params.id });
-		const sent: string[] = [];
-		const failed: string[] = [];
-		for (const c of rows) {
-			if (c.status === 'completed') continue;
-			const token = await createExitToken(params.id, 'clearance', String(c._id));
-			const url = `${baseUrl()}/x/clearance/${token}`;
-			try {
-				await sendClearanceMail({
-					to: c.approverEmail,
-					approverName: c.approverName ?? null,
-					department: c.department as ClearanceDept,
-					employeeName: exit.fullName,
-					employeeId: exit.employeeId,
-					lwd: exit.lwd ?? null,
-					brand,
-					url,
-					attachments: attachment
-				});
-				c.status = 'sent';
-				c.sentAt = new Date();
-				c.sentCount = (c.sentCount ?? 0) + 1;
-				await c.save();
-				sent.push(c.department as string);
-			} catch (e) {
-				console.error(`[exit] clearance send failed for ${c.department}:`, e);
-				failed.push(c.department as string);
+		await Exit.findByIdAndUpdate(params.id, patch);
+		// Taking Salesforce off this exit drops a clearance not yet signed, so the
+		// No Dues certificate stops waiting on it and its link stops working.
+		if (!salesforceOn) {
+			const open = await ExitClearance.findOne({
+				exitId: params.id,
+				department: 'salesforce',
+				status: { $ne: 'completed' }
+			}).lean();
+			if (open) {
+				await ExitToken.deleteMany({ exitId: params.id, purpose: 'clearance', clearanceId: open._id });
+				await ExitClearance.deleteOne({ _id: open._id });
 			}
 		}
 
-		// Only move an exit forward into the clearance round — never pull one that
-		// has already cleared, reached F&F, or closed back to 'clearances'.
-		if (['submitted', 'changes_requested'].includes(exit.status)) {
-			await Exit.findByIdAndUpdate(params.id, { status: 'clearances' });
+		const asDefault = form.get('saveDefault') === 'on';
+		if (asDefault) {
+			const current = await getRoutingDefaults();
+			await saveRoutingDefaults(
+				{
+					it: value.it,
+					salesforce: { ...value.salesforce, enabled: salesforceOn },
+					hr: value.hr,
+					payroll: value.payroll,
+					releaseAfterDays: current.releaseAfterDays
+				},
+				locals.admin!.id
+			);
 		}
-
 		await audit({
-			candidateId: exit.candidateId ? String(exit.candidateId) : null,
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
 			actor: locals.admin!.email,
-			action: 'exit_clearances_sent',
-			field: sent.join(', ') || undefined,
+			action: 'exit_routing_saved',
+			field: asDefault ? 'this exit + default' : 'this exit',
+			newValue: ROUTING_KEYS.map((k) => `${k}=${value[k].email || '—'}`).join(', '),
 			ip: getClientAddress()
 		});
-
-		if (failed.length && !sent.length)
-			return no(502, `The mail provider rejected every clearance request (${failed.join(', ')}).`, 'clearance');
-		return { clearancesSent: sent.length, clearancesFailed: failed };
-	},
-
-	/** Nudge one approver whose clearance is still outstanding. */
-	remindClearance: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireHr(locals);
-		if (forbidden) return forbidden;
-		const row = await getExit(params.id);
-		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit, company } = row;
-
-		const clearanceId = String((await request.formData()).get('clearanceId') ?? '');
-		const c = await ExitClearance.findOne({ _id: clearanceId, exitId: params.id });
-		if (!c) return no(404, 'Clearance not found.');
-		if (c.status === 'completed')
-			return no(409, 'That clearance is already signed.');
-
-		const token = await createExitToken(params.id, 'clearance', String(c._id));
-		try {
-			await sendClearanceMail({
-				to: c.approverEmail,
-				approverName: c.approverName ?? null,
-				department: c.department as ClearanceDept,
-				employeeName: exit.fullName,
-				employeeId: exit.employeeId,
-				lwd: exit.lwd ?? null,
-				brand: brandBySlug(company?.brandSlug ?? undefined),
-				url: `${baseUrl()}/x/clearance/${token}`,
-				reminder: true
-			});
-		} catch (e) {
-			console.error('[exit] clearance reminder failed:', e);
-			return no(502, 'The mail provider rejected the reminder. Try again.');
-		}
-		c.sentAt = new Date();
-		c.sentCount = (c.sentCount ?? 0) + 1;
-		await c.save();
-		await audit({
-			actor: locals.admin!.email,
-			action: 'exit_clearance_reminded',
-			field: `${c.department} <${c.approverEmail}>`,
-			ip: getClientAddress()
-		});
-		return { reminded: true, department: c.department };
-	},
-
-	/** Drops a clearance HR no longer needs (e.g. Salesforce for a non-sales
-	 *  employee added by mistake). Its section then disappears from the live
-	 *  certificate, because ndcState only prints sections that have a row. */
-	removeClearance: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = requireHr(locals);
-		if (forbidden) return forbidden;
-		const clearanceId = String((await request.formData()).get('clearanceId') ?? '');
-		const c = await ExitClearance.findOne({ _id: clearanceId, exitId: params.id }).lean();
-		if (!c) return no(404, 'Clearance not found.');
-		await ExitToken.deleteMany({ exitId: params.id, purpose: 'clearance', clearanceId });
-		await ExitClearance.deleteOne({ _id: clearanceId });
-		await audit({
-			actor: locals.admin!.email,
-			action: 'exit_clearance_removed',
-			field: String(c.department),
-			ip: getClientAddress()
-		});
-		return { clearanceRemoved: true };
+		// A blank address may have been holding the chain; this is what lets it on.
+		await advanceFlow(params.id);
+		return { routingSaved: true, routingDefaulted: asDefault };
 	},
 
 	/** SOP step 5 — the "block the system access" mail to the IT desk. */
@@ -843,15 +824,28 @@ export const actions: Actions = {
 		return { itMailSent: true };
 	},
 
-	/** SOP step 8 — the payroll / F&F / PF / taxation block. */
+	/** HR's step in the chain: the F&F, leave and loan figures, plus the PF and
+	 *  tax follow-ups. "Save & send to payroll" also hands the step on, which
+	 *  mails payroll the prefilled settlement with every document attached.
+	 *  Once payroll has signed, their figures are final and only the PF/tax
+	 *  block stays HR's to edit. */
 	saveFnf: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
+		const { exit } = row;
+		const e = exit as unknown as Record<string, any>;
 
 		const form = await request.formData();
 		const patch: Record<string, unknown> = {};
+		const payrollSigned = !!e.fnf?.submittedByPayrollAt;
+		if (!payrollSigned) {
+			for (const f of FNF_PAYROLL_FIELDS) {
+				const raw = String(form.get(f.key) ?? '').trim();
+				patch[`fnf.${f.key}`] = FNF_PAYROLL_DATE_KEYS.has(f.key) ? isoToDDMMYYYY(raw) || null : raw || null;
+			}
+		}
 		for (const field of FNF_FIELDS) {
 			const raw = String(form.get(field) ?? '').trim();
 			patch[`fnf.${field}`] = FNF_DATE_FIELDS.has(field) ? isoToDDMMYYYY(raw) || null : raw || null;
@@ -860,123 +854,77 @@ export const actions: Actions = {
 		patch['fnf.taxationApplicable'] = form.get('taxationApplicable') === 'on';
 		patch['fnf.updatedAt'] = new Date();
 
-		// Recording the settlement is what moves an exit into the F&F stage —
-		// but never backwards out of completed.
-		const { exit } = row;
-		if (exit.status === 'cleared' || exit.status === 'clearances') patch.status = 'fnf';
+		const handOver = form.get('handToPayroll') === '1';
+		if (handOver) {
+			const clearances = await ExitClearance.find({ exitId: params.id }).lean();
+			const current = flowSteps(e, clearances as unknown as Record<string, unknown>[]).find(
+				(s) => s.status === 'active' || s.status === 'blocked'
+			);
+			if (current?.key !== 'hr')
+				return no(
+					409,
+					current
+						? `The chain is waiting on "${current.label}" — it is not HR's turn yet.`
+						: "The chain has not started. Accept the employee's submission first.",
+					'fnf'
+				);
+			if (!String(form.get('netAmount') ?? '').trim())
+				return no(400, 'Fill in the net F&F payable before sending it to payroll.', 'fnf');
+			patch['flow.hrDoneAt'] = new Date();
+			patch['flow.hrDoneBy'] = locals.admin!.email;
+		}
 
 		await Exit.findByIdAndUpdate(params.id, patch);
 		await audit({
 			candidateId: exit.candidateId ? String(exit.candidateId) : null,
 			actor: locals.admin!.email,
-			action: 'exit_fnf_saved',
+			action: handOver ? 'exit_fnf_sent_to_payroll' : 'exit_fnf_saved',
 			field: 'netAmount',
 			newValue: String(form.get('netAmount') ?? '') || null,
 			ip: getClientAddress()
 		});
-		return { fnfSaved: true };
+		if (handOver) await advanceFlow(params.id);
+		return { fnfSaved: true, handedToPayroll: handOver };
 	},
 
-	/** Forward the exit paperwork to the payroll team.
-	 *
-	 *  Separate from the employee's handover link on purpose: payroll needs the
-	 *  internal documents (the exit interview, the signed No Dues) that the
-	 *  employee never sees, and they need them as attachments in a mailbox they
-	 *  already work from rather than behind another portal login.
-	 *
-	 *  HR chooses what goes. Sending everything by default would be easier to
-	 *  build and wrong: some of these documents contain answers given in
-	 *  confidence at an exit interview, and "all of it" should be a decision
-	 *  somebody takes, not the shape of the button. */
-	sendDocsToPayroll: async ({ params, request, locals, getClientAddress }) => {
+	/** The last step: which letters go to the employee, and the cadence — how
+	 *  many days after payroll signs off they go out by themselves. */
+	saveRelease: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit } = row;
+		if (row.exit.status === 'completed') return no(409, 'This exit is closed.', 'release');
 
 		const form = await request.formData();
-		const to = String(form.get('to') ?? '').trim();
-		if (!isValidEmail(to)) return no(400, 'Enter a valid email address for the payroll team.');
-
-		const docKeys = form.getAll('docKey').map((v) => String(v));
-		const fileIds = form.getAll('fileId').map((v) => String(v));
-		if (!docKeys.length && !fileIds.length)
-			return no(400, 'Pick at least one document to send.');
-
-		const input = await loadPdfInput(params.id);
-		if (!input) return no(404, 'Offboarding record not found.');
-
-		// Bounded by what this exit actually offers, so a hand-crafted POST cannot
-		// name a document the record does not have.
-		const allowed = availableDocs(exit as unknown as Record<string, unknown>);
-		const allowedKeys = new Map(allowed.map((d) => [String(d.key), d.key]));
-		const attachments: { filename: string; content: Buffer }[] = [];
-		const sentKeys: string[] = [];
-		for (const key of docKeys) {
-			const typed = allowedKeys.get(key);
-			if (!typed) continue;
-			const rendered = await renderExitDoc(typed, input);
-			if (!rendered) continue;
-			attachments.push({ filename: rendered.filename, content: Buffer.from(rendered.bytes) });
-			sentKeys.push(key);
-		}
-
-		const files = fileIds.length
-			? await ExitDocument.find({ _id: { $in: fileIds }, exitId: params.id }).lean()
-			: [];
-		for (const f of files) {
-			try {
-				const bytes = await getGridFSBytes(f.gridfsId as never);
-				attachments.push({
-					filename: (f.label as string) ?? (f.docType as string),
-					content: Buffer.from(bytes)
-				});
-			} catch {
-				// One unreadable upload must not sink the whole send; the rest still
-				// reach payroll and the result names what went.
-			}
-		}
-
-		if (!attachments.length) return no(400, 'None of those documents could be prepared.');
-
-		const brand = brandBySlug(row.company?.brandSlug ?? undefined);
-		const name = exit.fullName ?? exit.employeeId ?? 'the employee';
-		try {
-			await sendMail(
-				to,
-				`Exit paperwork — ${name}${exit.employeeId ? ` (${exit.employeeId})` : ''}`,
-				`Please find attached the exit paperwork for ${name}.\n\n` +
-					`Last working day: ${exit.lwd ?? '—'}\n` +
-					`Attached: ${attachments.map((a) => a.filename).join(', ')}\n\n` +
-					`Sent from the ChampOnboard portal by ${locals.admin!.email}.`,
-				{ attachments, from: brandFromHeader(brand, 'exit') }
-			);
-		} catch (err) {
-			console.error(`[payroll-dispatch] send failed for exit=${params.id}:`, err);
-			return no(502, 'Could not send to payroll. Check the mail provider and try again.');
-		}
+		const allowed = lettersForTrack(row.exit.track as string | null) as string[];
+		const letterKeys = form.getAll('letterKey').map(String).filter((k) => allowed.includes(k));
+		const days = Number(String(form.get('releaseAfterDays') ?? '').trim());
+		if (!Number.isInteger(days) || days < 0 || days > 365)
+			return no(400, 'Days after payroll sign-off must be a whole number from 0 to 365.', 'release');
+		const autoRelease = form.get('autoRelease') === 'on';
 
 		await Exit.findByIdAndUpdate(params.id, {
-			$set: {
-				'payrollDispatch.sentAt': new Date(),
-				'payrollDispatch.sentTo': to,
-				'payrollDispatch.sentBy': locals.admin!.email,
-				'payrollDispatch.docKeys': sentKeys,
-				'payrollDispatch.fileIds': files.map((f) => f._id)
-			}
+			'flow.letterKeys': letterKeys,
+			'flow.releaseAfterDays': days,
+			'flow.autoRelease': autoRelease
 		});
-
+		if (form.get('saveDefault') === 'on') {
+			const current = await getRoutingDefaults();
+			await saveRoutingDefaults({ ...current, releaseAfterDays: days }, locals.admin!.id);
+		}
 		await audit({
-			candidateId: exit.candidateId ? String(exit.candidateId) : null,
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
 			actor: locals.admin!.email,
-			action: 'exit_docs_sent_to_payroll',
-			field: to,
-			newValue: attachments.map((a) => a.filename).join(', '),
+			action: 'exit_release_set',
+			field: letterKeys.join(', ') || 'no letters',
+			newValue: autoRelease ? `${days} days after payroll` : 'manual',
 			ip: getClientAddress()
 		});
-
-		return { payrollSent: attachments.length };
+		// Re-dates a release already scheduled; with payroll already signed and a
+		// cadence already past, this is what sends it.
+		await scheduleRelease(params.id, { reset: true });
+		return { releaseSaved: true };
 	},
 
 	/** SOP 10.7 — the exit-completion checklist. */
@@ -1001,57 +949,23 @@ export const actions: Actions = {
 		return { closureSaved: true };
 	},
 
-	/** SOP step 9 — the final documents link, ~30-45 days after the LWD. Mints a
-	 *  six-month handover token and mails it with everything HR has attached. */
+	/** Releases now: the selected letters and the handover link go to the
+	 *  employee, and the exit closes — what the cadence would do on its date. */
 	sendHandover: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit, company } = row;
-		const e = exit as unknown as Record<string, any>;
-
-		const files = await ExitDocument.find({ exitId: params.id, source: 'hr' }).lean();
-		if (!files.length)
-			return no(
-				400,
-				'Upload at least one handover document (relieving letter, payslips, F&F statement) before sending the link.',
-				'handover'
-			);
-
-		const brand = brandBySlug(company?.brandSlug ?? undefined);
-		const token = await createExitToken(params.id, 'handover');
-		const url = `${baseUrl()}/x/final/${token}`;
-		const labelByType = new Map<string, string>(HANDOVER_DOCS.map((d) => [d.docType, d.label]));
-
-		try {
-			await sendHandoverMail({
-				to: exit.personalEmail,
-				employeeName: exit.fullName,
-				brand,
-				url,
-				fnfAmount: e.fnf?.netAmount ?? null,
-				fnfDate: e.fnf?.settlementDate ?? null,
-				documents: [...new Set(files.map((f) => labelByType.get(f.docType) ?? f.label ?? f.docType))]
-			});
-		} catch (err) {
-			console.error('[exit] handover send failed:', err);
-			return no(502, 'The mail provider rejected the send. Try again.', 'handover');
-		}
-
-		await Exit.findByIdAndUpdate(params.id, {
-			status: 'completed',
-			handoverMailSentAt: new Date(),
-			completedAt: new Date()
-		});
+		const res = await releaseLetters(params.id, locals.admin!.email);
+		if ('error' in res) return no(400, res.error, 'handover');
 		await audit({
-			candidateId: exit.candidateId ? String(exit.candidateId) : null,
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
 			actor: locals.admin!.email,
 			action: 'exit_handover_sent',
-			field: exit.personalEmail,
+			field: row.exit.personalEmail,
 			ip: getClientAddress()
 		});
-		return { handoverSent: true, url };
+		return { handoverSent: true, url: res.url };
 	},
 
 	/** Reopens a closed exit — a relieving letter reissued, a figure corrected. */
@@ -1070,7 +984,13 @@ export const actions: Actions = {
 		await Exit.findByIdAndUpdate(params.id, {
 			status: 'fnf',
 			completedAt: null,
-			handoverMailSentAt: null
+			handoverMailSentAt: null,
+			// The release can be sent again — but only by HR: a reopened exit is
+			// being corrected, and must not go out again on a schedule behind them.
+			'flow.releasedAt': null,
+			'flow.releasedBy': null,
+			'flow.scheduledAt': null,
+			'flow.autoRelease': false
 		});
 		await audit({
 			actor: locals.admin!.email,
