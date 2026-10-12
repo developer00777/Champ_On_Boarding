@@ -243,6 +243,12 @@ export const MODULES: Module[] = [
 			// record, so this re-letterheads the offer and re-rules the documents.
 			{ key: 'candidate.entity', label: 'Candidates: move to another entity', kind: 'write', enforced: true,
 				surface: ['/admin/candidates/[id]::moveEntity'] },
+			// Changes the one record's hiring track when the kind of hire changes
+			// late. The track decides the documents asked for, the offer letter
+			// template and its pay period, BGV and the UAN, so this re-rules all of
+			// them for this person.
+			{ key: 'candidate.track', label: 'Candidates: change the hiring track', kind: 'write', enforced: true,
+				surface: ['/admin/candidates/[id]::changeTrack'] },
 			// Offer letter powers that were super-admin-only. Each works on top of
 			// being able to open the offer letter at all; hand-editing also needs
 			// the offer form to be editable for them (an HR admin's is).

@@ -876,6 +876,21 @@
 	$effect(() => {
 		if (form?.entityMoved) entityChoice = '';
 	});
+
+	// Changing the hiring track: the same preview-then-confirm shape, with the
+	// notes grouped so what is lost reads apart from what needs doing.
+	let trackChoice = $state('');
+	const trackPreview = $derived(
+		form?.trackPreview && form.trackPreview.toTrack === trackChoice ? form.trackPreview : null
+	);
+	$effect(() => {
+		if (form?.trackChanged) trackChoice = '';
+	});
+	const TRACK_NOTE_GROUPS = [
+		{ tone: 'loss', title: 'Lost or stops applying' },
+		{ tone: 'todo', title: 'Needs doing' },
+		{ tone: 'info', title: 'Changes by itself' }
+	] as const;
 	const shiftOptions = $derived([
 		...SHIFT_TIMINGS.map((s) => ({ value: s, label: s })),
 		...(shiftTiming && !isShiftTiming(shiftTiming)
@@ -1792,6 +1807,65 @@
 				<p class="it-link-note">Moving to another entity needs “Candidates: move to another entity” in Access &amp; org.</p>
 			{/if}
 		</section>
+
+		<!-- Track: what kind of hire this is, and changing it when that changes
+		     late. Same record and link, so no second onboarding. -->
+		<section class="card emp-card">
+			<div class="eyebrow" style="margin-bottom:10px">Track</div>
+			<div class="shift-display">{TRACK_LABELS[c.track as Track] ?? c.track}</div>
+			{#if data.lastTrackChange}
+				<p class="it-link-note" style="margin-top:-4px">
+					Changed from {data.lastTrackChange.fromName} ·
+					{new Date(data.lastTrackChange.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+					· {data.lastTrackChange.by}
+				</p>
+			{/if}
+
+			{#if form?.trackChanged}
+				<p class="saved-chip" style="margin:0 0 8px">Changed to {form.trackChanged.toName} ✓</p>
+				{@render trackNotes(form.trackChanged.notes)}
+			{/if}
+
+			{#if data.can.track}
+				<form method="POST" action="?/changeTrack" use:enhance={() => async ({ update }) => update({ reset: false })} class="emp-form">
+					<GlassSelect
+						name="toTrack"
+						ariaLabel="Change track"
+						placeholder="Change to…"
+						bind:value={trackChoice}
+						options={data.trackOptions}
+					/>
+					<button class="btn small ghost" disabled={!trackChoice}>Review</button>
+				</form>
+				{#if form?.trackChangeError && form?.message}<p class="it-link-note" style="color:var(--ae-ember)">{form.message}</p>{/if}
+
+				{#if trackPreview}
+					<div class="move-preview">
+						<div class="move-title">{TRACK_LABELS[c.track as Track]} → {trackPreview.toName}</div>
+						{@render trackNotes(trackPreview.notes)}
+						<form method="POST" action="?/changeTrack" use:enhance={() => async ({ update }) => update({ reset: false })}>
+							<input type="hidden" name="toTrack" value={trackPreview.toTrack} />
+							<input type="hidden" name="confirm" value="1" />
+							<button class="btn small teal" style="width:100%">Change to {trackPreview.toName}</button>
+						</form>
+					</div>
+				{/if}
+			{:else}
+				<p class="it-link-note">Changing the track needs “Candidates: change the hiring track” in Access &amp; org.</p>
+			{/if}
+		</section>
+
+		{#snippet trackNotes(notes: { tone: string; text: string }[])}
+			{#each TRACK_NOTE_GROUPS as g (g.tone)}
+				{@const items = notes.filter((n) => n.tone === g.tone)}
+				{#if items.length}
+					<div class="move-group {g.tone}">{g.title}</div>
+					<ul class="move-notes">
+						{#each items as n}<li class={n.tone}>{n.text}</li>{/each}
+					</ul>
+				{/if}
+			{/each}
+		{/snippet}
 
 		<!-- Employee ID widget -->
 		<section class="card emp-card">
@@ -3917,6 +3991,16 @@
 	}
 	.move-notes li { margin-bottom: 4px; }
 	.move-notes li.todo { color: var(--ae-text); font-weight: 600; }
+	.move-notes li.loss { color: var(--ae-ember); }
+	.move-group {
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--ae-muted);
+		margin: 8px 0 4px;
+	}
+	.move-group.loss { color: var(--ae-ember); }
 	.emp-hint {
 		display: flex;
 		align-items: center;

@@ -28,6 +28,7 @@ import {
 } from '$lib/shared/validation';
 import {
 	PHYSICAL_ITEM_TYPES,
+	TRACKS,
 	TRACK_LABELS,
 	confirmableItemByField,
 	slotByType,
@@ -56,6 +57,7 @@ import { sendItSetupMail } from '$lib/server/it-setup-mail';
 import { env } from '$env/dynamic/private';
 import { baseUrl } from '$lib/server/base-url';
 import { moveCandidate, moveImpact, resolveMove } from '$lib/server/entity-move';
+import { changeTrack, resolveTrack, trackImpact } from '$lib/server/track-change';
 
 async function getCandidate(id: string) {
 	const candidate = await Candidate.findById(id).lean();
@@ -209,7 +211,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		fixedLists,
 		referenceFiles,
 		entities,
-		lastMove
+		lastMove,
+		lastTrackChange
 	] = await Promise.all([
 		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
@@ -225,7 +228,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		CandidateFile.find({ candidateId: candidate._id }).sort({ createdAt: -1 }).lean(),
 		// Where the candidate can be moved to: every live entity but their own.
 		Company.find({ active: { $ne: false }, _id: { $ne: candidate.companyId } }, 'name').sort({ name: 1 }).lean(),
-		AuditLog.findOne({ candidateId: candidate._id, action: 'entity_changed' }).sort({ createdAt: -1 }).lean()
+		AuditLog.findOne({ candidateId: candidate._id, action: 'entity_changed' }).sort({ createdAt: -1 }).lean(),
+		AuditLog.findOne({ candidateId: candidate._id, action: 'track_changed' }).sort({ createdAt: -1 }).lean()
 	]);
 
 	// The decision is stored against an Admin id; the page needs the email. A
@@ -377,6 +381,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 					at: (lastMove as unknown as { createdAt: Date }).createdAt.toISOString()
 				}
 			: null,
+		trackOptions: TRACKS.filter((t) => t !== candidate.track).map((t) => ({ value: t, label: TRACK_LABELS[t] })),
+		/** The most recent track change, so the record says what it was before. */
+		lastTrackChange: lastTrackChange
+			? {
+					fromName: lastTrackChange.oldValue ?? '',
+					by: lastTrackChange.actor as string,
+					at: (lastTrackChange as unknown as { createdAt: Date }).createdAt.toISOString()
+				}
+			: null,
 		brand: brandBySlug(company?.brandSlug ?? undefined),
 		checklist: checklist.map((s) => ({
 			...s,
@@ -490,8 +503,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		 *  the same checks the actions and endpoints make, read once here so the
 		 *  page shows a button exactly when pressing it would work. */
 		can: await (async () => {
-			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false, entity: false };
-			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent', 'candidate.entity'] as const);
+			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false, entity: false, track: false };
+			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent', 'candidate.entity', 'candidate.track'] as const);
 			const at = (l: Level, min: Level) => ['none', 'view', 'act', 'approve'].indexOf(l) >= ['none', 'view', 'act', 'approve'].indexOf(min);
 			return {
 				edit: at(lv['candidate.edit'], 'act'),
@@ -501,7 +514,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				upload: at(lv['offer.upload'], 'act'),
 				manual: at(lv['offer.manual'], 'act'),
 				markSent: at(lv['offer.markSent'], 'act'),
-				entity: at(lv['candidate.entity'], 'act')
+				entity: at(lv['candidate.entity'], 'act'),
+				track: at(lv['candidate.track'], 'act')
 			};
 		})(),
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
@@ -1155,6 +1169,36 @@ ${brandSignoff(brand)}`,
 		}
 		const notes = await moveCandidate(row.candidate, from, to, locals.admin!.email, getClientAddress());
 		return { entityMoved: { fromName: (from?.name as string) ?? '', toName: to.name as string, notes } };
+	},
+
+	/** Changes the candidate's hiring track — the late "they are a fresher, not
+	 *  an intern" change — without a second onboarding. Same two presses as
+	 *  moveEntity: the first only returns what would be lost, what needs doing
+	 *  and what follows by itself; the second makes the change and returns the
+	 *  same notes as the to-do list. */
+	changeTrack: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = await requireCap(locals, 'candidate.track');
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const target = resolveTrack(row.candidate, String(form.get('toTrack') ?? ''));
+		if ('error' in target) return fail(400, { message: target.error, trackChangeError: true });
+		const { to } = target;
+
+		if (form.get('confirm') !== '1') {
+			return {
+				trackPreview: {
+					toTrack: to as string,
+					toName: TRACK_LABELS[to],
+					notes: await trackImpact(row.candidate, row.company, to)
+				}
+			};
+		}
+		const notes = await changeTrack(row.candidate, row.company, to, locals.admin!.email, getClientAddress());
+		return {
+			trackChanged: { fromName: TRACK_LABELS[row.candidate.track as Track] ?? '', toName: TRACK_LABELS[to], notes }
+		};
 	},
 
 	deleteCandidate: async ({ params, locals, getClientAddress }) => {
