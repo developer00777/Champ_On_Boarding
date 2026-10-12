@@ -47,6 +47,10 @@ export interface DocCtx {
 	 *  documents are generated live and change as clearances land, so an
 	 *  undated printout is genuinely ambiguous. */
 	generatedAt: string;
+	/** A letter rather than a form: the header carries the letterhead only and
+	 *  the footer drops the generated-at stamp — a letter prints its own date,
+	 *  and a second one in the footer would contradict it once re-downloaded. */
+	letter: boolean;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -117,9 +121,11 @@ function drawChrome(ctx: DocCtx, page: PDFPage) {
 	// documents, so the header names both on every sheet.
 	const entity = sanitize(brand.legalName || companyName).toUpperCase();
 	page.drawText(entity, { x: M, y: H - 26, size: 8.5, font: ctx.fontB, color: ctx.inkColor });
-	const title = sanitize(ctx.docTitle);
-	const tw = ctx.fontR.widthOfTextAtSize(title, 8.5);
-	page.drawText(title, { x: W - M - tw, y: H - 26, size: 8.5, font: ctx.fontR, color: GREY });
+	if (!ctx.letter) {
+		const title = sanitize(ctx.docTitle);
+		const tw = ctx.fontR.widthOfTextAtSize(title, 8.5);
+		page.drawText(title, { x: W - M - tw, y: H - 26, size: 8.5, font: ctx.fontR, color: GREY });
+	}
 
 	if (ctx.logo) {
 		// Area-matched sizing, as in the offer letter: the brand logos range from
@@ -141,7 +147,11 @@ function drawChrome(ctx: DocCtx, page: PDFPage) {
 
 	page.drawRectangle({ x: M, y: H - 40, width: ctx.CW, height: 0.6, color: RULE });
 
-	const foot = sanitize(`${companyName} - Private & Confidential   |   Generated ${ctx.generatedAt}`);
+	const foot = sanitize(
+		ctx.letter
+			? brand.legalName || companyName
+			: `${companyName} - Private & Confidential   |   Generated ${ctx.generatedAt}`
+	);
 	const fw = ctx.fontR.widthOfTextAtSize(foot, 7.5);
 	page.drawText(foot, { x: (W - fw) / 2, y: 14, size: 7.5, font: ctx.fontR, color: LIGHT });
 	page.drawRectangle({ x: M, y: 26, width: ctx.CW, height: 0.5, color: rgb(0.85, 0.85, 0.87) });
@@ -154,7 +164,8 @@ export async function createDoc(
 	brand: BrandTheme,
 	companyName: string,
 	docTitle: string,
-	generatedAt: string
+	generatedAt: string,
+	opts: { letter?: boolean } = {}
 ): Promise<DocCtx> {
 	const doc = await PDFDocument.create();
 	doc.registerFontkit(fontkit);
@@ -210,7 +221,8 @@ export async function createDoc(
 		brand,
 		companyName,
 		docTitle,
-		generatedAt
+		generatedAt,
+		letter: !!opts.letter
 	};
 	drawChrome(ctx, page);
 	return ctx;

@@ -13,6 +13,7 @@ import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import { listWindow, windowFilter } from '$lib/shared/ranges';
 import { EXIT_STATUS_META } from '$lib/shared/offboarding';
+import { TRACKS, type Track } from '$lib/shared/matrix';
 import {
 	clearanceProgress,
 	findOnboardingMatch,
@@ -117,6 +118,8 @@ export const actions: Actions = {
 		const dojInput = isoToDDMMYYYY(get('doj'));
 		const companyId = get('companyId');
 		const separationType = get('separationType') === 'involuntary' ? 'involuntary' : 'voluntary';
+		// Optional: blank defers to the onboarding record, or to HR on the exit page.
+		const trackInput = TRACKS.includes(get('track') as Track) ? get('track') : null;
 
 		const errors: string[] = [];
 		if (!employeeId) errors.push('Employee ID is required.');
@@ -164,6 +167,7 @@ export const actions: Actions = {
 			separationType,
 			...prefill,
 			personalMobile: personalMobile || prefill.personalMobile || null,
+			track: trackInput ?? prefill.track ?? null,
 			doj,
 			gratuity: { applicable: applicable === true },
 			status: 'initiated',

@@ -74,6 +74,9 @@ export const load: PageServerLoad = async ({ params }) => {
 			})
 			.filter((f): f is NonNullable<typeof f> => f !== null),
 		// Their own exit forms, still live-rendered so they can keep a copy.
-		documents: availableDocs(e)
+		// Asked as the employee: internal documents (the No Dues certificate,
+		// the unsigned letter drafts) are HR's, and the signed letters reach the
+		// employee as uploads in `files` above.
+		documents: availableDocs(e, 'employee')
 	};
 };

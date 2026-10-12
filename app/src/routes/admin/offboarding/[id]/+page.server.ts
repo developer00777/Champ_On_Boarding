@@ -20,6 +20,7 @@ import { brandBySlug } from '$lib/shared/brands';
 import { baseUrl } from '$lib/server/base-url';
 import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
+import { TRACKS, type Track } from '$lib/shared/matrix';
 import {
 	CLEARANCE_DEPT_LABELS,
 	CLOSURE_CHECKLIST_KEYS,
@@ -27,6 +28,7 @@ import {
 	HANDOVER_DOCS,
 	NDC_EMPLOYEE_ROW_KEYS,
 	FNF_PAYROLL_FIELDS,
+	LETTER_SALUTATIONS,
 	NDC_SECTIONS,
 	type ClearanceDept
 } from '$lib/shared/offboarding';
@@ -62,12 +64,13 @@ import {
  *  read `form?.particularsError` (and friends) without TypeScript narrowing the
  *  key away on the branches that don't set it. `section` names which block
  *  should show the message inline; null means the page-level banner. */
-type Section = 'particulars' | 'changes' | 'clearance' | 'handover' | null;
+type Section = 'particulars' | 'letters' | 'changes' | 'clearance' | 'handover' | null;
 
 function no(status: number, message: string, section: Section = null) {
 	return fail(status, {
 		message,
 		particularsError: section === 'particulars',
+		lettersError: section === 'letters',
 		changesError: section === 'changes',
 		clearanceError: section === 'clearance',
 		handoverError: section === 'handover'
@@ -165,6 +168,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			uanNo: exit.uanNo ?? null,
 			panNo: exit.panNo ?? null,
 			bankAccountName: exit.bankAccountName ?? null,
+			track: (exit.track as string | null) ?? null,
+			letters: {
+				salutation: e.letters?.salutation ?? null,
+				refNo: e.letters?.refNo ?? null,
+				usn: e.letters?.usn ?? null,
+				internshipPeriod: e.letters?.internshipPeriod ?? null,
+				workSummary: e.letters?.workSummary ?? null
+			},
 			status: exit.status,
 			service: serviceLabel(exit.doj, exit.lwd),
 			submittedAt: exit.submittedAt?.toISOString() ?? null,
@@ -335,6 +346,7 @@ export const actions: Actions = {
 		const lwd = isoToDDMMYYYY(get('lwd')) || null;
 		const resignationDate = isoToDDMMYYYY(get('resignationDate')) || row.exit.resignationDate;
 		const separationType = get('separationType') === 'involuntary' ? 'involuntary' : 'voluntary';
+		const track = TRACKS.includes(get('track') as Track) ? get('track') : null;
 		const gratuityOverride = get('gratuityApplicable');
 
 		// The computed answer is the default; HR's explicit choice wins, because
@@ -350,6 +362,7 @@ export const actions: Actions = {
 			lwd,
 			resignationDate,
 			separationType,
+			track,
 			'gratuity.applicable': applicable
 		});
 
@@ -362,6 +375,8 @@ export const actions: Actions = {
 			lwd,
 			resignationDate,
 			separationType,
+			// Decides which exit letters are generated, so a change is traced.
+			track,
 			// Stringified so they diff against the stored values the same way the
 			// text fields do. Gratuity especially: it decides whether a Form I is
 			// generated at all, so an untraced flip is exactly what an audit log
@@ -389,6 +404,54 @@ export const actions: Actions = {
 		}
 
 		return { particularsSaved: true };
+	},
+
+	/** The details only the exit letters print — salutation, reference number
+	 *  and, for interns, USN, period and the work summary. The rest of each
+	 *  letter comes from the particulars above. */
+	saveLetters: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+
+		const form = await request.formData();
+		const get = (k: string) => String(form.get(k) ?? '').trim() || null;
+
+		const salutation = get('salutation');
+		if (salutation && !(LETTER_SALUTATIONS as readonly string[]).includes(salutation))
+			return no(400, 'Pick Mr., Ms. or Mrs.', 'letters');
+
+		const next: Record<string, string | null> = {
+			salutation,
+			refNo: get('refNo'),
+			usn: get('usn')?.toUpperCase() ?? null,
+			internshipPeriod: get('internshipPeriod'),
+			workSummary: get('workSummary')
+		};
+		const before = ((row.exit as unknown as { letters?: Record<string, string | null> }).letters ??
+			{}) as Record<string, string | null>;
+
+		await Exit.findByIdAndUpdate(
+			params.id,
+			Object.fromEntries(Object.entries(next).map(([k, v]) => [`letters.${k}`, v]))
+		);
+
+		for (const [field, value] of Object.entries(next)) {
+			const old = before[field] ?? null;
+			if (old === value) continue;
+			await audit({
+				candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+				actor: locals.admin!.email,
+				action: 'exit_particulars_set',
+				field: `letters.${field}`,
+				oldValue: old,
+				newValue: value,
+				ip: getClientAddress()
+			});
+		}
+
+		return { lettersSaved: true };
 	},
 
 	/** SOP step 5 — mint (or re-mint) the employee's exit-forms link and email

@@ -15,7 +15,7 @@ export const GET: RequestHandler = async ({ params, getClientAddress }) => {
 	const input = await loadPdfInput(String(resolved.exit._id));
 	if (!input) error(404, 'Exit record not found');
 
-	const rendered = await renderExitDoc(params.key, input);
+	const rendered = await renderExitDoc(params.key, input, 'employee');
 	if (!rendered) error(404, 'That document does not apply to your exit');
 
 	await audit({

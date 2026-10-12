@@ -18,6 +18,13 @@ import {
 	noDuesPdf,
 	relievingFormalitiesPdf
 } from './pdf';
+import {
+	internshipBonafidePdf,
+	internshipStatusPdf,
+	relievingSalesPdf,
+	relievingSupportPdf
+} from './letters';
+import { lettersForTrack, type ExitLetterKey } from '$lib/shared/offboarding';
 
 export type ExitDocKey =
 	| 'no_dues'
@@ -25,7 +32,8 @@ export type ExitDocKey =
 	| 'nda'
 	| 'relieving_formalities'
 	| 'gratuity'
-	| 'fnf_summary';
+	| 'fnf_summary'
+	| ExitLetterKey;
 
 /** Who may see a document, and when.
  *
@@ -50,6 +58,28 @@ interface ExitDocDef {
 	 *  the F&F summary on HR having filled the settlement block. */
 	applies: (exit: Record<string, any>) => boolean;
 	audience: ExitDocAudience;
+	/** One of the exit letters rather than a form — listed apart from the forms
+	 *  on HR's page, and not ticked by default when papers go to payroll. */
+	letter?: boolean;
+}
+
+/** An exit letter entry. Letters are internal: what goes to the employee is the
+ *  signed copy HR uploads into the handover, never this unsigned draft. */
+function letterDoc(
+	key: ExitLetterKey,
+	label: string,
+	slug: string,
+	render: ExitDocDef['render']
+): ExitDocDef {
+	return {
+		key,
+		label,
+		slug,
+		render,
+		applies: (e) => lettersForTrack(e.track).includes(key),
+		audience: 'internal',
+		letter: true
+	};
 }
 
 /** HR has accepted the employee's submission — set by ?/acceptSubmission,
@@ -112,7 +142,21 @@ export const EXIT_DOCS: ExitDocDef[] = [
 		// worse than no statement at all.
 		applies: (e) => !!(e.fnf?.netAmount || e.fnf?.settlementDate || e.fnf?.salaryDueFrom),
 		audience: 'after_approval'
-	}
+	},
+	letterDoc('internship_status', 'Internship Status Certificate', 'Internship-Status-Certificate', internshipStatusPdf),
+	letterDoc('internship_bonafide', 'Bonafide Letter', 'Bonafide-Letter', internshipBonafidePdf),
+	letterDoc(
+		'relieving_support',
+		'Relieving & Experience Letter — Support format',
+		'Relieving-Experience-Letter-Support',
+		relievingSupportPdf
+	),
+	letterDoc(
+		'relieving_sales',
+		'Relieving & Experience Letter — Sales & Data format',
+		'Relieving-Experience-Letter-Sales-Data',
+		relievingSalesPdf
+	)
 ];
 
 export const EXIT_DOC_BY_KEY = new Map(EXIT_DOCS.map((d) => [d.key, d]));
@@ -168,7 +212,8 @@ export async function loadPdfInput(exitId: string): Promise<ExitPdfInput | null>
 export function availableDocs(exit: Record<string, any>, viewer: 'hr' | 'employee' = 'hr') {
 	return EXIT_DOCS.filter((d) => d.applies(exit) && canSee(d, exit, viewer)).map((d) => ({
 		key: d.key,
-		label: d.label
+		label: d.label,
+		letter: !!d.letter
 	}));
 }
 

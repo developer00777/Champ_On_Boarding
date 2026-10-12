@@ -16,13 +16,18 @@
 		EXIT_WORKLOAD_OPTIONS,
 		NDC_EMPLOYEE_DECLARATION_LABELS,
 		NDC_EMPLOYEE_SECTIONS,
+		LETTER_SALUTATIONS,
 		RELIEVING_ITEMS
 	} from '$lib/shared/offboarding';
+	import { TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 
 	let { data, form } = $props();
 
 	const e = $derived(data.exit);
 	const statusMeta = $derived(EXIT_STATUS_META[e.status] ?? { label: e.status, cls: '' });
+	const forms = $derived(data.documents.filter((d) => !d.letter));
+	const letters = $derived(data.documents.filter((d) => d.letter));
+	const isIntern = $derived(e.track === 'intern');
 
 	// In-flight flags per section, so each button reports its own progress rather
 	// than the page going quiet on a slow mail send.
@@ -230,6 +235,15 @@
 							<select name="separationType">
 								<option value="voluntary" selected={e.separationType === 'voluntary'}>Voluntary</option>
 								<option value="involuntary" selected={e.separationType === 'involuntary'}>Involuntary</option>
+							</select>
+						</label>
+						<label class="f">
+							<span>Track <small>(decides the exit letters)</small></span>
+							<select name="track">
+								<option value="" selected={!e.track}>Not set</option>
+								{#each TRACKS as t}
+									<option value={t} selected={e.track === t}>{TRACK_LABELS[t]}</option>
+								{/each}
 							</select>
 						</label>
 						<label class="f"><span>UAN</span><input name="uanNo" value={e.uanNo ?? ''} /></label>
@@ -648,7 +662,7 @@
 					<div class="pk-list">
 						{#each data.documents as d (d.key)}
 							<label class="pk-row">
-								<input type="checkbox" name="docKey" value={d.key} checked />
+								<input type="checkbox" name="docKey" value={d.key} checked={!d.letter} />
 								<span>{d.label}</span>
 								<span class="pk-tag">generated</span>
 							</label>
@@ -768,6 +782,90 @@
 			</form>
 		</section>
 
+		<!-- 5b. Exit letters -->
+		<section class="card">
+			<div class="sec-head">
+				<span class="section-num">05b</span>
+				<div>
+					<h2>Exit letters</h2>
+					<p class="muted">
+						{#if e.track}
+							{TRACK_LABELS[e.track as Track]} track —
+							{isIntern ? 'the two bonafide letters' : 'the relieving & experience letter, in either format'}.
+						{:else}
+							Track not set, so these are the employee letters. Set the track in
+							<b>Employment particulars</b> if this is an intern.
+						{/if}
+						Name, code, designation, dates and supervisor come from the particulars above; print,
+						get them signed, and upload the signed copy to the handover below.
+					</p>
+				</div>
+				{#if form?.lettersSaved}<span class="saved">Saved ✓</span>{/if}
+			</div>
+
+			<form method="POST" action="?/saveLetters" use:enhance={track('letters')}>
+				<fieldset class="rbac" disabled={!data.isHr}>
+					<div class="fgrid">
+						<label class="f">
+							<span>Salutation <small>(sets he / she)</small></span>
+							<select name="salutation">
+								<option value="" selected={!e.letters.salutation}>None — reads "they"</option>
+								{#each LETTER_SALUTATIONS as s}
+									<option value={s} selected={e.letters.salutation === s}>{s}</option>
+								{/each}
+							</select>
+						</label>
+						<label class="f">
+							<span>Letter ref. no.</span>
+							<input
+								name="refNo"
+								value={e.letters.refNo ?? ''}
+								placeholder={isIntern ? 'REF\\2026\\BL-004' : 'Ref\\2026\\RL\\CIPL-00239'}
+							/>
+						</label>
+						{#if isIntern}
+							<label class="f"><span>USN</span><input name="usn" value={e.letters.usn ?? ''} placeholder="ENG22CT0005" /></label>
+							<label class="f">
+								<span>Internship period</span>
+								<input name="internshipPeriod" value={e.letters.internshipPeriod ?? ''} placeholder="six months" />
+							</label>
+						{/if}
+					</div>
+					{#if isIntern}
+						<label class="f" style="margin-top:13px">
+							<span>Work summary <small>— completes "During his internship, he has been actively involved in …"</small></span>
+							<textarea
+								name="workSummary"
+								rows="2"
+								placeholder="working on the Ampliz platform, contributing to frontend development, API integration, and system enhancements"
+							>{e.letters.workSummary ?? ''}</textarea>
+						</label>
+					{:else}
+						<!-- Kept so saving from the employee view never wipes intern details
+						     entered while the track was still set to intern. -->
+						<input type="hidden" name="usn" value={e.letters.usn ?? ''} />
+						<input type="hidden" name="internshipPeriod" value={e.letters.internshipPeriod ?? ''} />
+						<input type="hidden" name="workSummary" value={e.letters.workSummary ?? ''} />
+					{/if}
+					{#if form?.lettersError && form?.message}<p class="error">{form.message}</p>{/if}
+					<div class="row-actions">
+						<button class="btn" disabled={sending['letters']}>
+							{sending['letters'] ? 'Saving…' : 'Save letter details'}
+						</button>
+						{#each letters as d (d.key)}
+							<a
+								class="btn ghost small"
+								href="/admin/offboarding/{e.id}/doc/{d.key}"
+								data-sveltekit-preload-data="off"
+							>
+								{d.label}
+							</a>
+						{/each}
+					</div>
+				</fieldset>
+			</form>
+		</section>
+
 		<!-- 6. Handover -->
 		<section class="card">
 			<div class="sec-head">
@@ -879,7 +977,7 @@
 				and this list refreshes on its own as things change.
 			</p>
 			<div class="doclist">
-				{#each data.documents as d}
+				{#each forms as d}
 					<a
 						class="doclink"
 						href="/admin/offboarding/{e.id}/doc/{d.key}"
@@ -890,6 +988,21 @@
 					</a>
 				{/each}
 			</div>
+			{#if letters.length}
+				<div class="tiny-eyebrow" style="margin:14px 0 8px">Letters</div>
+				<div class="doclist">
+					{#each letters as d}
+						<a
+							class="doclink"
+							href="/admin/offboarding/{e.id}/doc/{d.key}"
+							data-sveltekit-preload-data="off"
+						>
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 4h16v16H4z" /><path d="m4 6 8 7 8-7" /></svg>
+							{d.label}
+						</a>
+					{/each}
+				</div>
+			{/if}
 			<a
 				class="btn ghost small"
 				style="margin-top:12px;width:100%;justify-content:center"

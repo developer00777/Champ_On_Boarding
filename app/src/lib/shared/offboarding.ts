@@ -618,6 +618,46 @@ export const HANDOVER_DOCS = [
 	{ docType: 'form_16', label: 'Form 16 / taxation details', applicableWhen: 'taxationApplicable' }
 ] as const;
 
+// ── Exit letters ─────────────────────────────────────────────────────────────
+// The letters HR issues at the close of an exit, chosen by the employee's track.
+// Source documents (repo root):
+//   Bonafide letter-Internship Status.docx                      → internship_status
+//   Bonafide letter.docx                                        → internship_bonafide
+//   Sagar Reliving & Experience Letter - Support Format.docx    → relieving_support
+//   Mohan Reliving & Experience Letter - Sales & Data Format.docx → relieving_sales
+// Interns get the two bonafide letters; every other track gets the relieving &
+// experience letter, in whichever of its two formats fits their role.
+export type ExitLetterKey =
+	| 'internship_status'
+	| 'internship_bonafide'
+	| 'relieving_support'
+	| 'relieving_sales';
+
+export const INTERN_LETTERS: ExitLetterKey[] = ['internship_status', 'internship_bonafide'];
+export const EMPLOYEE_LETTERS: ExitLetterKey[] = ['relieving_support', 'relieving_sales'];
+
+/** The letters a track receives. An exit whose track was never recorded (one
+ *  created before the field existed, with no onboarding record to prefill it)
+ *  gets the employee letters — the common case — until HR says otherwise. */
+export function lettersForTrack(track: string | null | undefined): ExitLetterKey[] {
+	return track === 'intern' ? INTERN_LETTERS : EMPLOYEE_LETTERS;
+}
+
+/** Drives the pronouns the letters print. Left unset, they read "they/their". */
+export const LETTER_SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.'] as const;
+
+/** Who signs every exit letter, as the templates print it. */
+export const LETTER_SIGNATORY = {
+	name: 'Deepak Guduru',
+	title: 'Director of Staff and Performance'
+} as const;
+
+/** The contact line in the Sales & Data format's non-compete paragraph. */
+export const LETTER_HR_CONTACT = {
+	phone: '080 - 49034555',
+	email: 'Hrd.Jst@Championsmail.com'
+} as const;
+
 /** Files the EMPLOYEE uploads in their exit portal. */
 export const EXIT_UPLOAD_DOCS = [
 	{

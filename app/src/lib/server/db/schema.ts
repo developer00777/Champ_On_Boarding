@@ -733,6 +733,31 @@ const exitSchema = new Schema(
 		uanNo: { type: String, default: null },
 		panNo: { type: String, default: null },
 		bankAccountName: { type: String, default: null },
+		/** Same vocabulary as Candidate.track. Decides which exit letters apply
+		 *  (lettersForTrack in shared/offboarding.ts). Prefilled from the
+		 *  onboarding record; null for exits recorded before the field existed. */
+		track: {
+			type: String,
+			enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract', null],
+			default: null
+		},
+
+		// ── Exit letters ─────────────────────────────────────────────────────
+		// The few things the relieving / bonafide letters print that no other
+		// exit field carries. Everything else (name, code, dates, designation,
+		// supervisor) is read from the particulars above.
+		letters: {
+			/** Mr. / Ms. / Mrs. — also decides he/she in the body. */
+			salutation: { type: String, enum: ['Mr.', 'Ms.', 'Mrs.', null], default: null },
+			/** Printed top-left as typed, e.g. "Ref\2026\RL\CIPL-00239". */
+			refNo: { type: String, default: null },
+			/** Intern letters only. */
+			usn: { type: String, default: null },
+			/** "six months" — the internship status certificate's period. */
+			internshipPeriod: { type: String, default: null },
+			/** Completes "During his internship, he has been actively involved in …". */
+			workSummary: { type: String, default: null }
+		},
 
 		// ── Stage machine ────────────────────────────────────────────────────
 		// initiated        HR created the row; no link sent yet

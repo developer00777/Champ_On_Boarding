@@ -183,7 +183,13 @@ export function prefillFromOnboarding(
 	offer: Record<string, unknown> | null
 ) {
 	if (!candidate) return {};
+	// Only the two genders a salutation can be read from; anything else leaves
+	// the letters on "they/their" for HR to set.
+	const gender = String(candidate.gender ?? '').toLowerCase();
+	const salutation = gender === 'male' ? 'Mr.' : gender === 'female' ? 'Ms.' : null;
 	return {
+		track: (candidate.track as string | null) ?? null,
+		letters: { salutation },
 		doj: (offer?.joiningDate as string | null) ?? null,
 		designation: (offer?.jobTitle as string | null) ?? null,
 		department: (candidate.teamName as string | null) ?? (offer?.department as string | null) ?? null,

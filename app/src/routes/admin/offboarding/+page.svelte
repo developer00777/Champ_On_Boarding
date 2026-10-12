@@ -4,6 +4,7 @@
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
 	import DateRange from '$lib/components/DateRange.svelte';
 	import { EXIT_STATUS_META } from '$lib/shared/offboarding';
+	import { TRACKS, TRACK_LABELS } from '$lib/shared/matrix';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
@@ -122,6 +123,15 @@
 					<select name="separationType">
 						<option value="voluntary">Voluntary (resignation)</option>
 						<option value="involuntary">Involuntary (termination)</option>
+					</select>
+				</label>
+				<label class="f">
+					<span>Track</span>
+					<select name="track">
+						<option value="">From onboarding record</option>
+						{#each TRACKS as t}
+							<option value={t}>{TRACK_LABELS[t]}</option>
+						{/each}
 					</select>
 				</label>
 			</div>
