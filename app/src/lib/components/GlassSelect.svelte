@@ -203,7 +203,7 @@
 
 	.gs-list {
 		position: absolute;
-		z-index: 40;
+		z-index: 60;
 		top: calc(100% + 6px);
 		left: 0;
 		right: 0;
@@ -212,11 +212,11 @@
 		list-style: none;
 		max-height: 280px;
 		overflow-y: auto;
-		/* Frosted glass: a dark translucent base gives it an opacity floor so the
-		   list never reads as see-through (it floats over arbitrary content, unlike
-		   the cards which sit on the page gradient), with the white sheen on top. */
-		background: linear-gradient(150deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-			linear-gradient(180deg, rgba(23, 27, 40, 0.9), rgba(18, 21, 31, 0.92));
+		/* Glass on an opaque base: the sheen and the border are the card's, but
+		   the list floats over arbitrary content (text, other fields), so it must
+		   never let what is behind it show through. */
+		background: linear-gradient(150deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+			var(--ae-modal-base, #12151f);
 		border: 1px solid var(--ae-card-border);
 		border-radius: 12px;
 		box-shadow: var(--ae-card-shadow);
@@ -267,7 +267,7 @@
 	   component's own scoped styles. */
 	:global(.aegis[data-theme='light']) .gs-list {
 		background: linear-gradient(150deg, rgba(32, 36, 58, 0.04), rgba(32, 36, 58, 0.02)),
-			linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.85));
+			var(--ae-modal-base, #f7f7fb);
 	}
 	@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 		:global(.aegis[data-theme='light']) .gs-list {

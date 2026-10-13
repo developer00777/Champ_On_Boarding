@@ -115,28 +115,34 @@
 				</label>
 				<label class="f">
 					<span>Entity <b class="req">*</b></span>
-					<select name="companyId" required>
-						<option value="">Select entity…</option>
-						{#each data.companies as c}
-							<option value={c.id}>{c.name}</option>
-						{/each}
-					</select>
+					<GlassSelect
+						name="companyId"
+						ariaLabel="Entity"
+						placeholder="Select entity…"
+						required
+						options={data.companies.map((c) => ({ value: c.id, label: c.name }))}
+					/>
 				</label>
 				<label class="f">
 					<span>Separation type</span>
-					<select name="separationType">
-						<option value="voluntary">Voluntary (resignation)</option>
-						<option value="involuntary">Involuntary (termination)</option>
-					</select>
+					<GlassSelect
+						name="separationType"
+						ariaLabel="Separation type"
+						value="voluntary"
+						options={[
+							{ value: 'voluntary', label: 'Voluntary (resignation)' },
+							{ value: 'involuntary', label: 'Involuntary (termination)' }
+						]}
+					/>
 				</label>
 				<label class="f">
 					<span>Track</span>
-					<select name="track">
-						<option value="">From onboarding record</option>
-						{#each TRACKS as t}
-							<option value={t}>{TRACK_LABELS[t]}</option>
-						{/each}
-					</select>
+					<GlassSelect
+						name="track"
+						ariaLabel="Track"
+						value=""
+						options={[{ value: '', label: 'From onboarding record' }, ...TRACKS.map((t) => ({ value: t, label: TRACK_LABELS[t] }))]}
+					/>
 				</label>
 			</div>
 			<p class="hint">

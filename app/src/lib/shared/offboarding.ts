@@ -207,6 +207,25 @@ export const FNF_PAYROLL_DATE_KEYS = new Set(
 	FNF_PAYROLL_FIELDS.filter((f) => 'date' in f && f.date).map((f) => f.key)
 );
 
+/** What payroll confirms they have checked before signing the settlement —
+ *  every one must be ticked on their clearance page. Stored on the exit as
+ *  `fnf.payrollChecks` (the keys ticked), so HR can see what was verified. */
+export const FNF_PAYROLL_CHECKS = [
+	{ key: 'attendance', label: 'Attendance and loss-of-pay days up to the last working day' },
+	{ key: 'leave', label: 'Leave balance and encashment, against the leave records' },
+	{ key: 'notice', label: 'Notice period served, and any shortfall recovered' },
+	{ key: 'loans', label: 'Loans, salary advances and other recoveries' },
+	{ key: 'statutory', label: 'Statutory deductions — PF, ESI, professional tax and TDS' },
+	{ key: 'payouts', label: 'Pending reimbursements, incentives and bonus' },
+	{ key: 'bank', label: 'Bank account details for the settlement transfer' },
+	{ key: 'net', label: 'Net payable cross-checked against the worksheet' }
+] as const;
+
+/** The three payslip slots payroll uploads from their clearance page — the
+ *  same handover slots HR's page shows, so they reach the employee's final
+ *  documents either way. Oldest first. */
+export const PAYSLIP_DOC_TYPES = ['payslip_1', 'payslip_2', 'payslip_3'] as const;
+
 /** What HR still owns on that card: the statutory follow-ups, which are HR's
  *  filings rather than payroll's arithmetic. */
 export const FNF_HR_FIELDS = ['pfDateOfExit', 'pfRemarks', 'taxationRemarks'] as const;
@@ -708,7 +727,9 @@ export function sendBackItems(dept: ClearanceDept): string[] {
 	return [
 		...rows,
 		...(dept === 'it' || dept === 'admin' ? ['Asset return check'] : []),
-		...(dept === 'payroll' ? ['Full & final figures', 'Loan / advance recovery'] : []),
+		...(dept === 'payroll'
+			? ['Full & final figures', 'Loan / advance recovery', 'F&F checks', 'Payslips (last 3 months)']
+			: []),
 		'Overall verdict & remarks',
 		'Signature'
 	];

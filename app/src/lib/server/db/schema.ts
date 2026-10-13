@@ -1034,6 +1034,8 @@ const exitSchema = new Schema(
 			 *  FNF_PAYROLL_FIELDS in shared/offboarding.ts. */
 			submittedByPayrollAt: { type: Date, default: null },
 			submittedByPayrollName: { type: String, default: null },
+			/** FNF_PAYROLL_CHECKS keys payroll ticked when they signed. */
+			payrollChecks: { type: [String], default: [] },
 			salaryDueFrom: { type: String, default: null },
 			salaryDueTo: { type: String, default: null },
 			leaveBalanceDays: { type: String, default: null },

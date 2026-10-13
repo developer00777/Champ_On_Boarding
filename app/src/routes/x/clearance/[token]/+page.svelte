@@ -39,6 +39,33 @@
 		});
 	}
 
+	// Payroll's figures, kept live so the summary above them adds up as they type.
+	// svelte-ignore state_referenced_locally
+	let fnf = $state<Record<string, string>>(Object.fromEntries(data.fnfFields.map((f) => [f.key, f.value])));
+	// svelte-ignore state_referenced_locally
+	let checks = $state<Record<string, boolean>>(
+		Object.fromEntries((data.payroll?.checks ?? []).map((c) => [c.key, c.checked]))
+	);
+	const allChecked = $derived(Object.values(checks).every(Boolean));
+	let picked = $state<Record<string, string>>({});
+
+	const amount = (v: string | undefined) => {
+		const n = Number(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+		return Number.isFinite(n) ? n : 0;
+	};
+	const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+	const deductions = $derived(
+		['noticePayRecovery', 'assetRecovery', 'loanRecovery', 'otherDeductions'].reduce((t, k) => t + amount(fnf[k]), 0)
+	);
+
+	function kb(bytes: number): string {
+		return bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+	}
+
+	function pick(key: string, input: HTMLInputElement) {
+		picked[key] = input.files?.[0]?.name ?? '';
+	}
+
 	const declarationRows = $derived(
 		[
 			{ label: 'Files handed over', value: data.declaration.filesHandover },
@@ -160,7 +187,160 @@
 						};
 					}}
 				>
-					<div class="bulk">
+					{#if data.payroll}
+						{@const p = data.payroll}
+						<!-- Payroll does the whole F&F here: no login, no portal. The
+						     documents come as one zip; the figures, the checks, the
+						     payslips and the signature are all on this page. -->
+						<ol class="steps" aria-label="What this page asks of you">
+							<li>Check the documents</li>
+							<li>Confirm the F&amp;F</li>
+							<li>Tick the checks</li>
+							<li>Upload payslips</li>
+							<li>Sign</li>
+						</ol>
+
+						<section class="pblock">
+							<div class="phead"><span class="pnum">1</span>Exit documents</div>
+							<div class="pack">
+								<div>
+									<b>Everything on file for {data.employee.fullName.split(' ')[0]}</b>
+									<span>{p.pack.items.length} files in one zip — the forms, the No Dues certificate and every upload.</span>
+								</div>
+								<a class="dl" href={p.pack.href} download data-sveltekit-reload>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14" /></svg>
+									Download zip
+								</a>
+							</div>
+							{#if p.pack.items.length}
+								<details class="packlist">
+									<summary>What is in it</summary>
+									<ul>{#each p.pack.items as it, i (i)}<li>{it}</li>{/each}</ul>
+								</details>
+							{/if}
+							{#if p.details.bankAccountName || p.details.panNo || p.details.uanNo}
+								<div class="emp pdetails">
+									{#if p.details.bankAccountName}<div class="erow"><span>Name as per bank</span><b>{p.details.bankAccountName}</b></div>{/if}
+									{#if p.details.panNo}<div class="erow"><span>PAN</span><b>{p.details.panNo}</b></div>{/if}
+									{#if p.details.uanNo}<div class="erow"><span>UAN</span><b>{p.details.uanNo}</b></div>{/if}
+								</div>
+							{/if}
+							<p class="hint">These are for reference — only the settlement below is yours to change.</p>
+						</section>
+
+						<section class="pblock">
+							<div class="phead"><span class="pnum">2</span>Full &amp; final settlement</div>
+							<p class="hint">
+								{#if data.fnfPrefilled}
+									Prefilled by HR. Check each figure, correct anything that needs it, and record any loan or
+									salary advance being recovered. What you save is final.
+								{:else}
+									Your figures go straight onto the exit record and the settlement statement.
+								{/if}
+							</p>
+							<div class="fnf-grid">
+								{#each data.fnfFields as f (f.key)}
+									<label class="f" class:wide={f.key === 'loanRemarks'} class:net={f.key === 'netAmount'}>
+										<span>{f.label}{#if f.key === 'netAmount'} <b class="req">*</b>{/if}</span>
+										{#if f.date}
+											<input type="date" name={f.key} bind:value={fnf[f.key]} />
+										{:else if f.money}
+											<div class="money">
+												<i>₹</i>
+												<input
+													name={f.key}
+													bind:value={fnf[f.key]}
+													inputmode="decimal"
+													placeholder="0"
+													required={f.key === 'netAmount'}
+												/>
+											</div>
+										{:else}
+											<input name={f.key} bind:value={fnf[f.key]} />
+										{/if}
+									</label>
+								{/each}
+							</div>
+							<div class="sum">
+								<div><span>Leave encashment</span><b>{rupees(amount(fnf.leaveEncashmentAmount))}</b></div>
+								<div><span>Recoveries &amp; deductions</span><b>− {rupees(deductions)}</b></div>
+								<div class="sum-net"><span>Net F&amp;F payable</span><b>{fnf.netAmount ? rupees(amount(fnf.netAmount)) : '—'}</b></div>
+							</div>
+						</section>
+
+						<section class="pblock">
+							<div class="phead">
+								<span class="pnum">3</span>F&amp;F checks
+								<button
+									type="button"
+									class="bulkbtn tick-all"
+									onclick={() => {
+										for (const k of Object.keys(checks)) checks[k] = !allChecked;
+									}}
+								>
+									{allChecked ? 'Untick all' : 'Tick all'}
+								</button>
+							</div>
+							<p class="hint">Confirm each one before you sign. All are required.</p>
+							<div class="checks">
+								{#each p.checks as c (c.key)}
+									<label class="chk" class:on={checks[c.key]}>
+										<input type="checkbox" name="check_{c.key}" bind:checked={checks[c.key]} />
+										<span>{c.label}</span>
+									</label>
+								{/each}
+							</div>
+						</section>
+
+						<section class="pblock">
+							<div class="phead"><span class="pnum">4</span>Payslips</div>
+							<p class="hint">
+								The last three months' payslips. They go to {data.employee.fullName.split(' ')[0]} with the final
+								documents. PDF, JPG, PNG or WEBP, up to 25 MB each.
+							</p>
+							<div class="slips">
+								{#each p.payslips as s, i (s.docType)}
+									<div class="slip" class:has={s.file || picked[s.docType]}>
+										<div class="slip-top">
+											<b>{s.month ?? `Month ${i + 1}`}</b>
+											{#if s.required && !s.file}<em class="req">required</em>{:else if !s.required}<em>if applicable</em>{/if}
+										</div>
+										{#if s.file}
+											<a class="onfile" href={s.file.href} target="_blank" rel="noopener">On file · {kb(s.file.sizeBytes)}</a>
+										{/if}
+										<label class="pickfile">
+											<input
+												type="file"
+												name={s.docType}
+												accept="application/pdf,image/jpeg,image/png,image/webp"
+												onchange={(ev) => pick(s.docType, ev.currentTarget)}
+											/>
+											<span>{picked[s.docType] || (s.file ? 'Replace…' : 'Choose file…')}</span>
+										</label>
+									</div>
+								{/each}
+								<div class="slip" class:has={p.worksheet || picked.fnf_statement}>
+									<div class="slip-top"><b>F&amp;F worksheet</b><em>optional</em></div>
+									{#if p.worksheet}
+										<a class="onfile" href={p.worksheet.href} target="_blank" rel="noopener">On file · {kb(p.worksheet.sizeBytes)}</a>
+									{/if}
+									<label class="pickfile">
+										<input
+											type="file"
+											name="fnf_statement"
+											accept="application/pdf,image/jpeg,image/png,image/webp"
+											onchange={(ev) => pick('fnf_statement', ev.currentTarget)}
+										/>
+										<span>{picked.fnf_statement || (p.worksheet ? 'Replace…' : 'Choose file…')}</span>
+									</label>
+								</div>
+							</div>
+						</section>
+
+						<div class="phead last"><span class="pnum">5</span>No dues &amp; sign-off</div>
+					{/if}
+
+					<div class="bulk" class:hidden={data.rows.length < 2}>
 						<span>Mark everything as</span>
 						{#each VERDICTS as v}
 							<button
@@ -237,40 +417,6 @@
 								<input name="approverDesignation" value={data.clearance.approverDesignation} />
 							</label>
 						</div>
-						{#if data.collectsFnf}
-							<!-- Payroll only. HR fills the settlement first; payroll gets it
-							     prefilled here, corrects what needs correcting, adds any loan or
-							     advance recovery, and their save is the final figure. -->
-							<div class="fnf">
-								<div class="fnf-h">Full &amp; final settlement</div>
-								<p class="fnf-sub">
-									{#if data.fnfPrefilled}
-										Prefilled by HR — check each figure, change anything that needs it, and record any
-										loan or salary advance being recovered. What you save is final.
-									{:else}
-										Your figures go straight onto the exit record and the settlement statement.
-										Leave anything you do not hold blank.
-									{/if}
-								</p>
-								<div class="fnf-grid">
-									{#each data.fnfFields as f (f.key)}
-										<label class="f">
-											<span>{f.label}</span>
-											{#if f.date}
-												<input type="date" name={f.key} value={f.value} />
-											{:else}
-												<input
-													name={f.key}
-													value={f.value}
-													inputmode={f.money ? 'decimal' : undefined}
-													placeholder={f.money ? 'e.g. 1,42,300' : ''}
-												/>
-											{/if}
-										</label>
-									{/each}
-								</div>
-							</div>
-						{/if}
 						<div class="qblock">
 							<div class="qlabel">Overall, for {data.departmentLabel} <b class="req">*</b></div>
 							<div class="radios">
@@ -308,8 +454,17 @@
 						</label>
 					</div>
 
+					{#if data.payroll && !allChecked}
+						<p class="hint warn">Tick every F&amp;F check above before you sign.</p>
+					{/if}
 					<button class="cta" disabled={submitting}>
-						{submitting ? 'Submitting…' : data.sendBack ? 'Update & sign again' : 'Sign clearance'}
+						{submitting
+							? 'Submitting…'
+							: data.sendBack
+								? 'Update & sign again'
+								: data.payroll
+									? 'Save F&F and sign'
+									: 'Sign clearance'}
 					</button>
 				</form>
 			</div>
@@ -689,33 +844,314 @@
 		}
 	}
 
-	/* Payroll's settlement block — see collectsFnf. */
-	.fnf {
-		border: 1px solid #d9d9e3;
-		border-radius: 10px;
-		padding: 12px 14px 14px;
-		margin-bottom: 14px;
-		background: #fbfbfd;
+	/* ── Payroll: the whole F&F on this page ── */
+	.hidden {
+		display: none;
 	}
-	.fnf-h {
+	.steps {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		list-style: none;
+		counter-reset: step;
+		margin: 0 0 18px;
+		padding: 0;
+	}
+	.steps li {
+		counter-increment: step;
+		font-size: 11.5px;
+		font-weight: 600;
+		padding: 5px 10px 5px 6px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--brand-primary, #6b4cf6) 7%, transparent);
+		color: var(--brand-primary, #6b4cf6);
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.steps li::before {
+		content: counter(step);
+		width: 17px;
+		height: 17px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font-size: 10px;
+		background: var(--brand-primary, #6b4cf6);
+		color: var(--brand-on-primary, #fff);
+	}
+	.pblock {
+		padding: 18px 0 6px;
+		border-top: 1px solid var(--brand-border, #e6e6ee);
+	}
+	.phead {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		font-size: 14.5px;
+		font-weight: 700;
+		margin-bottom: 8px;
+	}
+	.phead.last {
+		padding-top: 18px;
+		border-top: 1px solid var(--brand-border, #e6e6ee);
+		margin-bottom: 12px;
+	}
+	.pnum {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font-size: 11.5px;
+		background: var(--brand-primary, #6b4cf6);
+		color: var(--brand-on-primary, #fff);
+		flex-shrink: 0;
+	}
+	.tick-all {
+		margin-left: auto;
+	}
+	.pack {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+		padding: 14px 16px;
+		border: 1px solid var(--brand-border, #e6e6ee);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--brand-primary, #6b4cf6) 4%, transparent);
+	}
+	.pack b {
+		display: block;
+		font-size: 13.5px;
+	}
+	.pack span {
+		font-size: 12px;
+		color: var(--brand-muted, #71717f);
+	}
+	.dl {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		flex-shrink: 0;
+		padding: 9px 15px;
+		border-radius: var(--brand-btn-radius, 9px);
+		background: var(--brand-primary, #6b4cf6);
+		color: var(--brand-on-primary, #fff);
 		font-size: 13px;
 		font-weight: 600;
-		color: #1b1b25;
+		text-decoration: none;
 	}
-	.fnf-sub {
-		margin: 4px 0 12px;
-		font-size: 12px;
-		line-height: 1.5;
-		color: #5d6270;
+	.dl:hover {
+		filter: brightness(1.08);
+	}
+	.packlist {
+		margin: 10px 0 0;
+		font-size: 12.5px;
+	}
+	.packlist summary {
+		cursor: pointer;
+		color: var(--brand-primary, #6b4cf6);
+		font-weight: 500;
+	}
+	.packlist ul {
+		margin: 8px 0 0;
+		padding-left: 18px;
+		columns: 2 220px;
+		line-height: 1.7;
+		color: var(--brand-muted, #71717f);
+	}
+	.pdetails {
+		margin: 12px 0 8px;
 	}
 	.fnf-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-		gap: 10px 14px;
+		gap: 0 14px;
+	}
+	.f.wide {
+		grid-column: 1 / -1;
+	}
+	.money {
+		position: relative;
+	}
+	.money i {
+		position: absolute;
+		left: 11px;
+		top: 50%;
+		transform: translateY(-50%);
+		font-style: normal;
+		font-size: 13px;
+		color: var(--brand-muted, #71717f);
+		pointer-events: none;
+	}
+	.f .money input {
+		padding-left: 24px;
+	}
+	.f.net input {
+		font-weight: 700;
+		border-color: color-mix(in srgb, var(--brand-primary, #6b4cf6) 45%, transparent);
+	}
+	.sum {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		border: 1px solid var(--brand-border, #e6e6ee);
+		border-radius: 12px;
+		overflow: hidden;
+		margin: 2px 0 12px;
+	}
+	.sum div {
+		padding: 10px 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.sum div + div {
+		border-left: 1px solid var(--brand-border, #e6e6ee);
+	}
+	.sum span {
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--brand-muted, #71717f);
+		font-weight: 600;
+	}
+	.sum b {
+		font-size: 15px;
+	}
+	.sum-net {
+		background: color-mix(in srgb, var(--brand-primary, #6b4cf6) 7%, transparent);
+	}
+	.sum-net b {
+		color: var(--brand-primary, #6b4cf6);
+	}
+	.checks {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		gap: 8px;
+		margin-bottom: 12px;
+	}
+	.chk {
+		display: flex;
+		align-items: flex-start;
+		gap: 9px;
+		padding: 10px 12px;
+		border: 1px solid var(--brand-border, #e6e6ee);
+		border-radius: 10px;
+		font-size: 12.5px;
+		line-height: 1.45;
+		cursor: pointer;
+		transition: border-color 0.12s, background 0.12s;
+	}
+	/* The root layout gives every input full width and padding; a tick box
+	   or radio must keep its own size. */
+	.chk input,
+	.radio input,
+	.acheck input[type='checkbox'] {
+		width: auto;
+		padding: 0;
+		margin: 0;
+		box-shadow: none;
+	}
+	.chk input {
+		margin-top: 2px;
+		accent-color: var(--brand-primary, #6b4cf6);
+		flex-shrink: 0;
+	}
+	.chk.on {
+		border-color: var(--brand-primary, #6b4cf6);
+		background: color-mix(in srgb, var(--brand-primary, #6b4cf6) 6%, transparent);
+	}
+	.slips {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		gap: 10px;
+		margin-bottom: 12px;
+	}
+	.slip {
+		border: 1.5px dashed var(--brand-border, #d9d9e3);
+		border-radius: 12px;
+		padding: 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+	}
+	.slip.has {
+		border-style: solid;
+		border-color: color-mix(in srgb, #1c7d55 50%, transparent);
+		background: rgba(62, 190, 130, 0.06);
+	}
+	.slip-top {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 6px;
+		font-size: 13px;
+	}
+	.slip-top em {
+		font-style: normal;
+		font-size: 10.5px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--brand-muted, #71717f);
+	}
+	.slip-top em.req {
+		color: #c0392b;
+	}
+	.onfile {
+		font-size: 12px;
+		color: #1c7d55;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.onfile::before {
+		content: '✓ ';
+	}
+	.pickfile {
+		position: relative;
+		display: block;
+		font-size: 12px;
+		padding: 7px 10px;
+		border-radius: 8px;
+		border: 1px solid var(--brand-border, #e6e6ee);
+		background: var(--brand-surface, #fff);
+		cursor: pointer;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		text-align: center;
+	}
+	.pickfile:hover {
+		border-color: var(--brand-primary, #6b4cf6);
+		color: var(--brand-primary, #6b4cf6);
+	}
+	.pickfile input {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.hint.warn {
+		color: #b54708;
+		margin: 6px 0 0;
 	}
 	@media (max-width: 560px) {
-		.fnf-grid {
+		.fnf-grid,
+		.sum {
 			grid-template-columns: 1fr;
+		}
+		.sum div + div {
+			border-left: none;
+			border-top: 1px solid var(--brand-border, #e6e6ee);
+		}
+		.pack {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.dl {
+			justify-content: center;
 		}
 	}
 </style>

@@ -9,13 +9,18 @@ import { exitPackZip } from '$lib/server/offboarding/documents';
 
 export const config = { runtime: 'nodejs24.x' };
 
-export const GET: RequestHandler = async ({ params, locals, getClientAddress }) => {
+export const GET: RequestHandler = async ({ params, locals, url, getClientAddress }) => {
 	if (!locals.admin) error(401, 'Not authenticated');
 
 	const exit = await Exit.findById(params.id).lean();
 	if (!exit) error(404, 'Offboarding record not found');
 
-	const pack = await exitPackZip(params.id, { includeUploads: true, includeHandover: true });
+	// ?for=payroll is the zip payroll's mail carries: everything but the letters.
+	const pack = await exitPackZip(params.id, {
+		includeUploads: true,
+		includeHandover: true,
+		skipLetters: url.searchParams.get('for') === 'payroll'
+	});
 	if (!pack) error(404, 'Nothing to download for this exit');
 
 	await audit({

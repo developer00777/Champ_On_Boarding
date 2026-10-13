@@ -22,14 +22,19 @@ import {
 	type ClearanceDept,
 	ASSET_ITEMS,
 	FNF_PAYROLL_FIELDS,
-	FNF_PAYROLL_DATE_KEYS
+	FNF_PAYROLL_DATE_KEYS,
+	FNF_PAYROLL_CHECKS,
+	HANDOVER_DOCS,
+	PAYSLIP_DOC_TYPES
 } from '$lib/shared/offboarding';
+import { parseStoredDate } from '$lib/shared/dates';
 import {
 	asRecord,
 	clearanceProgress,
 	exitCompany,
 	resolveExitToken,
-	serviceLabel
+	serviceLabel,
+	serviceMonths
 } from '$lib/server/offboarding/exit';
 import { sendExitAlert } from '$lib/server/offboarding/mail';
 import { advanceFlow, flowSteps } from '$lib/server/offboarding/flow';
@@ -39,13 +44,80 @@ import {
 	MAX_EXIT_FILE_BYTES,
 	matchesMagicBytes
 } from '$lib/server/offboarding/uploads';
-import { extFor } from '$lib/server/offboarding/documents';
+import { EXIT_DOCS, extFor } from '$lib/server/offboarding/documents';
 
 async function ctx(token: string) {
 	const resolved = await resolveExitToken(token, 'clearance');
 	if (!resolved?.clearance) return null;
 	const company = await exitCompany(resolved.exit.companyId);
 	return { exit: resolved.exit, clearance: resolved.clearance, company };
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const HANDOVER_LABEL = new Map<string, string>(HANDOVER_DOCS.map((d) => [d.docType, d.label]));
+
+/** The F&F worksheet: the "detailed worksheet shall be attached" that the
+ *  payroll No-Dues row asks for. Optional, and it reaches the employee too. */
+const WORKSHEET_DOC = 'fnf_statement';
+
+/** The payslip slots payroll fills, oldest first: the three months ending
+ *  with the last working day's month, named so payroll knows which to attach.
+ *  Someone who served under three months owes fewer payslips. */
+function payslipSlots(exit: { doj?: string | null; lwd?: string | null; resignationDate?: string | null }) {
+	const end = parseStoredDate(exit.lwd ?? exit.resignationDate);
+	const served = serviceMonths(exit.doj, exit.lwd);
+	const needed = served === null ? 3 : Math.min(3, Math.max(1, served + 1));
+	return PAYSLIP_DOC_TYPES.map((docType, i) => {
+		let month: string | null = null;
+		if (end) {
+			const d = new Date(end.year, end.month - 1 - (2 - i), 1);
+			month = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+		}
+		return { docType, month, required: i >= 3 - needed };
+	});
+}
+
+/** Everything payroll's page shows beyond the figures: the checks, the
+ *  payslip and worksheet slots with what is already on file, the details a
+ *  transfer needs, and what the documents zip holds. */
+async function payrollView(exit: Record<string, any>, token: string) {
+	const files = await ExitDocument.find({ exitId: exit._id })
+		.select('docType label source sizeBytes createdAt')
+		.sort({ createdAt: 1 })
+		.lean();
+	const onFile = (docType: string) => {
+		const f = files.filter((x) => x.source === 'hr' && x.docType === docType).at(-1);
+		return f
+			? {
+					sizeBytes: Number(f.sizeBytes),
+					uploadedAt: (f.createdAt as Date | undefined)?.toISOString() ?? null,
+					href: `/x/clearance/${token}/file/${String(f._id)}`
+				}
+			: null;
+	};
+	const ticked = new Set<string>(exit.fnf?.payrollChecks ?? []);
+	return {
+		checks: FNF_PAYROLL_CHECKS.map((c) => ({ key: c.key, label: c.label, checked: ticked.has(c.key) })),
+		payslips: payslipSlots(exit).map((s) => ({ ...s, file: onFile(s.docType) })),
+		worksheet: onFile(WORKSHEET_DOC),
+		details: {
+			bankAccountName: (exit.bankAccountName as string | null) ?? null,
+			panNo: (exit.panNo as string | null) ?? null,
+			uanNo: (exit.uanNo as string | null) ?? null
+		},
+		pack: {
+			href: `/x/clearance/${token}/documents`,
+			items: [
+				...EXIT_DOCS.filter((d) => !d.letter && d.applies(exit)).map((d) => d.label),
+				...files.map(
+					(f) =>
+						`${HANDOVER_LABEL.get(String(f.docType)) ?? f.label ?? f.docType}${
+							f.source === 'employee' ? ' (from the employee)' : f.source === 'approver' ? ' (from an approver)' : ''
+						}`
+				)
+			]
+		}
+	};
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -158,6 +230,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		/** HR filled the settlement before handing it over (their step in the
 		 *  exit chain), so payroll is reviewing figures rather than entering them. */
 		fnfPrefilled: !!e.flow?.hrDoneAt,
+		payroll: dept === 'payroll' ? await payrollView(e, params.token) : null,
 		fnfFields: FNF_PAYROLL_FIELDS.map((f) => ({
 			key: f.key,
 			label: f.label,
@@ -264,6 +337,56 @@ export const actions: Actions = {
 			attached.push({ label, bytes, mime: f.type, size: f.size });
 		}
 
+		// Payroll: every F&F check confirmed, a net figure stated, and the
+		// payslips this exit needs either attached now or already on file.
+		const payslipUploads: { docType: string; bytes: Uint8Array; mime: string; size: number }[] = [];
+		if (clearance.department === 'payroll') {
+			for (const c of FNF_PAYROLL_CHECKS)
+				if (form.get(`check_${c.key}`) !== 'on') errors.push(`Please confirm you have checked: ${c.label.toLowerCase()}.`);
+			if (!get('netAmount')) errors.push('Please enter the net F&F payable.');
+			const have = new Set(
+				(
+					await ExitDocument.find({
+						exitId: exit._id,
+						source: 'hr',
+						docType: { $in: [...PAYSLIP_DOC_TYPES, WORKSHEET_DOC] }
+					})
+						.select('docType')
+						.lean()
+				).map((d) => String(d.docType))
+			);
+			const slots = [
+				...payslipSlots(exit).map((s) => ({
+					docType: s.docType,
+					label: `the payslip for ${s.month ?? `month ${s.docType.slice(-1)}`}`,
+					required: s.required
+				})),
+				{ docType: WORKSHEET_DOC, label: 'the F&F worksheet', required: false }
+			];
+			for (const slot of slots) {
+				const f = form.get(slot.docType);
+				const what = slot.label[0].toUpperCase() + slot.label.slice(1);
+				if (!(f instanceof File) || f.size === 0) {
+					if (slot.required && !have.has(slot.docType)) errors.push(`Please upload ${slot.label}.`);
+					continue;
+				}
+				if (!ACCEPTED_EXIT_MIMES.includes(f.type)) {
+					errors.push(`${what} must be a PDF, JPG, PNG or WEBP file.`);
+					continue;
+				}
+				if (f.size > MAX_EXIT_FILE_BYTES) {
+					errors.push(`${what} is larger than 25 MB.`);
+					continue;
+				}
+				const bytes = new Uint8Array(await f.arrayBuffer());
+				if (!matchesMagicBytes(f.type, bytes)) {
+					errors.push(`${what} does not look like a genuine PDF or image.`);
+					continue;
+				}
+				payslipUploads.push({ docType: slot.docType, bytes, mime: f.type, size: f.size });
+			}
+		}
+
 		if (errors.length) {
 			// A signature that uploaded before a later validation error would
 			// otherwise be orphaned in GridFS with nothing pointing at it.
@@ -310,6 +433,7 @@ export const actions: Actions = {
 					? isoToDDMMYYYY(raw) || null
 					: raw || null;
 			}
+			fnfPatch['fnf.payrollChecks'] = FNF_PAYROLL_CHECKS.map((c) => c.key);
 			fnfPatch['fnf.submittedByPayrollAt'] = new Date();
 			fnfPatch['fnf.submittedByPayrollName'] = approverName;
 			fnfPatch['fnf.updatedAt'] = new Date();
@@ -346,6 +470,32 @@ export const actions: Actions = {
 				sizeBytes: a.size
 			});
 		}
+		// Payroll's payslips and worksheet fill the same handover slots HR's
+		// page has, so they reach the employee's final documents. One file per
+		// slot: a new upload replaces whatever was there.
+		for (const u of payslipUploads) {
+			const gridfsId = await uploadBytesToGridFS(
+				u.bytes,
+				`exits/${String(exit._id)}/${u.docType}/${crypto.randomUUID()}.${extFor(u.mime)}`,
+				u.mime
+			);
+			const replaced = await ExitDocument.find({ exitId: exit._id, source: 'hr', docType: u.docType }).lean();
+			await ExitDocument.create({
+				exitId: exit._id,
+				source: 'hr',
+				clearanceId: clearance._id,
+				docType: u.docType,
+				label: HANDOVER_LABEL.get(u.docType) ?? u.docType,
+				gridfsId,
+				mime: u.mime,
+				sizeBytes: u.size
+			});
+			for (const o of replaced) {
+				await deleteFromGridFS(o.gridfsId as ObjectId).catch(() => {});
+				await ExitDocument.deleteOne({ _id: o._id });
+			}
+		}
+
 		// The request is answered: it moves to the history, so HR can see a
 		// clearance was sent back once and what for.
 		const wasSentBack = !!back?.at;
@@ -421,6 +571,10 @@ export const actions: Actions = {
 					`${approverName} ${wasSentBack ? 'updated and re-signed' : 'signed'} the ${CLEARANCE_DEPT_LABELS[clearance.department as ClearanceDept]} ` +
 						`clearance for ${exit.fullName} (${exit.employeeId}).`,
 					...(attached.length ? [`Attached: ${attached.map((a) => a.label).join(', ')}.`] : []),
+					...(payslipUploads.length
+						? [`Uploaded: ${payslipUploads.map((u) => HANDOVER_LABEL.get(u.docType) ?? u.docType).join(', ')}.`]
+						: []),
+					...(clearance.department === 'payroll' ? [`Net F&F payable: ${get('netAmount')}.`] : []),
 					`Verdict: ${verdict === 'no_dues' ? 'No dues outstanding' : 'Dues outstanding'}.`,
 					onChain
 						? (next ?? 'The exit chain is complete.')

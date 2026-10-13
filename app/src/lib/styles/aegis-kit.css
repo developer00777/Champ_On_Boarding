@@ -107,6 +107,22 @@
 .aegis[data-theme='light'] {
 	color-scheme: light;
 }
+/* Any native <select> still in the admin (GlassSelect replaces them where it
+   can): the open list takes the select's translucent background over the OS
+   white, so its options read as white-on-white. Give them the dialog base. */
+.aegis select option,
+.aegis select optgroup {
+	background-color: var(--ae-modal-base, #12151f);
+	color: var(--ae-text);
+}
+/* A card with a glass blur is its own stacking context, so an open dropdown in
+   one card would slide under the next card down. Lift the card while open. */
+.aegis .card:has(.gs.open),
+.aegis .table-card:has(.gs.open),
+.aegis .card:has(.st-list) {
+	position: relative;
+	z-index: 30;
+}
 .aegis label {
 	color: var(--ae-text-2);
 	font-weight: 500;

@@ -21,7 +21,6 @@ import { connectDb } from '$lib/server/db';
 import { Admin, AppSetting, Exit, ExitClearance, ExitDocument } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { baseUrl } from '$lib/server/base-url';
-import { getGridFSBytes } from '$lib/server/storage';
 import { brandBySlug } from '$lib/shared/brands';
 import {
 	FLOW_STEPS,
@@ -33,7 +32,7 @@ import {
 	type RoutingKey
 } from '$lib/shared/offboarding';
 import { createExitToken, exitCompany } from './exit';
-import { EXIT_DOCS, EXIT_DOC_BY_KEY, extFor, loadPdfInput, renderExitDoc, safeFilename } from './documents';
+import { EXIT_DOCS, EXIT_DOC_BY_KEY, exitPackZip, loadPdfInput, renderExitDoc } from './documents';
 import { noDuesPdf } from './pdf';
 import {
 	buildClearanceMail,
@@ -315,38 +314,12 @@ export async function startFlow(exitId: string) {
 }
 
 /** Every generated exit document except the letters, plus every file uploaded
- *  against the exit — what payroll gets attached to their request. */
+ *  against the exit, as one zip — what payroll gets attached to their request
+ *  (and can download again from their clearance page). One file rather than a
+ *  dozen keeps the mail readable and the papers together. */
 async function payrollAttachments(exitId: string) {
-	const out: { filename: string; content: Buffer }[] = [];
-	const input = await loadPdfInput(exitId);
-	if (input) {
-		for (const def of EXIT_DOCS) {
-			if (def.letter || !def.applies(input.exit)) continue;
-			try {
-				const bytes = await def.render(input);
-				out.push({ filename: `${def.slug}.pdf`, content: Buffer.from(bytes) });
-			} catch (e) {
-				console.error(`[exit-flow] payroll pack: ${def.key} failed:`, e);
-			}
-		}
-	}
-	const files = await ExitDocument.find({ exitId }).lean<Lean[]>();
-	const counts: Record<string, number> = {};
-	for (const f of files) {
-		try {
-			const bytes = await getGridFSBytes(f.gridfsId);
-			const base = safeFilename(String(f.docType));
-			counts[base] = (counts[base] ?? 0) + 1;
-			const suffix = counts[base] > 1 ? `_${counts[base]}` : '';
-			out.push({
-				filename: `${f.source === 'hr' ? 'Handover' : f.source === 'approver' ? 'Approver' : 'Employee'}-${base}${suffix}.${extFor(f.mime)}`,
-				content: Buffer.from(bytes)
-			});
-		} catch {
-			// One unreadable upload must not hold the whole request back.
-		}
-	}
-	return out;
+	const pack = await exitPackZip(exitId, { includeUploads: true, includeHandover: true, skipLetters: true });
+	return pack ? [{ filename: pack.filename, content: Buffer.from(pack.bytes) }] : [];
 }
 
 export interface SendBack {
@@ -376,15 +349,16 @@ function stepMailOpts(
 		...(dept === 'payroll'
 			? {
 					extraIntro: [
-						'HR has filled in the full & final settlement and the leave position. They are prefilled on your ' +
-							'page — correct anything that needs it, record any loan or salary advance recovery, and sign off.',
-						'Every exit document for this employee is attached to this mail.'
+						'HR has filled in the full & final settlement and the leave position. Everything is done on the page ' +
+							'the button below opens — no login, nothing else to open: check and correct the F&F figures, tick ' +
+							'off the F&F checks, upload the last three months’ payslips, and sign.',
+						'Every exit document for this employee is attached as one zip file, and can be downloaded again from that page.'
 					],
 					note: {
 						title: 'Your figures are the final ones',
 						text:
-							'What you save on the clearance page is what the employee’s settlement statement shows, and signing ' +
-							'it starts the countdown to their relieving documents.'
+							'What you save on that page is what the employee’s settlement statement shows, the payslips go to ' +
+							'the employee with their final documents, and signing starts the countdown to their relieving letter.'
 					}
 				}
 			: {})
@@ -419,19 +393,19 @@ export async function draftStep(
 ): Promise<StepDraft | { error: string }> {
 	const def = FLOW_STEPS.find((d) => d.key === key);
 	if (!def) return { error: 'Unknown step.' };
-	const exit = await Exit.findById(exitId).lean<Lean>();
+	// Read together: the dialog waits on this, and on a remote database each
+	// round trip is most of the wait.
+	const [exit, clearances, files] = await Promise.all([
+		Exit.findById(exitId).lean<Lean>(),
+		ExitClearance.find({ exitId }).lean<Lean[]>(),
+		ExitDocument.find({ exitId }).select('docType label source').lean<Lean[]>()
+	]);
 	if (!exit) return { error: 'Exit not found.' };
-	const clearances = await ExitClearance.find({ exitId }).lean<Lean[]>();
 	const state = flowSteps(exit, clearances).find((s) => s.key === key)!;
 	const company = await exitCompany(exit.companyId);
 	const brand = brandBySlug(company?.brandSlug ?? undefined);
 	const base = `/admin/offboarding/${exitId}`;
-	const files = await ExitDocument.find({ exitId }).lean<Lean[]>();
 	const fileLabel = new Map<string, string>(HANDOVER_DOCS.map((d) => [d.docType, d.label]));
-	const fileName = (f: Lean) =>
-		`${fileLabel.get(f.docType) ?? f.label ?? f.docType}${
-			f.source === 'hr' ? '' : f.source === 'approver' ? ' (from an approver)' : ' (from employee)'
-		}`;
 	const placeholder = (path: string) => `${baseUrl()}${path}/«secure link created when you press Send»`;
 
 	if (def.dept) {
@@ -441,16 +415,12 @@ export async function draftStep(
 		const reminder = !proposedBack && row?.status === 'sent';
 		const opts = stepMailOpts(exit, key, dept, reminder, back);
 		const mail = await buildClearanceMail({ ...opts, brand, url: placeholder('/x/clearance') });
-		const input = await loadPdfInput(exitId);
+		// Which documents apply is decided by the exit alone, so the preview
+		// lists them without rendering a single PDF.
+		const packCount = EXIT_DOCS.filter((d) => !d.letter && d.applies(exit)).length + files.length;
 		const attachments =
 			dept === 'payroll'
-				? [
-						...(input ? EXIT_DOCS.filter((d) => !d.letter && d.applies(input.exit)) : []).map((d) => ({
-							name: d.label,
-							href: `${base}/doc/${d.key}`
-						})),
-						...files.map((f) => ({ name: fileName(f), href: `${base}/file/${String(f._id)}` }))
-					]
+				? [{ name: `Exit documents (zip · ${packCount} files)`, href: `${base}/pack-zip?for=payroll` }]
 				: [{ name: 'No Dues Certificate', href: `${base}/doc/no_dues` }];
 		if (proposedBack) {
 			const why =

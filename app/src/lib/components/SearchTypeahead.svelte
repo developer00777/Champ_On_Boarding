@@ -192,8 +192,8 @@
 		list-style: none;
 		max-height: 320px;
 		overflow-y: auto;
-		background: linear-gradient(150deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
-			linear-gradient(180deg, rgba(23, 27, 40, 0.9), rgba(18, 21, 31, 0.92));
+		background: linear-gradient(150deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)),
+			var(--ae-modal-base, #12151f);
 		border: 1px solid var(--ae-card-border);
 		border-radius: 12px;
 		box-shadow: var(--ae-card-shadow);
@@ -242,7 +242,7 @@
 	}
 	:global(.aegis[data-theme='light']) .st-list {
 		background: linear-gradient(150deg, rgba(32, 36, 58, 0.04), rgba(32, 36, 58, 0.02)),
-			linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.85));
+			var(--ae-modal-base, #f7f7fb);
 	}
 	@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 		:global(.aegis[data-theme='light']) .st-list {

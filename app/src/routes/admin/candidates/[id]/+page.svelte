@@ -1203,11 +1203,12 @@
 							{#if uploaded.pages > 1}
 								<label class="du-control">
 									<span>Page</span>
-									<select value={duSig.page} onchange={(e) => setSignaturePage(Number(e.currentTarget.value))}>
-										{#each Array.from({ length: uploaded.pages }, (_, i) => i + 1) as n (n)}
-											<option value={n}>{n}</option>
-										{/each}
-									</select>
+									<GlassSelect
+										ariaLabel="Signature page"
+										value={String(duSig.page)}
+										onChange={(v) => setSignaturePage(Number(v))}
+										options={Array.from({ length: uploaded.pages }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+									/>
 								</label>
 							{/if}
 							<label class="du-control">
@@ -1364,15 +1365,14 @@
 								<div class="me-block me-added">
 									<div class="me-block-head">
 										<span class="me-badge me-badge-new">Added</span>
-										<select
-											class="me-kind-select"
-											value={a.kind}
-											onchange={(e) => updateAdd(a.id, { kind: e.currentTarget.value as LetterAddition['kind'] })}
-										>
-											{#each ADD_KINDS as k (k.value)}
-												<option value={k.value}>{k.label}</option>
-											{/each}
-										</select>
+										<span class="me-kind-select">
+											<GlassSelect
+												ariaLabel="Block type"
+												value={a.kind}
+												onChange={(v) => updateAdd(a.id, { kind: v as LetterAddition['kind'] })}
+												options={ADD_KINDS.map((k) => ({ value: k.value, label: k.label }))}
+											/>
+										</span>
 										{#if a.kind === 'clause'}
 											<input
 												class="me-marker"
@@ -2312,16 +2312,24 @@
 						     preselecting the first faith on the list, but the form will not
 						     submit until a real one is picked. The server rejects a blank
 						     regardless — see validateProfileEdit. -->
-						<select class="fedit" name="religion" value={c.religion ?? ''} required>
-							<option value="" disabled>— select —</option>
-							{#each RELIGIONS as r}<option value={r}>{r}</option>{/each}
-							<!-- Legacy rows may hold a value the list no longer offers (e.g. the
-							     retired "Prefer not to say"). Keep it selectable so opening the
-							     editor to fix an unrelated field does not silently blank it. -->
-							{#if c.religion && !RELIGIONS.includes(c.religion as (typeof RELIGIONS)[number])}
-								<option value={c.religion}>{c.religion}</option>
-							{/if}
-						</select>
+						<!-- Legacy rows may hold a value the list no longer offers (e.g. the
+						     retired "Prefer not to say"). Keep it selectable so opening the
+						     editor to fix an unrelated field does not silently blank it. -->
+						<span class="fedit-gs">
+							<GlassSelect
+								name="religion"
+								ariaLabel="Religion"
+								placeholder="— select —"
+								required
+								value={c.religion ?? ''}
+								options={[
+									...RELIGIONS.map((r) => ({ value: r, label: r })),
+									...(c.religion && !RELIGIONS.includes(c.religion as (typeof RELIGIONS)[number])
+										? [{ value: c.religion, label: c.religion }]
+										: [])
+								]}
+							/>
+						</span>
 					{:else}
 						<span class="fvalue">{c.religion || '—'}</span>
 					{/if}
@@ -2330,11 +2338,18 @@
 				<div class="frow">
 					<span class="flabel">Marital status</span>
 					{#if editingProfile}
-						<select class="fedit" name="maritalStatus" value={c.maritalStatus ?? ''}>
-							<option value="">—</option>
-							<option value="single">Single</option>
-							<option value="married">Married</option>
-						</select>
+						<span class="fedit-gs">
+							<GlassSelect
+								name="maritalStatus"
+								ariaLabel="Marital status"
+								value={c.maritalStatus ?? ''}
+								options={[
+									{ value: '', label: '—' },
+									{ value: 'single', label: 'Single' },
+									{ value: 'married', label: 'Married' }
+								]}
+							/>
+						</span>
 					{:else}
 						<span class="fvalue">{c.maritalStatus || '—'}</span>
 					{/if}
@@ -3599,18 +3614,15 @@
 		font-weight: 600;
 		color: var(--ae-muted);
 	}
-	.du-control select,
+	.du-control :global(.gs-trigger) {
+		padding: 5px 8px;
+		font-size: 12px;
+	}
 	.du-control input[type='range'] {
 		width: 100%;
 		font-family: inherit;
 		font-size: 12px;
 		color: var(--ae-text-2);
-	}
-	.du-control select {
-		padding: 5px 7px;
-		border: 1px solid var(--ae-line-strong);
-		border-radius: 7px;
-		background: transparent;
 	}
 	.du-check {
 		display: flex;
@@ -3771,7 +3783,15 @@
 		border-color: var(--ae-verdant);
 		color: var(--ae-verdant);
 	}
-	.me-kind-select,
+	.me-kind-select {
+		display: inline-block;
+		width: 130px;
+		font-size: 11px;
+	}
+	.me-kind-select :global(.gs-trigger) {
+		padding: 2px 8px;
+		border-radius: 6px;
+	}
 	.me-marker {
 		font-family: inherit;
 		font-size: 11px;
@@ -4087,6 +4107,14 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 		word-break: break-word;
+	}
+	.fedit-gs {
+		width: 55%;
+		font-size: 13px;
+	}
+	.fedit-gs :global(.gs-trigger) {
+		padding: 6px 9px;
+		border-radius: 7px;
 	}
 	.fedit {
 		font-size: 13px;

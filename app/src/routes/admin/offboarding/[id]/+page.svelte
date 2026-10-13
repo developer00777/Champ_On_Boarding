@@ -24,6 +24,7 @@
 		ROUTING_LABELS
 	} from '$lib/shared/offboarding';
 	import { TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
 
@@ -110,10 +111,53 @@
 		mode: ComposeMode;
 		draft: MailDraft | null;
 		error: string;
+		/** What is happening while there is no draft yet — shown in the loader. */
+		stage: string | null;
+		/** The preview query last asked for, so one change fetches once. */
+		query: string | null;
 	} | null>(null);
 	let reviewSent = $state('');
 	let compose = $state({ items: [] as string[], uploads: [''] as string[], note: '', docs: [] as string[] });
 	const reviewStep = $derived(review ? data.steps.find((s) => s.key === review!.step) : undefined);
+	/** The dialog's title before the draft arrives, so it never reads "Loading…". */
+	const OTHER_LABELS: Record<string, string> = {
+		forms: 'Employee exit forms',
+		itblock: 'IT — block system access',
+		docs: 'Ask the employee for documents'
+	};
+	const reviewTitle = $derived(
+		review
+			? (review.draft?.label ??
+					(review.mode === 'docs' ? OTHER_LABELS.docs : (reviewStep?.label ?? OTHER_LABELS[review.step] ?? 'Mail')))
+			: ''
+	);
+
+	// Drafts are fetched as soon as HR points at a button, so the dialog
+	// usually opens with the mail already there. Kept briefly, and dropped
+	// whenever the page's data changes (a send, a signature, new settings).
+	const draftCache = new Map<string, { at: number; p: Promise<MailDraft> }>();
+	$effect(() => {
+		void data;
+		draftCache.clear();
+	});
+	function loadDraft(url: string): Promise<MailDraft> {
+		const hit = draftCache.get(url);
+		if (hit && Date.now() - hit.at < 20_000) return hit.p;
+		const p = fetch(url).then(async (res) => {
+			if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? 'Could not build the preview.');
+			return (await res.json()) as MailDraft;
+		});
+		p.catch(() => draftCache.delete(url));
+		draftCache.set(url, { at: Date.now(), p });
+		return p;
+	}
+	/** The first mail the chain will ask HR to send — what Start opens. */
+	const firstMailStep = $derived(
+		data.steps.find((s) => MAIL_STEPS.has(s.key) && s.status !== 'done' && s.status !== 'skipped')?.key ?? 'manager'
+	);
+	function prefetch(step: string) {
+		loadDraft(`/admin/offboarding/${e.id}/mail-preview/${step}`).catch(() => {});
+	}
 
 	function previewQuery(mode: ComposeMode) {
 		const p = new URLSearchParams();
@@ -132,20 +176,62 @@
 		const r = review;
 		if (!r) return;
 		const step = r.mode === 'docs' ? 'docs' : r.step;
+		const query = previewQuery(r.mode);
+		if (r.query === query) return;
+		r.query = query;
+		const url = `/admin/offboarding/${e.id}/mail-preview/${step}${query}`;
 		try {
-			const res = await fetch(`/admin/offboarding/${e.id}/mail-preview/${step}${previewQuery(r.mode)}`);
-			if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? 'Could not build the preview.');
-			const draft = (await res.json()) as MailDraft;
-			if (review === r) review.draft = draft;
+			// A re-request changes with every tick, so only the plain mail is cached.
+			const draft = r.mode ? await loadDraft(url).finally(() => draftCache.delete(url)) : await loadDraft(url);
+			if (review === r && r.query === query) {
+				review.draft = draft;
+				review.error = '';
+			}
 		} catch (err) {
 			if (review === r) review.error = err instanceof Error ? err.message : 'Could not build the preview.';
 		}
 	}
 
-	async function openReview(step: string, previewOnly = false, mode: ComposeMode = null) {
+	async function openReview(step: string, previewOnly = false, mode: ComposeMode = null, stage: string | null = null) {
 		compose = { items: [], uploads: [''], note: '', docs: [] };
-		review = { step, previewOnly, mode, draft: null, error: '' };
-		await fetchDraft();
+		review = { step, previewOnly, mode, draft: null, error: '', stage, query: null };
+		if (!stage) await fetchDraft();
+	}
+
+	/** The two hand-offs that ready a mail — accepting the submission (or
+	 *  starting the chain) and handing the F&F to payroll — open the mail's
+	 *  dialog the moment HR presses the button, with the loader saying what is
+	 *  happening, and fetch the draft as soon as the server has finished,
+	 *  alongside the page refresh rather than after it. */
+	function handoff(
+		key: string,
+		step: string,
+		stage: string,
+		opens: (submitter: HTMLElement | null) => boolean,
+		done: (data: Record<string, unknown> | undefined) => boolean
+	) {
+		return ({ submitter }: { submitter: HTMLElement | null }) => {
+			sending[key] = true;
+			const open = opens(submitter);
+			if (open) openReview(step, false, null, stage);
+			return async ({
+				result,
+				update
+			}: {
+				result: { type: string; data?: Record<string, unknown> };
+				update: (o?: { reset?: boolean }) => Promise<void>;
+			}) => {
+				const mine = () => open && review?.step === step && !review.draft;
+				if (mine() && result.type === 'success' && done(result.data)) {
+					review!.stage = 'Composing the mail…';
+					await Promise.all([update({ reset: false }), fetchDraft()]);
+				} else {
+					if (mine()) review = null;
+					await update({ reset: false });
+				}
+				sending[key] = false;
+			};
+		};
 	}
 
 	// While composing a re-request, the preview follows what HR ticks and types.
@@ -175,11 +261,6 @@
 		};
 	}
 
-	// The two hand-offs that ready a mail open it for review straight away.
-	$effect(() => {
-		if (form?.accepted) openReview('manager');
-		else if (form?.handedToPayroll) openReview('payroll');
-	});
 
 	async function uploadHandover(docType: string, input: HTMLInputElement) {
 		const file = input.files?.[0];
@@ -404,7 +485,7 @@
 										class="nact {s.ready ? 'go' : ''}"
 										type="button"
 										disabled={!data.isHr}
-										onclick={() => openReview(s.key)}
+										onpointerenter={() => prefetch(s.key)} onfocus={() => prefetch(s.key)} onclick={() => openReview(s.key)}
 									>
 										{s.ready ? 'Review & send' : 'Review reminder'}
 									</button>
@@ -418,13 +499,13 @@
 								<a class="nact" href="#fnf">Fill the F&amp;F ↓</a>
 							{:else if s.status === 'active' && s.key === 'letters'}
 								<div class="nacts">
-									<button class="nact" type="button" disabled={!data.isHr} onclick={() => openReview('letters')}>
+									<button class="nact" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('letters')} onfocus={() => prefetch('letters')} onclick={() => openReview('letters')}>
 										Review &amp; release
 									</button>
 									<a class="nact" href="#release">Settings ↓</a>
 								</div>
 							{:else if s.status === 'waiting' && data.flow.startedAt && (MAIL_STEPS.has(s.key) || s.key === 'letters')}
-								<button class="nact quiet" type="button" onclick={() => openReview(s.key, true)}>Preview mail</button>
+								<button class="nact quiet" type="button" onpointerenter={() => prefetch(s.key)} onfocus={() => prefetch(s.key)} onclick={() => openReview(s.key, true)}>Preview mail</button>
 							{/if}
 							{#if s.status === 'done' && MAIL_STEPS.has(s.key) && e.status !== 'completed' && data.isHr}
 								<button class="nact quiet" type="button" onclick={() => openReview(s.key, false, 'back')}>
@@ -438,7 +519,17 @@
 
 			{#if !data.flow.startedAt}
 				{#if e.reviewedAt}
-					<form method="POST" action="?/startChain" use:enhance={track('chain')}>
+					<form
+						method="POST"
+						action="?/startChain"
+						use:enhance={handoff(
+							'chain',
+							firstMailStep,
+							'Starting the chain…',
+							() => true,
+							() => true
+						)}
+					>
 						<button class="btn small teal" style="width:100%" disabled={!data.isHr || sending['chain']}>
 							{sending['chain'] ? 'Starting…' : 'Start the chain'}
 						</button>
@@ -491,19 +582,24 @@
 						</label>
 						<label class="f">
 							<span>Separation type</span>
-							<select name="separationType">
-								<option value="voluntary" selected={e.separationType === 'voluntary'}>Voluntary</option>
-								<option value="involuntary" selected={e.separationType === 'involuntary'}>Involuntary</option>
-							</select>
+							<GlassSelect
+								name="separationType"
+								ariaLabel="Separation type"
+								value={e.separationType === 'involuntary' ? 'involuntary' : 'voluntary'}
+								options={[
+									{ value: 'voluntary', label: 'Voluntary' },
+									{ value: 'involuntary', label: 'Involuntary' }
+								]}
+							/>
 						</label>
 						<label class="f">
 							<span>Track <small>(decides the exit letters)</small></span>
-							<select name="track">
-								<option value="" selected={!e.track}>Not set</option>
-								{#each TRACKS as t}
-									<option value={t} selected={e.track === t}>{TRACK_LABELS[t]}</option>
-								{/each}
-							</select>
+							<GlassSelect
+								name="track"
+								ariaLabel="Track"
+								value={e.track ?? ''}
+								options={[{ value: '', label: 'Not set' }, ...TRACKS.map((t) => ({ value: t, label: TRACK_LABELS[t] }))]}
+							/>
 						</label>
 						<label class="f"><span>UAN</span><input name="uanNo" value={e.uanNo ?? ''} /></label>
 						<label class="f"><span>PAN</span><input name="panNo" value={e.panNo ?? ''} /></label>
@@ -517,11 +613,19 @@
 									</em>
 								{/if}
 							</span>
-							<select name="gratuityApplicable">
-								<option value="">Use computed ({data.gratuityComputed === null ? 'unknown' : data.gratuityComputed ? 'yes' : 'no'})</option>
-								<option value="yes" selected={e.gratuity?.applicable === true}>Yes — ask for Form I</option>
-								<option value="no" selected={e.gratuity?.applicable === false}>No</option>
-							</select>
+							<GlassSelect
+								name="gratuityApplicable"
+								ariaLabel="Gratuity applicable"
+								value={e.gratuity?.applicable === true ? 'yes' : e.gratuity?.applicable === false ? 'no' : ''}
+								options={[
+									{
+										value: '',
+										label: `Use computed (${data.gratuityComputed === null ? 'unknown' : data.gratuityComputed ? 'yes' : 'no'})`
+									},
+									{ value: 'yes', label: 'Yes — ask for Form I' },
+									{ value: 'no', label: 'No' }
+								]}
+							/>
 						</label>
 					</div>
 					{#if form?.particularsError && form?.message}<p class="error">{form.message}</p>{/if}
@@ -565,7 +669,7 @@
 			</div>
 
 			<div class="btn-row">
-				<button class="btn grad" type="button" disabled={!data.isHr} onclick={() => openReview('forms')}>
+				<button class="btn grad" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('forms')} onfocus={() => prefetch('forms')} onclick={() => openReview('forms')}>
 					{data.formsLink ? 'Review & resend link' : 'Review & send forms link'}
 				</button>
 				{#if data.formsLink}
@@ -581,7 +685,7 @@
 						<button class="btn ghost small" disabled={!data.isHr}>Revoke</button>
 					</form>
 				{/if}
-				<button class="btn ghost" type="button" disabled={!data.isHr} onclick={() => openReview('itblock')}>
+				<button class="btn ghost" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('itblock')} onfocus={() => prefetch('itblock')} onclick={() => openReview('itblock')}>
 					{e.itAccessRevokedMailSentAt ? 'Review & resend IT access-block mail' : 'Review & mail IT to block access'}
 				</button>
 			</div>
@@ -763,7 +867,17 @@
 				</fieldset>
 			</form>
 
-			<form method="POST" action="?/acceptSubmission" use:enhance={track('accept')}>
+			<form
+				method="POST"
+				action="?/acceptSubmission"
+				use:enhance={handoff(
+					'accept',
+					'manager',
+					'Accepting the submission and starting the chain…',
+					() => true,
+					(d) => !!d?.accepted
+				)}
+			>
 				<div class="btn-row" style="margin-top:4px">
 					<button class="btn teal" disabled={!data.isHr || sending['accept']}>
 						{sending['accept'] ? 'Accepting…' : 'Accept & start the exit chain'}
@@ -803,7 +917,17 @@
 				{/if}
 			</div>
 
-			<form method="POST" action="?/saveFnf" use:enhance={track('fnf')}>
+			<form
+				method="POST"
+				action="?/saveFnf"
+				use:enhance={handoff(
+					'fnf',
+					'payroll',
+					'Saving the F&F and handing it to payroll…',
+					(b) => b?.getAttribute('name') === 'handToPayroll',
+					(d) => !!d?.handedToPayroll
+				)}
+			>
 				<fieldset class="rbac" disabled={!data.isHr}>
 					{#if data.payrollSigned}
 						<div class="fnf-read">
@@ -919,12 +1043,12 @@
 					<div class="fgrid">
 						<label class="f">
 							<span>Salutation <small>(sets he / she)</small></span>
-							<select name="salutation">
-								<option value="" selected={!e.letters.salutation}>None — reads "they"</option>
-								{#each LETTER_SALUTATIONS as s}
-									<option value={s} selected={e.letters.salutation === s}>{s}</option>
-								{/each}
-							</select>
+							<GlassSelect
+								name="salutation"
+								ariaLabel="Salutation"
+								value={e.letters.salutation ?? ''}
+								options={[{ value: '', label: 'None — reads "they"' }, ...LETTER_SALUTATIONS.map((s) => ({ value: s, label: s }))]}
+							/>
 						</label>
 						{#if isIntern}
 							<label class="f"><span>USN</span><input name="usn" value={e.letters.usn ?? ''} placeholder="ENG22CT0005" /></label>
@@ -1104,7 +1228,7 @@
 			{#if form?.handoverError && form?.message}<p class="error">{form.message}</p>{/if}
 			<div class="btn-row">
 				{#if e.status !== 'completed'}
-					<button class="btn grad" type="button" disabled={!data.isHr} onclick={() => openReview('letters')}>
+					<button class="btn grad" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('letters')} onfocus={() => prefetch('letters')} onclick={() => openReview('letters')}>
 						Review &amp; release now
 					</button>
 				{/if}
@@ -1346,13 +1470,29 @@
 
 {#if review}
 	<div class="rv-back" role="presentation" onclick={() => !sending['review'] && (review = null)}></div>
-	<div class="rv" role="dialog" aria-modal="true" aria-label="Review mail">
+	<div class="rv" role="dialog" aria-modal="true" aria-label="Review mail" aria-busy={!review.draft && !review.error}>
 		<div class="rv-head">
-			<div>
-				<div class="eyebrow">{review.previewOnly ? 'Preview' : 'Review before sending'}</div>
-				<h2>{review.draft?.label ?? 'Loading…'}{review.draft?.reminder ? ' — reminder' : ''}</h2>
+			<div class="rv-icon" class:busy={!review.draft && !review.error} aria-hidden="true">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="M3.5 6.5l8.5 6 8.5-6" /></svg>
 			</div>
-			<button class="rv-x" type="button" aria-label="Close" onclick={() => (review = null)}>×</button>
+			<div class="rv-title">
+				<div class="eyebrow">
+					{review.previewOnly
+						? 'Preview'
+						: review.mode === 'back'
+							? 'Send back'
+							: review.mode === 'docs'
+								? 'Ask again'
+								: 'Review before sending'}
+				</div>
+				<h2>
+					{reviewTitle}
+					{#if review.draft?.reminder}<span class="rv-pill">Reminder</span>{/if}
+				</h2>
+			</div>
+			<button class="rv-x" type="button" aria-label="Close" onclick={() => (review = null)}>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+			</button>
 		</div>
 
 		{#if review.mode === 'back' && reviewStep}
@@ -1397,15 +1537,49 @@
 		{/if}
 
 		{#if review.error}
-			<p class="error" style="margin:16px 20px">{review.error}</p>
+			<div class="rv-error">
+				<b>The mail could not be built.</b>
+				<span>{review.error}</span>
+				<button
+					class="btn ghost small"
+					type="button"
+					onclick={() => {
+						if (!review) return;
+						review.error = '';
+						review.query = null;
+						fetchDraft();
+					}}>Try again</button
+				>
+			</div>
 		{:else if !review.draft}
-			<p class="muted" style="margin:16px 20px">Building the mail…</p>
+			<div class="rv-loading" aria-live="polite">
+				<div class="rv-stage"><span class="rv-spin"></span>{review.stage ?? 'Composing the mail…'}</div>
+				<div class="sk-meta">
+					{#each [62, 48, 74] as w, i (i)}
+						<div class="sk-row"><span class="sk sk-k"></span><span class="sk" style="width:{w}%"></span></div>
+					{/each}
+				</div>
+				<div class="sk-mail">
+					<span class="sk sk-logo"></span>
+					<span class="sk sk-h"></span>
+					{#each [92, 86, 95, 60] as w, i (i)}<span class="sk sk-line" style="width:{w}%"></span>{/each}
+					<span class="sk sk-btn"></span>
+					{#each [80, 70] as w, i (i)}<span class="sk sk-line" style="width:{w}%"></span>{/each}
+				</div>
+			</div>
 		{:else}
 			{@const d = review.draft}
 			<dl class="rv-meta">
 				<dt>To</dt>
-				<dd>{d.to.join(', ') || '—'}</dd>
-				{#if d.cc.length}<dt>Cc</dt><dd>{d.cc.join(', ')}</dd>{/if}
+				<dd>
+					{#if d.to.length}
+						<span class="rv-chips">{#each d.to as a (a)}<span class="rv-chip">{a}</span>{/each}</span>
+					{:else}<span class="rv-none">No address set</span>{/if}
+				</dd>
+				{#if d.cc.length}
+					<dt>Cc</dt>
+					<dd><span class="rv-chips">{#each d.cc as a (a)}<span class="rv-chip soft">{a}</span>{/each}</span></dd>
+				{/if}
 				<dt>Subject</dt>
 				<dd><b>{d.subject}</b></dd>
 				<dt>Attached</dt>
@@ -1422,15 +1596,17 @@
 				</dd>
 			</dl>
 			{#if d.why}<p class="rv-why">{d.why}</p>{/if}
-			<iframe class="rv-body" title="Mail body" sandbox="" srcdoc={d.html}></iframe>
-			<p class="muted tiny rv-foot">
-				The link in the mail is created when you press Send. Wrong address? Change it in
-				<a href="#mail-settings" onclick={() => (review = null)}>Mail settings</a>.
-			</p>
+			<div class="rv-frame">
+				<iframe class="rv-body" title="Mail body" sandbox="" srcdoc={d.html}></iframe>
+			</div>
 		{/if}
 
 		{#if form?.message && !sending['review'] && review.draft}<p class="error" style="margin:0 20px 10px">{form.message}</p>{/if}
 		<div class="rv-actions">
+			<p class="rv-foot">
+				The link in the mail is created when you press Send. Wrong address?
+				<a href="#mail-settings" onclick={() => (review = null)}>Mail settings</a>
+			</p>
 			<button class="btn ghost" type="button" onclick={() => (review = null)} disabled={sending['review']}>
 				{review.previewOnly ? 'Close' : 'Cancel'}
 			</button>
@@ -1471,108 +1647,337 @@
 	.rv-back {
 		position: fixed;
 		inset: 0;
-		background: rgb(10 12 16 / 0.55);
+		background: rgb(6 8 14 / 0.62);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
 		z-index: 50;
+		animation: rv-fade 0.16s ease-out;
 	}
 	.rv {
 		position: fixed;
 		z-index: 51;
-		top: 4vh;
+		top: 50%;
 		left: 50%;
-		transform: translateX(-50%);
-		width: min(760px, calc(100vw - 32px));
-		max-height: 92vh;
+		transform: translate(-50%, -50%);
+		width: min(780px, calc(100vw - 32px));
+		height: min(860px, calc(100vh - 40px));
 		display: flex;
 		flex-direction: column;
 		background: var(--ae-card-bg), var(--ae-modal-base, #12151f);
-		border: 1px solid var(--ae-line);
-		border-radius: 14px;
-		box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
+		border: 1px solid var(--ae-card-border);
+		border-radius: 18px;
+		box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.08);
 		overflow: hidden;
+		animation: rv-in 0.22s var(--ae-spring);
+	}
+	@keyframes rv-fade {
+		from {
+			opacity: 0;
+		}
+	}
+	@keyframes rv-in {
+		from {
+			opacity: 0;
+			transform: translate(-50%, calc(-50% + 14px)) scale(0.98);
+		}
 	}
 	.rv-head {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		padding: 16px 20px 12px;
-		border-bottom: 1px solid var(--ae-line-soft);
+		align-items: center;
+		gap: 12px;
+		padding: 16px 18px 14px 20px;
+		border-bottom: 1px solid var(--ae-line);
+	}
+	.rv-icon {
+		width: 38px;
+		height: 38px;
+		flex-shrink: 0;
+		border-radius: 11px;
+		display: grid;
+		place-items: center;
+		color: var(--ae-ember);
+		background: rgb(255 125 85 / 0.12);
+		border: 1px solid rgb(255 125 85 / 0.25);
+	}
+	.rv-icon.busy svg {
+		animation: rv-bob 1.1s ease-in-out infinite;
+	}
+	@keyframes rv-bob {
+		50% {
+			transform: translateY(-2px);
+		}
+	}
+	.rv-title {
+		flex: 1;
+		min-width: 0;
+	}
+	.rv-title .eyebrow {
+		margin: 0;
 	}
 	.rv-head h2 {
 		margin: 2px 0 0;
 		font-size: 17px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.rv-pill {
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		padding: 2px 8px;
+		border-radius: 999px;
+		color: var(--ae-amber);
+		background: rgb(242 177 92 / 0.14);
 	}
 	.rv-x {
-		border: none;
+		width: 32px;
+		height: 32px;
+		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--ae-line);
+		border-radius: 9px;
 		background: none;
-		font-size: 24px;
-		line-height: 1;
 		color: var(--ae-muted);
 		cursor: pointer;
+		transition: background 0.12s, color 0.12s;
+	}
+	.rv-x:hover {
+		background: var(--ae-hover);
+		color: var(--ae-text);
 	}
 	.rv-meta {
 		display: grid;
-		grid-template-columns: 70px 1fr;
-		gap: 6px 12px;
+		grid-template-columns: 72px 1fr;
+		gap: 9px 12px;
+		align-items: center;
 		margin: 0;
-		padding: 12px 20px;
+		padding: 14px 20px;
 		font-size: 13px;
-		border-bottom: 1px solid var(--ae-line-soft);
+		border-bottom: 1px solid var(--ae-line);
+		background: var(--ae-sub-bg);
 	}
 	.rv-meta dt {
 		color: var(--ae-muted);
-		font-size: 11.5px;
+		font-size: 11px;
 		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding-top: 2px;
+		letter-spacing: 0.06em;
 	}
 	.rv-meta dd {
 		margin: 0;
 		color: var(--ae-text);
 		word-break: break-word;
+		min-width: 0;
 	}
+	.rv-chips,
 	.rv-atts {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
 	}
+	.rv-chip {
+		font-size: 12px;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: rgb(123 167 240 / 0.14);
+		border: 1px solid rgb(123 167 240 / 0.3);
+		color: var(--ae-text);
+	}
+	.rv-chip.soft {
+		background: var(--ae-hover);
+		border-color: var(--ae-line-strong);
+		color: var(--ae-text-2);
+	}
+	.rv-none {
+		color: var(--ae-crimson);
+		font-weight: 600;
+	}
 	.rv-att {
 		font-size: 12px;
-		padding: 2px 9px;
-		border: 1px solid var(--ae-line);
+		padding: 2px 10px 2px 8px;
+		border: 1px solid var(--ae-line-strong);
 		border-radius: 999px;
 		color: var(--ae-azure);
 		text-decoration: none;
+	}
+	.rv-att::before {
+		content: '📎 ';
 	}
 	.rv-att:hover {
 		background: var(--ae-hover);
 	}
 	.rv-why {
-		margin: 10px 20px 0;
-		padding: 8px 12px;
+		margin: 12px 20px 0;
+		padding: 9px 12px;
 		font-size: 12.5px;
-		border-left: 3px solid var(--ae-amber);
-		background: var(--ae-sub-bg);
+		border-radius: 10px;
+		border: 1px solid rgb(242 177 92 / 0.3);
+		background: rgb(242 177 92 / 0.1);
 		color: var(--ae-text-2);
+	}
+	.rv-frame {
+		flex: 1;
+		min-height: 0;
+		margin: 12px 20px 0;
+		padding: 10px;
+		border-radius: 12px;
+		background: rgb(0 0 0 / 0.18);
+		border: 1px solid var(--ae-line);
+		display: flex;
 	}
 	.rv-body {
 		flex: 1;
-		min-height: 300px;
-		height: 50vh;
-		margin: 12px 20px 0;
-		border: 1px solid var(--ae-line-soft);
+		width: 100%;
+		min-height: 260px;
+		border: none;
 		border-radius: 8px;
 		background: #f2f4f7;
 	}
-	.rv-foot {
-		margin: 8px 20px 10px;
+	.rv-error {
+		margin: 18px 20px;
+		padding: 14px 16px;
+		border-radius: 12px;
+		border: 1px solid rgb(240 117 117 / 0.35);
+		background: rgb(240 117 117 / 0.08);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
+		font-size: 13px;
+		color: var(--ae-text-2);
+	}
+	.rv-error b {
+		color: var(--ae-crimson);
+	}
+	/* The loader: the dialog's own shape, shimmering, so it opens at its final
+	   size and the mail settles into place instead of the box jumping. */
+	.rv-loading {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.rv-stage {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 20px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--ae-text-2);
+		border-bottom: 1px solid var(--ae-line);
+	}
+	.rv-spin {
+		width: 15px;
+		height: 15px;
+		border-radius: 50%;
+		border: 2px solid rgb(255 125 85 / 0.25);
+		border-top-color: var(--ae-ember);
+		animation: rv-rot 0.7s linear infinite;
+	}
+	@keyframes rv-rot {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.sk-meta {
+		padding: 14px 20px;
+		display: grid;
+		gap: 11px;
+		border-bottom: 1px solid var(--ae-line);
+		background: var(--ae-sub-bg);
+	}
+	.sk-row {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+	}
+	.sk {
+		display: block;
+		height: 10px;
+		border-radius: 6px;
+		background: linear-gradient(90deg, var(--ae-hover) 0%, var(--ae-line-strong) 45%, var(--ae-hover) 90%);
+		background-size: 220% 100%;
+		animation: sk-shine 1.2s ease-in-out infinite;
+	}
+	@keyframes sk-shine {
+		from {
+			background-position: 120% 0;
+		}
+		to {
+			background-position: -120% 0;
+		}
+	}
+	.sk-k {
+		width: 60px;
+		flex-shrink: 0;
+	}
+	.sk-mail {
+		flex: 1;
+		margin: 12px 20px 0;
+		padding: 26px 28px;
+		border-radius: 12px;
+		border: 1px solid var(--ae-line);
+		background: rgb(0 0 0 / 0.14);
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.sk-logo {
+		width: 110px;
+		height: 22px;
+		margin-bottom: 8px;
+	}
+	.sk-h {
+		width: 55%;
+		height: 16px;
+		margin-bottom: 4px;
+	}
+	.sk-btn {
+		width: 150px;
+		height: 34px;
+		border-radius: 9px;
+		margin: 8px 0;
 	}
 	.rv-actions {
 		display: flex;
 		justify-content: flex-end;
+		align-items: center;
 		gap: 10px;
-		padding: 12px 20px 16px;
-		border-top: 1px solid var(--ae-line-soft);
+		padding: 14px 20px;
+		margin-top: 12px;
+		border-top: 1px solid var(--ae-line);
+		background: var(--ae-sub-bg);
+	}
+	.rv-foot {
+		margin: 0 auto 0 0;
+		font-size: 11.5px;
+		line-height: 1.45;
+		color: var(--ae-muted);
+		max-width: 340px;
+	}
+	@media (max-width: 640px) {
+		.rv {
+			height: calc(100vh - 24px);
+			width: calc(100vw - 16px);
+		}
+		.rv-foot {
+			display: none;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.rv,
+		.rv-back,
+		.sk,
+		.rv-icon.busy svg {
+			animation: none;
+		}
 	}
 	.rv-actions form {
 		display: contents;

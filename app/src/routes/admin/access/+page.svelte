@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import AccessTour from '$lib/components/AccessTour.svelte';
+	import GlassSelect from '$lib/components/GlassSelect.svelte';
 	import {
 		ALL_CAP_KEYS,
 		CAPS,
@@ -382,11 +383,14 @@
 			<div class="sim">
 				<div class="simhead">
 					<label for="simwho">Preview as</label>
-					<select id="simwho" bind:value={simWho}>
-						{#each people as p (p.id)}
-							<option value={p.id}>{p.name} — {PRESETS[p.preset]?.name}</option>
-						{/each}
-					</select>
+					<div class="simpick">
+						<GlassSelect
+							id="simwho"
+							ariaLabel="Preview as"
+							bind:value={simWho}
+							options={people.map((p) => ({ value: p.id, label: `${p.name} — ${PRESETS[p.preset]?.name ?? ''}` }))}
+						/>
+					</div>
 					<span class="hint">Exactly what this person sees and can press, before you apply.</span>
 				</div>
 				{#if simPerson}
@@ -452,21 +456,29 @@
 					<div class="sec-t">Role &amp; reporting</div>
 					<label class="fld">
 						<span>Role preset</span>
-						<select value={p.preset} disabled={locked || p.isSelf} onchange={(e) => setPreset(p, e.currentTarget.value)}>
-							{#each PRESET_KEYS as k (k)}
-								<option value={k}>{PRESETS[k].name}{PRESETS[k].legacy ? ' (in force today)' : ''}</option>
-							{/each}
-						</select>
+						<GlassSelect
+							ariaLabel="Role preset"
+							value={p.preset}
+							disabled={locked || p.isSelf}
+							onChange={(v) => setPreset(p, v)}
+							options={PRESET_KEYS.map((k) => ({
+								value: k,
+								label: `${PRESETS[k].name}${PRESETS[k].legacy ? ' (in force today)' : ''}`
+							}))}
+						/>
 						<small>{PRESETS[p.preset]?.note ?? ''}</small>
 					</label>
 					<label class="fld">
 						<span>Reports to</span>
-						<select value={p.reportsTo ?? ''} onchange={(e) => setManager(p, e.currentTarget.value)}>
-							<option value="">— Nobody (top of the chart)</option>
-							{#each people.filter((o) => o.id !== p.id && !wouldLoop(p, o.id)) as o (o.id)}
-								<option value={o.id}>{o.name}</option>
-							{/each}
-						</select>
+						<GlassSelect
+							ariaLabel="Reports to"
+							value={p.reportsTo ?? ''}
+							onChange={(v) => setManager(p, v)}
+							options={[
+								{ value: '', label: '— Nobody (top of the chart)' },
+								...people.filter((o) => o.id !== p.id && !wouldLoop(p, o.id)).map((o) => ({ value: o.id, label: o.name }))
+							]}
+						/>
 						<small>
 							{#if managerOf(p)}Sign-offs route to <b>{managerOf(p)!.name}</b>.{:else}Nobody above them, so anything needing sign-off will stall.{/if}
 						</small>
@@ -745,7 +757,7 @@
 	.sec-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ae-muted); margin-bottom: 9px; }
 	.fld { display: flex; flex-direction: column; gap: 5px; margin-bottom: 11px; font-size: 11.5px; color: var(--ae-text-2); font-weight: 600; }
 	.fld small { font-weight: 400; color: var(--ae-muted); font-size: 10.5px; line-height: 1.45; }
-	.fld select, .fld input[type='date'] { font-family: inherit; font-size: 12.5px; padding: 7px 9px; border: 1px solid var(--ae-line-strong); border-radius: 8px; background: transparent; color: var(--ae-text-2); }
+	.fld input[type='date'] { font-family: inherit; font-size: 12.5px; padding: 7px 9px; border: 1px solid var(--ae-line-strong); border-radius: 8px; background: transparent; color: var(--ae-text-2); }
 	.radios { display: flex; flex-direction: column; gap: 3px; }
 	.radio { display: flex; gap: 9px; align-items: flex-start; padding: 7px 9px; border-radius: 9px; border: 1px solid transparent; background: none; text-align: left; cursor: pointer; color: inherit; }
 	.radio[aria-checked='true'] { background: rgba(255, 125, 85, 0.1); border-color: rgba(255, 125, 85, 0.34); }
@@ -782,7 +794,7 @@
 
 	.sim { padding: 16px 18px 22px; }
 	.simhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; font-size: 11.5px; }
-	.simhead select { font-family: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--ae-line-strong); background: transparent; color: var(--ae-text-2); min-width: 240px; }
+	.simpick { min-width: 260px; font-size: 12.5px; }
 	.scope { font-size: 11.5px; line-height: 1.5; color: var(--ae-text-2); border: 1px solid rgba(123, 167, 240, 0.3); background: rgba(123, 167, 240, 0.09); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
 	.bad { color: var(--ae-crimson); }
 	.simgrid { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; }

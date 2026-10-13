@@ -265,7 +265,12 @@ export async function renderExitDoc(
  *  physical keeping" path. */
 export async function exitPackZip(
 	exitId: string,
-	opts: { includeUploads?: boolean; includeHandover?: boolean } = {}
+	opts: {
+		includeUploads?: boolean;
+		includeHandover?: boolean;
+		/** Payroll's pack: the letters are HR's to release, not payroll's to read. */
+		skipLetters?: boolean;
+	} = {}
 ): Promise<{ bytes: Uint8Array; filename: string } | null> {
 	const input = await loadPdfInput(exitId);
 	if (!input) return null;
@@ -273,7 +278,7 @@ export async function exitPackZip(
 	const zip = new PizZip();
 
 	for (const def of EXIT_DOCS) {
-		if (!def.applies(input.exit)) continue;
+		if (!def.applies(input.exit) || (opts.skipLetters && def.letter)) continue;
 		try {
 			const bytes = await def.render(input);
 			zip.file(`${def.slug}.pdf`, Buffer.from(bytes));
@@ -307,7 +312,7 @@ export async function exitPackZip(
 	const stem = safeFilename(String(input.exit.fullName ?? input.exit.employeeId ?? 'exit'));
 	return {
 		bytes: new Uint8Array(zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' })),
-		filename: `${stem}_exit_documents.zip`
+		filename: `${stem}_${opts.skipLetters ? 'payroll_pack' : 'exit_documents'}.zip`
 	};
 }
 
