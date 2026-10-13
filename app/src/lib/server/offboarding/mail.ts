@@ -411,6 +411,9 @@ export async function buildItExitMail(opts: {
 	employeeName: string;
 	lwd: string | null;
 	team: string | null;
+	/** This exit's own recipients (its mail settings); unset → the defaults. */
+	to?: string[] | null;
+	cc?: string[] | null;
 }) {
 	const s = await getExitMailSettings();
 	const cells = [opts.employeeId, opts.employeeName, opts.lwd ?? '', opts.team ?? ''];
@@ -459,8 +462,8 @@ export async function buildItExitMail(opts: {
 	);
 
 	return {
-		to: s.itTo,
-		cc: s.itCc,
+		to: opts.to?.length ? opts.to : s.itTo,
+		cc: opts.cc ?? s.itCc,
 		subject: `Block system access — ${opts.employeeName} (${opts.employeeId})`,
 		html,
 		text,

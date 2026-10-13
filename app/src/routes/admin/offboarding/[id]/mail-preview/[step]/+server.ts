@@ -104,7 +104,9 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 			employeeId: exit.employeeId,
 			employeeName: exit.fullName,
 			lwd: exit.lwd ?? null,
-			team: exit.department ?? exit.division ?? null
+			team: exit.department ?? exit.division ?? null,
+			to: exit.routing?.itBlock?.to ?? null,
+			cc: exit.routing?.itBlock?.cc ?? null
 		});
 		return json({
 			to: mail.to,

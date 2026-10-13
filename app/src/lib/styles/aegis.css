@@ -69,6 +69,9 @@
 	--ae-sub-bg: rgba(255, 255, 255, 0.05);
 	--ae-rail-bg: rgba(14, 17, 26, 0.55);
 	--ae-hover: rgba(255, 255, 255, 0.07);
+	/* Solid layer under a dialog's card background, so a glass card never
+	   lets the page behind it show through. */
+	--ae-modal-base: #12151f;
 }
 
 /* Flat variant — the README's "aegis". Cheapest to render, highest contrast. */
@@ -124,6 +127,7 @@
 	--ae-sub-bg: rgba(255, 255, 255, 0.5);
 	--ae-rail-bg: rgba(255, 255, 255, 0.55);
 	--ae-hover: rgba(32, 36, 58, 0.05);
+	--ae-modal-base: #f7f7fb;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 	.aegis[data-theme='light'] {

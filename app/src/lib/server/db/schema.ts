@@ -768,18 +768,43 @@ const exitSchema = new Schema(
 		// Copied from the saved defaults when the exit is created, then HR's to
 		// change for this person alone. A blank address holds the chain at that
 		// step until one is filled in.
+		// The designation prefills the approver's clearance page and prints
+		// beside their name on the No Dues certificate.
 		routing: {
-			manager: { email: { type: String, default: null }, name: { type: String, default: null } },
-			it: { email: { type: String, default: null }, name: { type: String, default: null } },
+			manager: {
+				email: { type: String, default: null },
+				name: { type: String, default: null },
+				designation: { type: String, default: null }
+			},
+			it: {
+				email: { type: String, default: null },
+				name: { type: String, default: null },
+				designation: { type: String, default: null }
+			},
 			salesforce: {
 				email: { type: String, default: null },
 				name: { type: String, default: null },
+				designation: { type: String, default: null },
 				/** Salesforce clearance is for sales staff only, so it is opt-in. */
 				enabled: { type: Boolean, default: false }
 			},
 			/** Not a clearance: told when it is HR's turn to fill the F&F. */
-			hr: { email: { type: String, default: null }, name: { type: String, default: null } },
-			payroll: { email: { type: String, default: null }, name: { type: String, default: null } }
+			hr: {
+				email: { type: String, default: null },
+				name: { type: String, default: null },
+				designation: { type: String, default: null }
+			},
+			payroll: {
+				email: { type: String, default: null },
+				name: { type: String, default: null },
+				designation: { type: String, default: null }
+			},
+			/** Who the "block system access" mail goes to for this exit. Unset
+			 *  means the saved defaults (exit mail settings). */
+			itBlock: {
+				to: { type: [String], default: undefined },
+				cc: { type: [String], default: undefined }
+			}
 		},
 
 		// ── Exit chain state ─────────────────────────────────────────────────

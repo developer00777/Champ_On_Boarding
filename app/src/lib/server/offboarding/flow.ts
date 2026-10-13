@@ -55,6 +55,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface Addr {
 	email: string;
 	name: string;
+	designation: string;
 }
 export interface RoutingDefaults {
 	it: Addr;
@@ -67,10 +68,10 @@ export interface RoutingDefaults {
 const ROUTING_SETTING_KEY = 'exit_routing';
 
 export const ROUTING_FALLBACK: RoutingDefaults = {
-	it: { email: 'ithelpdesk@championsmail.com', name: 'IT Helpdesk' },
-	salesforce: { email: '', name: '', enabled: false },
-	hr: { email: 'hrd.jst@championsmail.com', name: 'HR desk' },
-	payroll: { email: '', name: '' },
+	it: { email: 'ithelpdesk@championsmail.com', name: 'IT Helpdesk', designation: '' },
+	salesforce: { email: '', name: '', designation: '', enabled: false },
+	hr: { email: 'hrd.jst@championsmail.com', name: 'HR desk', designation: '' },
+	payroll: { email: '', name: '', designation: '' },
 	releaseAfterDays: 30
 };
 
@@ -79,7 +80,8 @@ export async function getRoutingDefaults(): Promise<RoutingDefaults> {
 	const v = (row?.value ?? {}) as Partial<RoutingDefaults>;
 	const addr = (a: Partial<Addr> | undefined, f: Addr): Addr => ({
 		email: a?.email ?? f.email,
-		name: a?.name ?? f.name
+		name: a?.name ?? f.name,
+		designation: a?.designation ?? f.designation
 	});
 	return {
 		it: addr(v.it, ROUTING_FALLBACK.it),
@@ -106,11 +108,16 @@ export async function initialRouting(reportingManager: string | null) {
 	const d = await getRoutingDefaults();
 	return {
 		routing: {
-			manager: { email: null, name: reportingManager || null },
-			it: { email: d.it.email || null, name: d.it.name || null },
-			salesforce: { email: d.salesforce.email || null, name: d.salesforce.name || null, enabled: d.salesforce.enabled },
-			hr: { email: d.hr.email || null, name: d.hr.name || null },
-			payroll: { email: d.payroll.email || null, name: d.payroll.name || null }
+			manager: { email: null, name: reportingManager || null, designation: null },
+			it: { email: d.it.email || null, name: d.it.name || null, designation: d.it.designation || null },
+			salesforce: {
+				email: d.salesforce.email || null,
+				name: d.salesforce.name || null,
+				designation: d.salesforce.designation || null,
+				enabled: d.salesforce.enabled
+			},
+			hr: { email: d.hr.email || null, name: d.hr.name || null, designation: d.hr.designation || null },
+			payroll: { email: d.payroll.email || null, name: d.payroll.name || null, designation: d.payroll.designation || null }
 		},
 		flow: { releaseAfterDays: d.releaseAfterDays, autoRelease: true }
 	};
@@ -533,11 +540,18 @@ export async function mailStep(
 	const existing = await ExitClearance.findOne({ exitId, department: dept }).lean<Lean>();
 	if (existing?.status === 'completed') return { error: `The ${def.label} has already signed.` };
 	// The row follows the mail settings: an address corrected there is the one
-	// the next send uses.
+	// the next send uses, and the name and designation prefill their page. A
+	// send-back keeps what the approver typed when they signed.
+	const signedBefore = !!existing?.sendBack?.at;
 	await ExitClearance.findOneAndUpdate(
 		{ exitId, department: dept },
 		{
-			$set: { approverEmail: email, approverName: route.name || null },
+			$set: {
+				approverEmail: email,
+				...(signedBefore
+					? {}
+					: { approverName: route.name || null, approverDesignation: route.designation || null })
+			},
 			$setOnInsert: { exitId, department: dept }
 		},
 		{ upsert: true }

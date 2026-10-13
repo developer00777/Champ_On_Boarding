@@ -1,4 +1,6 @@
 <script lang="ts">
+	/** Joins a recipient list one per line, as the textareas show it. */
+	const NL = '\n';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
@@ -1121,13 +1123,17 @@
 				<div>
 					<h2>Mail settings</h2>
 					<p class="muted">
-						Who each step of the chain emails, in order. These start from the saved defaults — change
-						them here for this person alone, or tick the box to make them the default for new
-						offboardings.
+						Who each step of the chain emails, in order, and who gets the IT "block system access"
+						mail. The name and designation prefill the approver's clearance page and print on the No
+						Dues certificate. These start from the saved defaults — change them here for this person
+						alone, or tick the box to make them the default for new offboardings.
 					</p>
 				</div>
 				{#if form?.routingSaved}
 					<span class="saved">Saved{form.routingDefaulted ? ' · default updated' : ''} ✓</span>
+				{/if}
+				{#if form?.itDefaultSkipped}
+					<span class="opt">IT block mail default not changed — needs the exit mail row in Access & org</span>
 				{/if}
 			</div>
 
@@ -1149,7 +1155,7 @@
 										<span class="opt">differs from default</span>
 									{/if}
 								</div>
-								<div class="arow">
+								<div class="arow arow3">
 									<input
 										name="{k}_email"
 										type="email"
@@ -1157,9 +1163,34 @@
 										value={data.routing[k].email}
 									/>
 									<input name="{k}_name" placeholder="Name" value={data.routing[k].name} />
+									<input
+										name="{k}_designation"
+										placeholder="Designation"
+										maxlength="80"
+										value={data.routing[k].designation}
+									/>
 								</div>
 							</div>
 						{/each}
+						<div class="route">
+							<div class="route-h">
+								<span class="route-n">IT</span>
+								<span class="route-l">IT — block system access mail</span>
+								{#if data.itMailRecipients.to.join(',') !== data.itMailDefaults.to.join(',') || data.itMailRecipients.cc.join(',') !== data.itMailDefaults.cc.join(',')}
+									<span class="opt">differs from default</span>
+								{/if}
+							</div>
+							<div class="arow">
+								<label class="f">
+									<span>To</span>
+									<textarea name="itblock_to" rows="2" placeholder="one address per line" value={data.itMailRecipients.to.join(NL)}></textarea>
+								</label>
+								<label class="f">
+									<span>Cc</span>
+									<textarea name="itblock_cc" rows="2" placeholder="one address per line" value={data.itMailRecipients.cc.join(NL)}></textarea>
+								</label>
+							</div>
+						</div>
 					</div>
 					<label class="check">
 						<input type="checkbox" name="saveDefault" />
@@ -1413,7 +1444,7 @@
 		max-height: 92vh;
 		display: flex;
 		flex-direction: column;
-		background: var(--ae-card-bg);
+		background: var(--ae-card-bg), var(--ae-modal-base, #12151f);
 		border: 1px solid var(--ae-line);
 		border-radius: 14px;
 		box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
@@ -2172,8 +2203,12 @@
 		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
 		gap: 8px;
 	}
+	.arow.arow3 {
+		grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+	}
 	@media (max-width: 720px) {
-		.arow {
+		.arow,
+		.arow.arow3 {
 			grid-template-columns: minmax(0, 1fr);
 		}
 		.rrow,

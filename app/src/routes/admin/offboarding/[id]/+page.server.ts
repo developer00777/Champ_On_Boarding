@@ -78,9 +78,11 @@ import {
 import {
 	buildItExitMail,
 	getExitMailSettings,
+	saveExitMailSettings,
 	sendExitFormsMail,
 	sendItExitMail
 } from '$lib/server/offboarding/mail';
+import { parseRecipients } from '$lib/server/settings';
 
 /** Every failure on this page returns the same shape, so the Svelte side can
  *  read `form?.particularsError` (and friends) without TypeScript narrowing the
@@ -353,9 +355,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		routing: Object.fromEntries(
 			ROUTING_KEYS.map((k) => [
 				k,
-				{ email: (e.routing?.[k]?.email as string | null) ?? '', name: (e.routing?.[k]?.name as string | null) ?? '' }
+				{
+					email: (e.routing?.[k]?.email as string | null) ?? '',
+					name: (e.routing?.[k]?.name as string | null) ?? '',
+					designation: (e.routing?.[k]?.designation as string | null) ?? ''
+				}
 			])
-		) as Record<(typeof ROUTING_KEYS)[number], { email: string; name: string }>,
+		) as Record<(typeof ROUTING_KEYS)[number], { email: string; name: string; designation: string }>,
 		salesforceEnabled: !!e.routing?.salesforce?.enabled,
 		routingDefaults: await getRoutingDefaults(),
 		// HR's settlement form: HR fills it, payroll gets it prefilled and has
@@ -406,7 +412,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			label: d.label,
 			mandatory: d.mandatory
 		})),
-		itMailRecipients: { to: mailSettings.itTo, cc: mailSettings.itCc },
+		/** Who the "block system access" mail goes to for this exit: its own
+		 *  list from the mail settings card, else the saved defaults. */
+		itMailRecipients: {
+			to: e.routing?.itBlock?.to?.length ? (e.routing.itBlock.to as string[]) : mailSettings.itTo,
+			cc: Array.isArray(e.routing?.itBlock?.cc) ? (e.routing.itBlock.cc as string[]) : mailSettings.itCc
+		},
+		itMailDefaults: { to: mailSettings.itTo, cc: mailSettings.itCc },
 		isHr: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin',
 		isSuperAdmin: locals.admin?.role === 'super_admin',
 		/** "Exits: reopen or delete an exit" in Access & org — the reopen action's check. */
@@ -883,18 +895,28 @@ export const actions: Actions = {
 
 		const patch: Record<string, unknown> = {};
 		const errors: string[] = [];
-		const value: Record<string, { email: string; name: string }> = {};
+		const value: Record<string, { email: string; name: string; designation: string }> = {};
 		for (const key of ROUTING_KEYS) {
 			const email = get(`${key}_email`).toLowerCase();
 			const name = get(`${key}_name`);
+			const designation = get(`${key}_designation`).slice(0, 80);
 			if (email && !isValidEmail(email))
 				errors.push(`${ROUTING_LABELS[key]}: "${email}" is not a valid email address.`);
-			value[key] = { email, name };
+			value[key] = { email, name, designation };
 			patch[`routing.${key}.email`] = email || null;
 			patch[`routing.${key}.name`] = name || null;
+			patch[`routing.${key}.designation`] = designation || null;
 		}
 		const salesforceOn = form.get('salesforce_enabled') === 'on';
 		patch['routing.salesforce.enabled'] = salesforceOn;
+
+		// The "block system access" mail. An empty To would send nowhere, so
+		// it is refused rather than saved; Cc may be cleared.
+		const itBlockTo = parseRecipients(get('itblock_to'));
+		const itBlockCc = parseRecipients(get('itblock_cc'));
+		if (!itBlockTo.length) errors.push('IT — block system access: enter at least one valid "To" address.');
+		patch['routing.itBlock.to'] = itBlockTo;
+		patch['routing.itBlock.cc'] = itBlockCc;
 		if (errors.length) return no(400, errors.join(' '), 'routing');
 
 		await Exit.findByIdAndUpdate(params.id, patch);
@@ -913,6 +935,7 @@ export const actions: Actions = {
 		}
 
 		const asDefault = form.get('saveDefault') === 'on';
+		let itDefaultSkipped = false;
 		if (asDefault) {
 			const current = await getRoutingDefaults();
 			await saveRoutingDefaults(
@@ -925,18 +948,27 @@ export const actions: Actions = {
 				},
 				locals.admin!.id
 			);
+			// The IT block recipients' default lives with the other exit mail
+			// settings, which Settings guards with its own Access & org row.
+			if (!(await lacking(locals.admin, 'settings.exitMail'))) {
+				const mail = await getExitMailSettings();
+				await saveExitMailSettings({ ...mail, itTo: itBlockTo, itCc: itBlockCc }, locals.admin!.id);
+			} else itDefaultSkipped = true;
 		}
 		await audit({
 			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
 			actor: locals.admin!.email,
 			action: 'exit_routing_saved',
 			field: asDefault ? 'this exit + default' : 'this exit',
-			newValue: ROUTING_KEYS.map((k) => `${k}=${value[k].email || '—'}`).join(', '),
+			newValue: [
+				...ROUTING_KEYS.map((k) => `${k}=${value[k].email || '—'}`),
+				`itBlock=${itBlockTo.join(' ')}${itBlockCc.length ? ` cc ${itBlockCc.join(' ')}` : ''}`
+			].join(', '),
 			ip: getClientAddress()
 		});
 		// A blank address may have been holding the chain; this is what lets it on.
 		await advanceFlow(params.id);
-		return { routingSaved: true, routingDefaulted: asDefault };
+		return { routingSaved: true, routingDefaulted: asDefault, itDefaultSkipped };
 	},
 
 	/** SOP step 5 — the "block the system access" mail to the IT desk. */
@@ -953,7 +985,9 @@ export const actions: Actions = {
 				employeeId: exit.employeeId,
 				employeeName: exit.fullName,
 				lwd: exit.lwd ?? null,
-				team: exit.department ?? exit.division ?? null
+				team: exit.department ?? exit.division ?? null,
+				to: exit.routing?.itBlock?.to ?? null,
+				cc: exit.routing?.itBlock?.cc ?? null
 			});
 		} catch (e) {
 			console.error('[exit] IT block mail failed:', e);
