@@ -631,25 +631,36 @@
 				<div class="callout">
 					<strong>Waiting on the employee</strong>
 					<ul>
-						{#each e.requestedFields as r}
-							<li>{r.label}{r.note ? ` — ${r.note}` : ''}</li>
+						{#each e.requestedFields as r (r.field)}
+							<li>
+								{r.label}{r.note ? ` — ${r.note}` : ''}
+								<span class="muted tiny">· asked {r.count > 1 ? `${r.count}× · ` : ''}{stamp(r.askedAt)}</span>
+							</li>
 						{/each}
 					</ul>
 				</div>
 			{/if}
 
 			<!-- The answers, with a tick box per item to send back. -->
-			<form method="POST" action="?/requestChanges" use:enhance={track('changes')}>
+			<form
+				method="POST"
+				action="?/requestChanges"
+				use:enhance={() => {
+					sending['changes'] = true;
+					return async ({ result, update }) => {
+						await update({ reset: false });
+						sending['changes'] = false;
+						// Sent: clear the ticks, so the next round starts fresh.
+						if (result.type === 'success') changeFields = [];
+					};
+				}}
+			>
 				<fieldset class="rbac" disabled={!data.isHr}>
 					{#each reviewGroups as group}
 						<div class="rgroup">
 							<div class="eyebrow">{group.title}</div>
-							{#each group.items as item}
-								<label class="rrow">
-									<input type="checkbox" name="field" value={item.field} bind:group={changeFields} />
-									<span class="rlabel">{item.label}</span>
-									<span class="rvalue" class:empty={!item.value}>{item.value || 'Not answered'}</span>
-								</label>
+							{#each group.items as item (item.field)}
+								{@render askRow(item.field, item.label, item.value ?? '')}
 							{/each}
 						</div>
 					{/each}
@@ -658,27 +669,21 @@
 					     same tick-to-resend affordance on the free-text questions. -->
 					<div class="rgroup">
 						<div class="eyebrow">Exit interview</div>
-						{#each EXIT_TEXT_QUESTIONS as q}
-							<label class="rrow">
-								<input type="checkbox" name="field" value={`exitInterview.${q.field}`} bind:group={changeFields} />
-								<span class="rlabel">{q.n}. {q.label}</span>
-								<span class="rvalue" class:empty={!e.exitInterview?.[q.field]}>
-									{e.exitInterview?.[q.field] || 'Not answered'}
-								</span>
-							</label>
+						{#each EXIT_TEXT_QUESTIONS as q (q.field)}
+							{@render askRow(`exitInterview.${q.field}`, `${q.n}. ${q.label}`, e.exitInterview?.[q.field] ?? '')}
 						{/each}
-						<div class="rrow static">
-							<span class="rlabel">10. Workload</span>
-							<span class="rvalue" class:empty={!e.exitInterview?.q10Workload}>
-								{scaleLabel(EXIT_WORKLOAD_OPTIONS, e.exitInterview?.q10Workload ?? null)}
-							</span>
-						</div>
-						<div class="rrow static">
-							<span class="rlabel">14B. Would recommend</span>
-							<span class="rvalue" class:empty={!e.exitInterview?.q14bWouldRecommend}>
-								{scaleLabel(EXIT_RECOMMEND_OPTIONS, e.exitInterview?.q14bWouldRecommend ?? null)}
-							</span>
-						</div>
+						{@render askRow(
+							'exitInterview.q10Workload',
+							'10. Workload',
+							e.exitInterview?.q10Workload ? scaleLabel(EXIT_WORKLOAD_OPTIONS, e.exitInterview.q10Workload) : ''
+						)}
+						{@render askRow(
+							'exitInterview.q14bWouldRecommend',
+							'14B. Would recommend',
+							e.exitInterview?.q14bWouldRecommend
+								? scaleLabel(EXIT_RECOMMEND_OPTIONS, e.exitInterview.q14bWouldRecommend)
+								: ''
+						)}
 						<details class="grids">
 							<summary>Rating grids (11, 12, 13)</summary>
 							<div class="gridwrap">
@@ -745,15 +750,14 @@
 						</div>
 					{/if}
 
-					{#if changeFields.length}
-						<label class="f" style="margin-top:14px">
-							<span>Note to the employee (applies to every ticked item)</span>
-							<textarea name="note" rows="2" placeholder="e.g. Your signature image is too dark to print — please retake it on white paper."></textarea>
-						</label>
-					{/if}
+					{#if form?.changesError && form?.message}<p class="error">{form.message}</p>{/if}
 					<div class="btn-row">
+						<span class="muted tiny" style="margin-right:auto">
+							Tick what is wrong and say why. The employee is mailed each item with your note and what
+							they entered. Repeat as often as needed.
+						</span>
 						<button class="btn ghost" disabled={!changeFields.length || sending['changes']}>
-							{sending['changes'] ? 'Sending…' : `Send back ${changeFields.length || ''} item${changeFields.length === 1 ? '' : 's'}`}
+							{sending['changes'] ? 'Sending…' : `Ask again for ${changeFields.length || ''} item${changeFields.length === 1 ? '' : 's'}`}
 						</button>
 					</div>
 				</fieldset>
@@ -772,7 +776,12 @@
 				</div>
 			</form>
 			{#if form?.accepted}<p class="ok">Submission accepted — the chain has started with the reporting manager (see the map).</p>{/if}
-			{#if form?.changesRequested}<p class="ok">Sent back to {e.personalEmail}.</p>{/if}
+			{#if form?.changesRequested}
+				<p class="ok">
+					Asked {e.personalEmail} again for {form.changesRequested} item{form.changesRequested === 1 ? '' : 's'}, with
+					your notes and what they entered.
+				</p>
+			{/if}
 		</section>
 
 		<!-- 5. HR's step: F&F, leave and loans -->
@@ -1303,6 +1312,37 @@
 </div>
 
 <svelte:window onkeydown={(ev) => ev.key === 'Escape' && review && !sending['review'] && (review = null)} />
+
+<!-- One answer in Review submission: tick it to ask again, with its own
+     note. The label and value go along so the mail can quote them back. -->
+{#snippet askRow(field: string, label: string, value: string)}
+	{@const pending = e.requestedFields.find((r: { field: string }) => r.field === field)}
+	{@const times = e.requestCounts?.[field] ?? 0}
+	<label class="rrow" class:asked={!!pending}>
+		<input type="checkbox" name="field" value={field} bind:group={changeFields} />
+		<span class="rlabel">
+			{label}
+			{#if pending}
+				<span class="pill gold">ASKED{times > 1 ? ` ${times}×` : ''}</span>
+				<span class="muted tiny">{stamp(pending.askedAt)}{pending.note ? ` — ${pending.note}` : ''}</span>
+			{:else if times}
+				<span class="muted tiny">asked {times}× before</span>
+			{/if}
+		</span>
+		<span class="rvalue" class:empty={!value}>{value || 'Not answered'}</span>
+	</label>
+	{#if changeFields.includes(field)}
+		<div class="rnote">
+			<input type="hidden" name="label:{field}" value={label} />
+			<input type="hidden" name="value:{field}" value={value} />
+			<input
+				name="note:{field}"
+				maxlength="500"
+				placeholder="What is wrong — shown to the employee (e.g. the address is missing the PIN code)"
+			/>
+		</div>
+	{/if}
+{/snippet}
 
 {#if review}
 	<div class="rv-back" role="presentation" onclick={() => !sending['review'] && (review = null)}></div>
@@ -2130,6 +2170,19 @@
 		border-bottom: 1px solid var(--ae-line-soft);
 		font-size: 12.5px;
 		cursor: pointer;
+	}
+	.rrow.asked {
+		background: rgb(224 166 60 / 0.07);
+	}
+	.rrow .pill {
+		margin-left: 6px;
+	}
+	.rnote {
+		padding: 6px 0 10px 28px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.rnote input {
+		width: 100%;
 	}
 	.rrow.static {
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);

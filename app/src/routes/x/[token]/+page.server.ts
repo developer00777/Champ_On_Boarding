@@ -20,7 +20,7 @@ import {
 	EXIT_UPLOAD_DOCS,
 	RELIEVING_ITEMS,
 	UPLOAD_REQUEST_PREFIX,
-	requestedFieldLabel
+	requestedFieldView
 } from '$lib/shared/offboarding';
 import {
 	allFormsComplete,
@@ -144,11 +144,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		// rest are released only once HR has accepted the submission.
 		documents: availableDocs(e, 'employee'),
 		documentsPending: employeeDocsPendingReason(e),
-		requestedFields: (e.requestedFields ?? []).map((r: { field: string; note?: string | null }) => ({
-			field: r.field,
-			label: requestedFieldLabel(r.field),
-			note: r.note ?? null
-		})),
+		requestedFields: (e.requestedFields ?? []).map(requestedFieldView),
 		/** Documents HR has asked for again — open for upload at any stage. */
 		uploadRequests: (e.requestedFields ?? [])
 			.filter((r: { field: string }) => r.field.startsWith(UPLOAD_REQUEST_PREFIX))
@@ -433,7 +429,12 @@ export const actions: Actions = {
 
 		exit.status = 'submitted';
 		exit.submittedAt = new Date();
-		exit.requestedFields = [];
+		// Submitting answers the form fields HR asked about; a document asked
+		// for again stays open until it is uploaded.
+		exit.set(
+			'requestedFields',
+			(exit.requestedFields ?? []).filter((r: { field: string }) => r.field.startsWith(UPLOAD_REQUEST_PREFIX))
+		);
 		await exit.save();
 
 		await audit({

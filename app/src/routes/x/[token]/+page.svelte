@@ -117,6 +117,20 @@
 	const offerFile = $derived(fileFor('new_employer_offer'));
 </script>
 
+{#snippet askedIn(prefix: string)}
+	{@const items = data.requestedFields.filter((r: { field: string }) => r.field.startsWith(`${prefix}.`))}
+	{#if items.length}
+		<div class="rework in-card">
+			<strong>HR asked you to correct</strong>
+			<ul>
+				{#each items as r (r.field)}
+					<li><b>{r.label}</b>{r.note ? ` — ${r.note}` : ''}</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet askedSlot(r: { docType: string; label: string; hint: string; note: string | null })}
 	<div class="asked-slot">
 		<div class="asked-label">{r.label}</div>
@@ -253,8 +267,14 @@
 				<div class="rework">
 					<strong>HR has asked you to revisit a few things</strong>
 					<ul>
-						{#each data.requestedFields as r}
-							<li>{r.label}{r.note ? ` — ${r.note}` : ''}</li>
+						{#each data.requestedFields as r (r.field)}
+							<li>
+								<b>{r.label}</b>{r.count > 1 ? ` (asked ${r.count} times)` : ''}
+								{#if r.note}<div class="rw-note">HR’s note: {r.note}</div>{/if}
+								{#if !r.field.startsWith('upload.')}
+									<div class="rw-val">You entered: {r.value ? `“${r.value}”` : 'nothing yet'}</div>
+								{/if}
+							</li>
 						{/each}
 					</ul>
 					{#each data.uploadRequests as r (r.docType)}
@@ -312,6 +332,7 @@
 					<span class="state" class:ok={e.nda.submitted}>{e.nda.submitted ? 'Signed' : 'To sign'}</span>
 					<svg class="chev" class:up={open === 'nda'} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6" /></svg>
 				</button>
+				{@render askedIn('nda')}
 				{#if open === 'nda'}
 					<form method="POST" action="?/saveNda" use:enhance={track('nda')}>
 						<div class="agreement">
@@ -368,6 +389,7 @@
 					</span>
 					<svg class="chev" class:up={open === 'exitInterview'} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6" /></svg>
 				</button>
+				{@render askedIn('exitInterview')}
 				{#if open === 'exitInterview'}
 					<form method="POST" action="?/saveExitInterview" use:enhance={track('exitInterview')}>
 						<p class="hint">
@@ -485,6 +507,7 @@
 					</span>
 					<svg class="chev" class:up={open === 'relievingFormalities'} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6" /></svg>
 				</button>
+				{@render askedIn('relievingFormalities')}
 				{#if open === 'relievingFormalities'}
 					<form method="POST" action="?/saveRelieving" use:enhance={track('relievingFormalities')}>
 						<div class="fgrid">
@@ -578,6 +601,7 @@
 						</span>
 						<svg class="chev" class:up={open === 'gratuity'} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6" /></svg>
 					</button>
+					{@render askedIn('gratuity')}
 					{#if open === 'gratuity'}
 						<form method="POST" action="?/saveGratuity" use:enhance={track('gratuity')}>
 							<p class="hint">
@@ -1174,6 +1198,16 @@
 	.asked-slot input {
 		font-size: 12.5px;
 		max-width: 100%;
+	}
+	.rw-note {
+		margin-top: 2px;
+	}
+	.rw-val {
+		font-size: 12px;
+		opacity: 0.75;
+	}
+	.rework.in-card {
+		margin: 12px 0 4px;
 	}
 	.rework {
 		background: rgba(224, 166, 60, 0.1);

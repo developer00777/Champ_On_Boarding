@@ -43,7 +43,7 @@ import {
 	ROUTING_LABELS,
 	UPLOAD_REQUEST_PREFIX,
 	lettersForTrack,
-	requestedFieldLabel,
+	requestedFieldView,
 	sendBackItems,
 	type ClearanceDept,
 	type FlowStepKey
@@ -223,12 +223,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			consentAt: exit.consentAt?.toISOString() ?? null,
 			itAccessRevokedMailSentAt: exit.itAccessRevokedMailSentAt?.toISOString() ?? null,
 			handoverMailSentAt: exit.handoverMailSentAt?.toISOString() ?? null,
-			requestedFields: (exit.requestedFields ?? []).map(
-				(r: { field: string; note?: string | null }) => ({
-					field: r.field,
-					label: requestedFieldLabel(r.field),
-					note: r.note ?? null
-				})
+			requestedFields: (exit.requestedFields ?? []).map(requestedFieldView),
+			/** How many times each field has ever been asked for again. */
+			requestCounts: ((exit as unknown as { requestLog?: { field: string }[] }).requestLog ?? []).reduce(
+				(acc: Record<string, number>, r) => ((acc[r.field] = (acc[r.field] ?? 0) + 1), acc),
+				{}
 			),
 			// The four form payloads, as plain objects for the review panel. Maps
 			// come back differently from .lean() than from a hydrated doc, so every
@@ -639,6 +638,8 @@ export const actions: Actions = {
 		// that would re-open a finished exit and put it back on the "waiting on
 		// employee" list with its completedAt still set. A super admin reopens a
 		// closed exit explicitly (see `reopen`) before correcting anything.
+		// While the employee is still filling in (link_sent / in_progress) it is
+		// allowed too: HR can point at a mistake before they submit.
 		if (!['link_sent', 'in_progress', 'submitted', 'changes_requested'].includes(exit.status))
 			return no(
 				409,
@@ -651,14 +652,30 @@ export const actions: Actions = {
 				'changes'
 			);
 
+		// One `field` entry per ticked item, each with its own note, plus the
+		// label and the value HR was looking at — the mail quotes them back.
+		// A shared `note` still works for anything without its own.
 		const form = await request.formData();
-		// The UI posts one `field` entry per checked item plus a shared note.
-		const fields = form.getAll('field').map((f) => String(f)).filter(Boolean);
-		const note = String(form.get('note') ?? '').trim() || null;
-		if (!fields.length)
-			return no(400, 'Tick at least one item to send back.', 'changes');
+		const clip = (v: FormDataEntryValue | null, n: number) => String(v ?? '').trim().slice(0, n);
+		const fields = [...new Set(form.getAll('field').map((f) => String(f)).filter(Boolean))];
+		if (!fields.length) return no(400, 'Tick at least one item to send back.', 'changes');
+		const shared = clip(form.get('note'), 500) || null;
 
-		const requested = fields.map((field) => ({ field, note }));
+		const now = new Date();
+		const log = ((exit as unknown as { requestLog?: { field: string }[] }).requestLog ?? []) as { field: string }[];
+		const asked = fields.map((field) => ({
+			field,
+			note: clip(form.get(`note:${field}`), 500) || shared,
+			label: clip(form.get(`label:${field}`), 200) || null,
+			value: clip(form.get(`value:${field}`), 500) || null,
+			askedAt: now,
+			count: log.filter((l) => l.field === field).length + 1
+		}));
+		// Asking again adds to what is already outstanding instead of replacing
+		// it, so earlier asks (and documents asked for) stay on the list.
+		const outstanding = (exit.requestedFields ?? []).filter((r: { field: string }) => !fields.includes(r.field));
+		const requested = [...outstanding, ...asked];
+
 		const token = await createExitToken(params.id, 'forms');
 		const url = `${baseUrl()}/x/${token}`;
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
@@ -671,7 +688,9 @@ export const actions: Actions = {
 				lwd: exit.lwd ?? null,
 				brand,
 				url,
-				changesRequested: requested
+				// The mail lists everything still outstanding, newest asks first,
+				// so the latest one is always the whole picture.
+				changesRequested: [...asked, ...outstanding].map(requestedFieldView)
 			});
 		} catch (e) {
 			console.error('[exit] change request send failed:', e);
@@ -679,19 +698,23 @@ export const actions: Actions = {
 		}
 
 		await Exit.findByIdAndUpdate(params.id, {
-			status: 'changes_requested',
-			requestedFields: requested
+			// Before they submit, the forms are open anyway; after, this reopens them.
+			...(exit.status === 'submitted' ? { status: 'changes_requested' } : {}),
+			requestedFields: requested,
+			$push: {
+				requestLog: { $each: asked.map((a) => ({ field: a.field, note: a.note, at: now, by: locals.admin!.email })) }
+			}
 		});
 		await audit({
 			candidateId: exit.candidateId ? String(exit.candidateId) : null,
 			actor: locals.admin!.email,
 			action: 'exit_changes_requested',
 			field: fields.join(', '),
-			newValue: note,
+			newValue: asked.map((a) => `${a.label ?? a.field}${a.note ? `: ${a.note}` : ''}`).join('; '),
 			ip: getClientAddress()
 		});
 
-		return { changesRequested: true };
+		return { changesRequested: asked.length };
 	},
 
 	/** SOP step 7 — HR accepts the employee's submission, which is what opens the
@@ -719,7 +742,11 @@ export const actions: Actions = {
 			status: 'clearances',
 			reviewedAt: new Date(),
 			reviewedBy: locals.admin!.id,
-			requestedFields: []
+			// Answered by accepting — except documents asked for again, which
+			// stay open until the employee uploads them.
+			requestedFields: (exit.requestedFields ?? []).filter((r: { field: string }) =>
+				r.field.startsWith(UPLOAD_REQUEST_PREFIX)
+			)
 		});
 		await audit({
 			candidateId: exit.candidateId ? String(exit.candidateId) : null,
@@ -842,7 +869,12 @@ export const actions: Actions = {
 		const docs = [...new Set(form.getAll('doc').map(String))].filter((d) => known.has(d));
 		if (!docs.length) return no(400, 'Tick at least one document.');
 		const note = String(form.get('note') ?? '').trim().slice(0, 300) || null;
-		const requested = docs.map((d) => ({ field: `${UPLOAD_REQUEST_PREFIX}${d}`, note }));
+		const now = new Date();
+		const log = ((exit as unknown as { requestLog?: { field: string }[] }).requestLog ?? []) as { field: string }[];
+		const requested = docs.map((d) => {
+			const field = `${UPLOAD_REQUEST_PREFIX}${d}`;
+			return { field, note, askedAt: now, count: log.filter((l) => l.field === field).length + 1 };
+		});
 
 		const token = await createExitToken(params.id, 'forms');
 		try {
@@ -869,7 +901,12 @@ export const actions: Actions = {
 		await Exit.findByIdAndUpdate(params.id, {
 			$pull: { requestedFields: { field: { $in: requested.map((r) => r.field) } } }
 		});
-		await Exit.findByIdAndUpdate(params.id, { $push: { requestedFields: { $each: requested } } });
+		await Exit.findByIdAndUpdate(params.id, {
+			$push: {
+				requestedFields: { $each: requested },
+				requestLog: { $each: requested.map((r) => ({ field: r.field, note, at: now, by: locals.admin!.email })) }
+			}
+		});
 		await audit({
 			candidateId: exit.candidateId ? String(exit.candidateId) : null,
 			actor: locals.admin!.email,

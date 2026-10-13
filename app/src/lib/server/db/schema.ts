@@ -866,9 +866,27 @@ const exitSchema = new Schema(
 		/** HR sending the employee back to specific fields rather than the whole
 		 *  form again (the "confirm and re-request a particular info" step).
 		 *  `field` is a dotted path into the form objects below, e.g.
-		 *  'ndc.nameAsPerBank'. Cleared per-field as the employee resubmits. */
+		 *  'ndc.nameAsPerBank'. Cleared per-field as the employee resubmits.
+		 *  `label` and `value` are what HR saw when asking (the mail quotes the
+		 *  value back); `count` is how many times it has been asked since it was
+		 *  last answered. */
 		requestedFields: {
-			type: [{ field: { type: String, required: true }, note: { type: String, default: null } }],
+			type: [
+				{
+					field: { type: String, required: true },
+					note: { type: String, default: null },
+					label: { type: String, default: null },
+					value: { type: String, default: null },
+					askedAt: { type: Date, default: null },
+					count: { type: Number, default: 1 }
+				}
+			],
+			default: []
+		},
+		/** Every field HR has ever asked for again, one entry per ask — kept
+		 *  after the employee answers, so "asked 3×" survives the rounds. */
+		requestLog: {
+			type: [{ field: String, note: String, at: Date, by: String, _id: false }],
 			default: []
 		},
 

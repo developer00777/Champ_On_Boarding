@@ -731,6 +731,36 @@ export function requestedFieldLabel(field: string): string {
 	return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
+/** A field HR has asked for again, as every page and mail shows it. */
+export interface RequestedFieldView {
+	field: string;
+	label: string;
+	note: string | null;
+	/** What the employee had entered when HR asked (null for uploads). */
+	value: string | null;
+	/** How many times this field has been asked for, this ask included. */
+	count: number;
+	askedAt: string | null;
+}
+
+export function requestedFieldView(r: {
+	field: string;
+	note?: string | null;
+	label?: string | null;
+	value?: string | null;
+	count?: number | null;
+	askedAt?: Date | string | null;
+}): RequestedFieldView {
+	return {
+		field: r.field,
+		label: r.label || requestedFieldLabel(r.field),
+		note: r.note ?? null,
+		value: r.value ?? null,
+		count: r.count && r.count > 0 ? r.count : 1,
+		askedAt: r.askedAt ? new Date(r.askedAt).toISOString() : null
+	};
+}
+
 /** Drives the pronouns the letters print. Left unset, they read "they/their". */
 export const LETTER_SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.'] as const;
 

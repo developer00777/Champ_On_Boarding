@@ -158,8 +158,11 @@ export async function buildExitFormsMail(opts: {
 	lwd: string | null;
 	brand: BrandTheme;
 	url: string;
-	/** Set when HR is re-requesting specific fields rather than inviting fresh. */
-	changesRequested?: { field: string; note: string | null }[] | null;
+	/** Set when HR is re-requesting specific fields rather than inviting fresh.
+	 *  `value` is what the employee had entered, quoted back to them. */
+	changesRequested?:
+		| { field: string; note: string | null; label?: string | null; value?: string | null; count?: number | null }[]
+		| null;
 }) {
 	const s = await getExitMailSettings();
 	const isRework = !!opts.changesRequested?.length;
@@ -188,10 +191,19 @@ export async function buildExitFormsMail(opts: {
 					'saved as you go, so you can complete it in more than one sitting.'
 			];
 
+	const labelOf = (c: { field: string; label?: string | null }) => c.label || requestedFieldLabel(c.field);
+	const again = (c: { count?: number | null }) => ((c.count ?? 1) > 1 ? ` (asked ${c.count} times)` : '');
+	const isUpload = (c: { field: string }) => c.field.startsWith(UPLOAD_REQUEST_PREFIX);
 	const changeList = isRework
 		? `<ul style="margin:0 0 14px;padding-left:20px;font-size:13.5px;color:#475467;line-height:1.7">${opts
 				.changesRequested!.map(
-					(c) => `<li><strong>${escapeHtml(requestedFieldLabel(c.field))}</strong>${c.note ? ` — ${escapeHtml(c.note)}` : ''}</li>`
+					(c) =>
+						`<li style="margin-bottom:8px"><strong>${escapeHtml(labelOf(c))}</strong>${escapeHtml(again(c))}` +
+						(c.note ? `<br><span style="color:#101828">HR’s note: ${escapeHtml(c.note)}</span>` : '') +
+						(isUpload(c)
+							? ''
+							: `<br><span style="color:#667085">You entered: ${c.value ? `“${escapeHtml(c.value)}”` : '<em>nothing yet</em>'}</span>`) +
+						'</li>'
 				)
 				.join('')}</ul>`
 		: '';
@@ -228,7 +240,11 @@ export async function buildExitFormsMail(opts: {
 		[
 			...intro,
 			...(isRework
-				? opts.changesRequested!.map((c) => `- ${requestedFieldLabel(c.field)}${c.note ? `: ${c.note}` : ''}`)
+				? opts.changesRequested!.flatMap((c) => [
+						`- ${labelOf(c)}${again(c)}`,
+						...(c.note ? [`  HR's note: ${c.note}`] : []),
+						...(isUpload(c) ? [] : [`  You entered: ${c.value ? `"${c.value}"` : 'nothing yet'}`])
+					])
 				: []),
 			'',
 			`Open your exit forms: ${opts.url}`,
