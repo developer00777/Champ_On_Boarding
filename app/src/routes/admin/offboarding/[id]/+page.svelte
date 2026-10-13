@@ -73,6 +73,112 @@
 		}
 	}
 
+	// ── Review & send ───────────────────────────────────────────────────────
+	// No mail on this page goes out on one click: each Send opens the mail as
+	// it will be sent — recipients, subject, body, attachments — and only the
+	// Send inside that dialog posts it.
+	interface MailDraft {
+		key: string;
+		label: string;
+		to: string[];
+		cc: string[];
+		subject: string;
+		html: string;
+		reminder: boolean;
+		sendable: boolean;
+		why: string | null;
+		attachments: { name: string; href: string }[];
+	}
+	/** Which form action sends each previewable mail. */
+	const SEND_ACTION: Record<string, string> = {
+		manager: 'resendStep',
+		it: 'resendStep',
+		salesforce: 'resendStep',
+		payroll: 'resendStep',
+		letters: 'sendHandover',
+		forms: 'sendFormsLink',
+		itblock: 'sendItBlockMail'
+	};
+	/** A re-request is composed in the same window: `back` sends a signed
+	 *  approver back, `docs` asks the employee for documents. */
+	type ComposeMode = 'back' | 'docs' | null;
+	let review = $state<{
+		step: string;
+		previewOnly: boolean;
+		mode: ComposeMode;
+		draft: MailDraft | null;
+		error: string;
+	} | null>(null);
+	let reviewSent = $state('');
+	let compose = $state({ items: [] as string[], uploads: [''] as string[], note: '', docs: [] as string[] });
+	const reviewStep = $derived(review ? data.steps.find((s) => s.key === review!.step) : undefined);
+
+	function previewQuery(mode: ComposeMode) {
+		const p = new URLSearchParams();
+		if (mode === 'back') {
+			p.set('back', '1');
+			for (const i of compose.items) p.append('item', i);
+			for (const u of compose.uploads) if (u.trim()) p.append('upload', u.trim());
+		}
+		if (mode === 'docs') for (const d of compose.docs) p.append('doc', d);
+		if (mode && compose.note.trim()) p.set('note', compose.note.trim());
+		const s = p.toString();
+		return s ? `?${s}` : '';
+	}
+
+	async function fetchDraft() {
+		const r = review;
+		if (!r) return;
+		const step = r.mode === 'docs' ? 'docs' : r.step;
+		try {
+			const res = await fetch(`/admin/offboarding/${e.id}/mail-preview/${step}${previewQuery(r.mode)}`);
+			if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? 'Could not build the preview.');
+			const draft = (await res.json()) as MailDraft;
+			if (review === r) review.draft = draft;
+		} catch (err) {
+			if (review === r) review.error = err instanceof Error ? err.message : 'Could not build the preview.';
+		}
+	}
+
+	async function openReview(step: string, previewOnly = false, mode: ComposeMode = null) {
+		compose = { items: [], uploads: [''], note: '', docs: [] };
+		review = { step, previewOnly, mode, draft: null, error: '' };
+		await fetchDraft();
+	}
+
+	// While composing a re-request, the preview follows what HR ticks and types.
+	$effect(() => {
+		if (!review?.mode) return;
+		JSON.stringify(compose);
+		const t = setTimeout(fetchDraft, 350);
+		return () => clearTimeout(t);
+	});
+
+	/** Uploads the employee has been asked for and not yet sent. */
+	const docsAsked = $derived(e.requestedFields.filter((r: { field: string; label: string }) => r.field.startsWith('upload.')));
+	const canAskDocs = $derived(data.isHr && e.status !== 'initiated' && e.status !== 'completed');
+
+	function sendReviewed() {
+		sending['review'] = true;
+		return async ({ result, update }: { result: { type: string }; update: (o?: { reset?: boolean }) => Promise<void> }) => {
+			await update({ reset: false });
+			sending['review'] = false;
+			if (result.type === 'success' && review?.draft) {
+				reviewSent = `${
+					review.mode === 'back' ? 'Sent back' : review.mode === 'docs' ? 'Asked' : review.draft.reminder ? 'Reminder sent' : 'Sent'
+				} to ${review.draft.to.join(', ')} ✓`;
+				review = null;
+				setTimeout(() => (reviewSent = ''), 6000);
+			}
+		};
+	}
+
+	// The two hand-offs that ready a mail open it for review straight away.
+	$effect(() => {
+		if (form?.accepted) openReview('manager');
+		else if (form?.handedToPayroll) openReview('payroll');
+	});
+
 	async function uploadHandover(docType: string, input: HTMLInputElement) {
 		const file = input.files?.[0];
 		if (!file) return;
@@ -246,6 +352,14 @@
 						<div class="nlabel">Employee exit forms</div>
 						<div class="nto">{e.personalEmail}</div>
 						<div class="ndetail">{formsNode.detail}</div>
+						{#if docsAsked.length}
+							<div class="nwait">Waiting on: {docsAsked.map((r: { label: string }) => r.label.replace(/^Upload: /, '')).join(', ')}</div>
+						{/if}
+						{#if canAskDocs}
+							<button class="nact quiet" type="button" onclick={() => openReview('docs', false, 'docs')}>
+								Ask for documents
+							</button>
+						{/if}
 					</div>
 				</li>
 				{#each data.steps as s, i (s.key)}
@@ -270,17 +384,28 @@
 							<div class="ndetail">
 								{#if s.status === 'done' && s.doneAt}{s.detail} · {stamp(s.doneAt)}{:else}{s.detail ?? s.hint}{/if}
 							</div>
+							{#if s.sendBack}
+								<div class="nwait">
+									Asked for: {[...s.sendBack.items, ...s.sendBack.uploads.map((u: string) => `attach ${u}`)].join(', ') ||
+										s.sendBack.note}
+								</div>
+							{/if}
+							{#each s.files as f (f.id)}
+								<a class="nfile" href="/admin/offboarding/{e.id}/file/{f.id}" target="_blank" rel="noreferrer">📎 {f.label}</a>
+							{/each}
 
 							{#if s.status === 'blocked'}
 								<a class="nact" href="#mail-settings">Set the email ↓</a>
 							{:else if s.status === 'active' && MAIL_STEPS.has(s.key)}
 								<div class="nacts">
-									<form method="POST" action="?/resendStep" use:enhance={track(`step-${s.key}`)}>
-										<input type="hidden" name="step" value={s.key} />
-										<button class="nact" disabled={!data.isHr || sending[`step-${s.key}`]}>
-											{sending[`step-${s.key}`] ? 'Sending…' : s.sentAt ? 'Remind' : 'Send'}
-										</button>
-									</form>
+									<button
+										class="nact {s.ready ? 'go' : ''}"
+										type="button"
+										disabled={!data.isHr}
+										onclick={() => openReview(s.key)}
+									>
+										{s.ready ? 'Review & send' : 'Review reminder'}
+									</button>
 									{#if s.link}
 										<button class="nact" type="button" onclick={() => copy(s.link!, `link-${s.key}`)}>
 											{copied === `link-${s.key}` ? 'Copied ✓' : 'Copy link'}
@@ -290,7 +415,19 @@
 							{:else if s.status === 'active' && s.key === 'hr'}
 								<a class="nact" href="#fnf">Fill the F&amp;F ↓</a>
 							{:else if s.status === 'active' && s.key === 'letters'}
-								<a class="nact" href="#release">Release settings ↓</a>
+								<div class="nacts">
+									<button class="nact" type="button" disabled={!data.isHr} onclick={() => openReview('letters')}>
+										Review &amp; release
+									</button>
+									<a class="nact" href="#release">Settings ↓</a>
+								</div>
+							{:else if s.status === 'waiting' && data.flow.startedAt && (MAIL_STEPS.has(s.key) || s.key === 'letters')}
+								<button class="nact quiet" type="button" onclick={() => openReview(s.key, true)}>Preview mail</button>
+							{/if}
+							{#if s.status === 'done' && MAIL_STEPS.has(s.key) && e.status !== 'completed' && data.isHr}
+								<button class="nact quiet" type="button" onclick={() => openReview(s.key, false, 'back')}>
+									Send back — something missing
+								</button>
 							{/if}
 						</div>
 					</li>
@@ -309,7 +446,7 @@
 				{/if}
 			{/if}
 			{#if data.flow.lastError}<p class="map-err">{data.flow.lastError.message}</p>{/if}
-			{#if form?.stepResent}<p class="map-ok">Sent to the {form.stepResent} ✓</p>{/if}
+			{#if reviewSent}<p class="map-ok">{reviewSent}</p>{/if}
 			<a class="map-settings" href="#mail-settings">Mail settings ↓</a>
 		</section>
 	</aside>
@@ -426,11 +563,9 @@
 			</div>
 
 			<div class="btn-row">
-				<form method="POST" action="?/sendFormsLink" use:enhance={track('formsLink')}>
-					<button class="btn grad" disabled={!data.isHr || sending['formsLink']}>
-						{sending['formsLink'] ? 'Sending…' : data.formsLink ? 'Resend link' : 'Send exit forms link'}
-					</button>
-				</form>
+				<button class="btn grad" type="button" disabled={!data.isHr} onclick={() => openReview('forms')}>
+					{data.formsLink ? 'Review & resend link' : 'Review & send forms link'}
+				</button>
 				{#if data.formsLink}
 					<form
 						method="POST"
@@ -444,15 +579,9 @@
 						<button class="btn ghost small" disabled={!data.isHr}>Revoke</button>
 					</form>
 				{/if}
-				<form method="POST" action="?/sendItBlockMail" use:enhance={track('itMail')}>
-					<button class="btn ghost" disabled={!data.isHr || sending['itMail']}>
-						{sending['itMail']
-							? 'Sending…'
-							: e.itAccessRevokedMailSentAt
-								? 'Resend IT access-block mail'
-								: 'Mail IT to block access'}
-					</button>
-				</form>
+				<button class="btn ghost" type="button" disabled={!data.isHr} onclick={() => openReview('itblock')}>
+					{e.itAccessRevokedMailSentAt ? 'Review & resend IT access-block mail' : 'Review & mail IT to block access'}
+				</button>
 			</div>
 			{#if e.itAccessRevokedMailSentAt}
 				<p class="muted tiny">
@@ -501,7 +630,7 @@
 					<strong>Waiting on the employee</strong>
 					<ul>
 						{#each e.requestedFields as r}
-							<li>{r.field}{r.note ? ` — ${r.note}` : ''}</li>
+							<li>{r.label}{r.note ? ` — ${r.note}` : ''}</li>
 						{/each}
 					</ul>
 				</div>
@@ -590,9 +719,16 @@
 						</div>
 					{/if}
 
-					{#if data.employeeFiles.length}
+					{#if data.employeeFiles.length || canAskDocs}
 						<div class="rgroup">
-							<div class="eyebrow">Employee uploads</div>
+							<div class="eyebrow up-head">
+								Employee uploads
+								{#if canAskDocs}
+									<button class="nact" type="button" onclick={() => openReview('docs', false, 'docs')}>
+										Ask for a document →
+									</button>
+								{/if}
+							</div>
 							{#each data.employeeFiles as f}
 								<div class="filerow">
 									<a href="/admin/offboarding/{e.id}/file/{f.id}" target="_blank" rel="noreferrer">
@@ -644,13 +780,13 @@
 				<div>
 					<h2>F&amp;F, leave &amp; loans</h2>
 					<p class="muted">
-						HR's step in the chain. Fill in the settlement and the leave position, then send it to
-						payroll — they get it prefilled with every exit document attached, can correct any figure
-						and record loan recovery, and their sign-off is final.
+						HR's step in the chain. Fill in the settlement and the leave position, then hand it to
+						payroll — you review their mail before it goes. They get it prefilled with every exit
+						document attached, can correct any figure and record loan recovery, and their sign-off is final.
 					</p>
 				</div>
 				{#if form?.handedToPayroll}
-					<span class="saved">Sent to payroll ✓</span>
+					<span class="saved">Payroll mail ready ✓</span>
 				{:else if form?.fnfSaved}
 					<span class="saved">Saved ✓</span>
 				{/if}
@@ -733,7 +869,7 @@
 								value="1"
 								disabled={sending['fnf'] || hrStep?.status !== 'active'}
 							>
-								Save &amp; send to payroll
+								Save &amp; hand to payroll
 							</button>
 							{#if hrStep?.status !== 'active'}
 								<span class="muted tiny">Opens once the clearances before it are signed.</span>
@@ -871,7 +1007,7 @@
 						{#if data.flow.releasedAt}
 							Sent {stamp(data.flow.releasedAt)}{data.flow.releasedBy ? ` · ${data.flow.releasedBy}` : ''}.
 						{:else if !data.flow.autoRelease}
-							Manual — nothing goes out until you press <b>Release now</b>.
+							Manual — nothing goes out until you review it and press <b>Release now</b>.
 						{:else if data.flow.scheduledAt}
 							Scheduled for <b>{stamp(data.flow.scheduledAt)}</b>.
 						{:else}
@@ -957,19 +1093,9 @@
 			{#if form?.handoverError && form?.message}<p class="error">{form.message}</p>{/if}
 			<div class="btn-row">
 				{#if e.status !== 'completed'}
-					<form
-						method="POST"
-						action="?/sendHandover"
-						use:enhance={track('handover')}
-						onsubmit={(ev) => {
-							if (!confirm(`Send the selected letters and the handover link to ${e.personalEmail} now, and close this exit?`))
-								ev.preventDefault();
-						}}
-					>
-						<button class="btn grad" disabled={!data.isHr || sending['handover']}>
-							{sending['handover'] ? 'Sending…' : 'Release now'}
-						</button>
-					</form>
+					<button class="btn grad" type="button" disabled={!data.isHr} onclick={() => openReview('letters')}>
+						Review &amp; release now
+					</button>
 				{/if}
 				{#if e.status === 'completed' && data.canReopen}
 					<form
@@ -1145,7 +1271,304 @@
 	</aside>
 </div>
 
+<svelte:window onkeydown={(ev) => ev.key === 'Escape' && review && !sending['review'] && (review = null)} />
+
+{#if review}
+	<div class="rv-back" role="presentation" onclick={() => !sending['review'] && (review = null)}></div>
+	<div class="rv" role="dialog" aria-modal="true" aria-label="Review mail">
+		<div class="rv-head">
+			<div>
+				<div class="eyebrow">{review.previewOnly ? 'Preview' : 'Review before sending'}</div>
+				<h2>{review.draft?.label ?? 'Loading…'}{review.draft?.reminder ? ' — reminder' : ''}</h2>
+			</div>
+			<button class="rv-x" type="button" aria-label="Close" onclick={() => (review = null)}>×</button>
+		</div>
+
+		{#if review.mode === 'back' && reviewStep}
+			<div class="rv-compose">
+				<div class="tiny-eyebrow">What is missing from the {reviewStep.label}'s clearance?</div>
+				<div class="rv-ticks">
+					{#each reviewStep.sendBackItems as item (item)}
+						<label class="check"><input type="checkbox" value={item} bind:group={compose.items} /><span>{item}</span></label>
+					{/each}
+				</div>
+				<div class="tiny-eyebrow" style="margin-top:10px">Ask them to attach</div>
+				{#each compose.uploads as _, i (i)}
+					<input class="rv-in" placeholder="e.g. Asset handover sheet signed by the employee" bind:value={compose.uploads[i]} />
+				{/each}
+				{#if compose.uploads.length < 5}
+					<button class="nact" type="button" onclick={() => (compose.uploads = [...compose.uploads, ''])}>+ another document</button>
+				{/if}
+				<textarea class="rv-in" rows="2" placeholder="Note to them (optional)" bind:value={compose.note}></textarea>
+				{#if reviewStep.key === 'payroll'}
+					<p class="muted tiny">Sending payroll back un-signs the settlement and stops the scheduled release until they sign again.</p>
+				{/if}
+			</div>
+		{:else if review.mode === 'docs'}
+			<div class="rv-compose">
+				<div class="tiny-eyebrow">Which documents do you need from {e.fullName.split(' ')[0]}?</div>
+				<div class="rv-ticks">
+					{#each data.uploadDocs as d (d.docType)}
+						<label class="check">
+							<input type="checkbox" value={d.docType} bind:group={compose.docs} />
+							<span>
+								{d.label}
+								<small class="muted">
+									{d.requested ? '· already asked' : d.fileId ? '· uploaded — ask to re-upload' : '· not uploaded yet'}
+								</small>
+							</span>
+						</label>
+					{/each}
+				</div>
+				<textarea class="rv-in" rows="2" placeholder="Note to the employee, e.g. the signature photo is too dark to print" bind:value={compose.note}></textarea>
+				<p class="muted tiny">Only these uploads reopen on their page — their forms and the signatures already collected are untouched.</p>
+			</div>
+		{/if}
+
+		{#if review.error}
+			<p class="error" style="margin:16px 20px">{review.error}</p>
+		{:else if !review.draft}
+			<p class="muted" style="margin:16px 20px">Building the mail…</p>
+		{:else}
+			{@const d = review.draft}
+			<dl class="rv-meta">
+				<dt>To</dt>
+				<dd>{d.to.join(', ') || '—'}</dd>
+				{#if d.cc.length}<dt>Cc</dt><dd>{d.cc.join(', ')}</dd>{/if}
+				<dt>Subject</dt>
+				<dd><b>{d.subject}</b></dd>
+				<dt>Attached</dt>
+				<dd>
+					{#if d.attachments.length}
+						<span class="rv-atts">
+							{#each d.attachments as a (a.href)}
+								<a class="rv-att" href={a.href} target="_blank" rel="noopener" data-sveltekit-preload-data="off">{a.name}</a>
+							{/each}
+						</span>
+					{:else}
+						<span class="muted">Nothing</span>
+					{/if}
+				</dd>
+			</dl>
+			{#if d.why}<p class="rv-why">{d.why}</p>{/if}
+			<iframe class="rv-body" title="Mail body" sandbox="" srcdoc={d.html}></iframe>
+			<p class="muted tiny rv-foot">
+				The link in the mail is created when you press Send. Wrong address? Change it in
+				<a href="#mail-settings" onclick={() => (review = null)}>Mail settings</a>.
+			</p>
+		{/if}
+
+		{#if form?.message && !sending['review'] && review.draft}<p class="error" style="margin:0 20px 10px">{form.message}</p>{/if}
+		<div class="rv-actions">
+			<button class="btn ghost" type="button" onclick={() => (review = null)} disabled={sending['review']}>
+				{review.previewOnly ? 'Close' : 'Cancel'}
+			</button>
+			{#if !review.previewOnly}
+				<form
+					method="POST"
+					action="?/{review.mode === 'back' ? 'sendBackStep' : review.mode === 'docs' ? 'requestUploads' : SEND_ACTION[review.step]}"
+					use:enhance={sendReviewed}
+				>
+					<input type="hidden" name="step" value={review.step} />
+					{#if review.mode}
+						{#each compose.items as i (i)}<input type="hidden" name="item" value={i} />{/each}
+						{#each compose.uploads.filter((u) => u.trim()) as u, n (n)}<input type="hidden" name="upload" value={u} />{/each}
+						{#each compose.docs as d (d)}<input type="hidden" name="doc" value={d} />{/each}
+						<input type="hidden" name="note" value={compose.note} />
+					{/if}
+					<button class="btn grad" disabled={!data.isHr || !review.draft?.sendable || sending['review']}>
+						{sending['review']
+							? 'Sending…'
+							: review.mode === 'back'
+								? 'Send back'
+								: review.mode === 'docs'
+									? 'Send request'
+									: review.step === 'letters'
+								? 'Release & close the exit'
+								: review.draft?.reminder
+									? 'Send reminder'
+									: 'Send'}
+					</button>
+				</form>
+			{/if}
+		</div>
+	</div>
+{/if}
+
 <style>
+	/* ── Review & send dialog ── */
+	.rv-back {
+		position: fixed;
+		inset: 0;
+		background: rgb(10 12 16 / 0.55);
+		z-index: 50;
+	}
+	.rv {
+		position: fixed;
+		z-index: 51;
+		top: 4vh;
+		left: 50%;
+		transform: translateX(-50%);
+		width: min(760px, calc(100vw - 32px));
+		max-height: 92vh;
+		display: flex;
+		flex-direction: column;
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-line);
+		border-radius: 14px;
+		box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
+		overflow: hidden;
+	}
+	.rv-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		padding: 16px 20px 12px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.rv-head h2 {
+		margin: 2px 0 0;
+		font-size: 17px;
+	}
+	.rv-x {
+		border: none;
+		background: none;
+		font-size: 24px;
+		line-height: 1;
+		color: var(--ae-muted);
+		cursor: pointer;
+	}
+	.rv-meta {
+		display: grid;
+		grid-template-columns: 70px 1fr;
+		gap: 6px 12px;
+		margin: 0;
+		padding: 12px 20px;
+		font-size: 13px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.rv-meta dt {
+		color: var(--ae-muted);
+		font-size: 11.5px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		padding-top: 2px;
+	}
+	.rv-meta dd {
+		margin: 0;
+		color: var(--ae-text);
+		word-break: break-word;
+	}
+	.rv-atts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.rv-att {
+		font-size: 12px;
+		padding: 2px 9px;
+		border: 1px solid var(--ae-line);
+		border-radius: 999px;
+		color: var(--ae-azure);
+		text-decoration: none;
+	}
+	.rv-att:hover {
+		background: var(--ae-hover);
+	}
+	.rv-why {
+		margin: 10px 20px 0;
+		padding: 8px 12px;
+		font-size: 12.5px;
+		border-left: 3px solid var(--ae-amber);
+		background: var(--ae-sub-bg);
+		color: var(--ae-text-2);
+	}
+	.rv-body {
+		flex: 1;
+		min-height: 300px;
+		height: 50vh;
+		margin: 12px 20px 0;
+		border: 1px solid var(--ae-line-soft);
+		border-radius: 8px;
+		background: #f2f4f7;
+	}
+	.rv-foot {
+		margin: 8px 20px 10px;
+	}
+	.rv-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 10px;
+		padding: 12px 20px 16px;
+		border-top: 1px solid var(--ae-line-soft);
+	}
+	.rv-actions form {
+		display: contents;
+	}
+	.nact.go {
+		padding: 3px 10px;
+		border-radius: 999px;
+		background: var(--ae-azure);
+		color: #fff;
+	}
+	.nact.quiet {
+		color: var(--ae-muted);
+		display: block;
+	}
+	.nwait {
+		margin-top: 3px;
+		font-size: 11px;
+		color: var(--ae-amber);
+		line-height: 1.4;
+	}
+	.nfile {
+		display: block;
+		margin-top: 3px;
+		font-size: 11px;
+		color: var(--ae-azure);
+		text-decoration: none;
+	}
+	.up-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	.up-head .nact {
+		margin-top: 0;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	.rv-compose {
+		padding: 12px 20px;
+		border-bottom: 1px solid var(--ae-line-soft);
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		max-height: 34vh;
+		overflow-y: auto;
+	}
+	.rv-ticks {
+		display: grid;
+		gap: 4px;
+		font-size: 13px;
+	}
+	.rv-ticks .check {
+		display: flex;
+		gap: 8px;
+		align-items: flex-start;
+	}
+	.rv-in {
+		width: 100%;
+		font: inherit;
+		font-size: 13px;
+		padding: 7px 9px;
+		border: 1px solid var(--ae-line);
+		border-radius: 8px;
+		background: var(--ae-card-bg);
+		color: var(--ae-text);
+		box-sizing: border-box;
+	}
 	.back {
 		display: inline-flex;
 		align-items: center;
@@ -1356,9 +1779,6 @@
 		display: flex;
 		gap: 10px;
 		margin-top: 5px;
-	}
-	.nacts form {
-		display: contents;
 	}
 	.nact {
 		display: inline-block;

@@ -90,7 +90,20 @@
 		{:else}
 			<div class="card">
 				<div class="eyebrow">{data.departmentLabel} clearance</div>
-				<h1>Please clear this employee's exit</h1>
+				<h1>{data.sendBack ? 'HR needs a little more on this clearance' : "Please clear this employee's exit"}</h1>
+				{#if data.sendBack}
+					<div class="sentback">
+						<strong>Sent back by HR — please complete and sign again</strong>
+						{#if data.sendBack.items.length || data.sendBack.uploads.length}
+							<ul>
+								{#each data.sendBack.items as i (i)}<li>{i}</li>{/each}
+								{#each data.sendBack.uploads as u (u)}<li>Attach: <b>{u}</b></li>{/each}
+							</ul>
+						{/if}
+						{#if data.sendBack.note}<p>“{data.sendBack.note}”</p>{/if}
+						<p class="sb-fine">Your earlier answers are still filled in below.</p>
+					</div>
+				{/if}
 				<p class="lede">
 					{data.employee.fullName} is leaving {data.companyName}. Confirm what your section is owed
 					or has recovered, then sign below. It takes a minute and needs no login.
@@ -273,9 +286,20 @@
 							<span>Remarks</span>
 							<textarea name="remarks" rows="2" value={data.clearance.remarks}></textarea>
 						</label>
+						{#if data.sendBack}
+							{#each data.sendBack.uploads as u, i (i)}
+								<label class="f">
+									<span>
+										{u} <b class="req">*</b>
+										<em class="sub">Asked for by HR. PDF, JPG, PNG or WEBP, up to 25 MB.</em>
+									</span>
+									<input type="file" name="requested_{i}" accept="application/pdf,image/jpeg,image/png,image/webp" required />
+								</label>
+							{/each}
+						{/if}
 						<label class="f">
 							<span>
-								Your signature <b class="req">*</b>
+								Your signature {#if !data.clearance.hasSignature}<b class="req">*</b>{/if}
 								<em class="sub">
 									A photo or scan on white paper. Printed onto the No Dues certificate.
 								</em>
@@ -285,7 +309,7 @@
 					</div>
 
 					<button class="cta" disabled={submitting}>
-						{submitting ? 'Submitting…' : 'Sign clearance'}
+						{submitting ? 'Submitting…' : data.sendBack ? 'Update & sign again' : 'Sign clearance'}
 					</button>
 				</form>
 			</div>
@@ -515,6 +539,27 @@
 		margin-top: 26px;
 		padding-top: 20px;
 		border-top: 1px solid var(--brand-border, #e6e6ee);
+	}
+	.sentback {
+		margin: 4px 0 18px;
+		padding: 12px 16px;
+		border-left: 4px solid #f79009;
+		background: #fffaeb;
+		border-radius: 0 10px 10px 0;
+		font-size: 13.5px;
+		color: #1d2939;
+	}
+	.sentback ul {
+		margin: 6px 0;
+		padding-left: 20px;
+		line-height: 1.6;
+	}
+	.sentback p {
+		margin: 6px 0 0;
+	}
+	.sb-fine {
+		font-size: 12px;
+		color: #667085;
 	}
 	.hint {
 		font-size: 12px;

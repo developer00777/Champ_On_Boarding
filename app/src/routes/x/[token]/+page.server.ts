@@ -18,7 +18,9 @@ import {
 	EXIT_Q13_ROWS,
 	EXIT_TEXT_QUESTIONS,
 	EXIT_UPLOAD_DOCS,
-	RELIEVING_ITEMS
+	RELIEVING_ITEMS,
+	UPLOAD_REQUEST_PREFIX,
+	requestedFieldLabel
 } from '$lib/shared/offboarding';
 import {
 	allFormsComplete,
@@ -144,8 +146,17 @@ export const load: PageServerLoad = async ({ params }) => {
 		documentsPending: employeeDocsPendingReason(e),
 		requestedFields: (e.requestedFields ?? []).map((r: { field: string; note?: string | null }) => ({
 			field: r.field,
+			label: requestedFieldLabel(r.field),
 			note: r.note ?? null
 		})),
+		/** Documents HR has asked for again — open for upload at any stage. */
+		uploadRequests: (e.requestedFields ?? [])
+			.filter((r: { field: string }) => r.field.startsWith(UPLOAD_REQUEST_PREFIX))
+			.map((r: { field: string; note?: string | null }) => {
+				const docType = r.field.slice(UPLOAD_REQUEST_PREFIX.length);
+				const slot = EXIT_UPLOAD_DOCS.find((d) => d.docType === docType);
+				return { docType, label: slot?.label ?? docType, hint: slot?.hint ?? '', note: r.note ?? null };
+			}),
 		files: files.map((f) => ({
 			id: String(f._id),
 			docType: f.docType,

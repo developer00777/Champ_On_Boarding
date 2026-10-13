@@ -117,6 +117,21 @@
 	const offerFile = $derived(fileFor('new_employer_offer'));
 </script>
 
+{#snippet askedSlot(r: { docType: string; label: string; hint: string; note: string | null })}
+	<div class="asked-slot">
+		<div class="asked-label">{r.label}</div>
+		{#if r.note}<div class="asked-note">{r.note}</div>{/if}
+		<input
+			type="file"
+			accept={r.docType === 'signature' ? 'image/jpeg,image/png' : 'application/pdf,image/jpeg,image/png,image/webp'}
+			disabled={uploading[r.docType]}
+			onchange={(ev) => upload(r.docType, ev.currentTarget)}
+		/>
+		{#if uploading[r.docType]}<span class="asked-note">Uploading…</span>{/if}
+		{#if uploadMsg[r.docType]}<span class="err">{uploadMsg[r.docType]}</span>{/if}
+	</div>
+{/snippet}
+
 <svelte:head>
 	<title>Exit formalities · {data.companyName}</title>
 	{#if fontsHref}<link rel="stylesheet" href={fontsHref} />{/if}
@@ -130,6 +145,14 @@
 				<div class="tick-big">
 					<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5" /></svg>
 				</div>
+				{#if data.uploadRequests.length}
+					<div class="asked">
+						<strong>HR needs {data.uploadRequests.length === 1 ? 'a document' : 'some documents'} from you</strong>
+						{#each data.uploadRequests as r (r.docType)}
+							{@render askedSlot(r)}
+						{/each}
+					</div>
+				{/if}
 				<h1>Your exit documents are with HR</h1>
 				<p>
 					Thank you, {e.fullName.split(' ')[0]}. Everything you submitted has been received and is
@@ -231,9 +254,12 @@
 					<strong>HR has asked you to revisit a few things</strong>
 					<ul>
 						{#each data.requestedFields as r}
-							<li>{r.field.split('.').pop()}{r.note ? ` — ${r.note}` : ''}</li>
+							<li>{r.label}{r.note ? ` — ${r.note}` : ''}</li>
 						{/each}
 					</ul>
+					{#each data.uploadRequests as r (r.docType)}
+						{@render askedSlot(r)}
+					{/each}
 				</div>
 			{/if}
 
@@ -1122,6 +1148,32 @@
 		background: rgba(192, 57, 43, 0.07);
 		border: 1px solid rgba(192, 57, 43, 0.2);
 		border-radius: 9px;
+	}
+	.asked {
+		text-align: left;
+		background: rgba(224, 166, 60, 0.1);
+		border-left: 3px solid #e0a63c;
+		border-radius: 0 10px 10px 0;
+		padding: 13px 16px;
+		margin-bottom: 18px;
+		font-size: 13px;
+	}
+	.asked-slot {
+		margin-top: 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.asked-label {
+		font-weight: 700;
+	}
+	.asked-note {
+		font-size: 12px;
+		opacity: 0.75;
+	}
+	.asked-slot input {
+		font-size: 12.5px;
+		max-width: 100%;
 	}
 	.rework {
 		background: rgba(224, 166, 60, 0.1);

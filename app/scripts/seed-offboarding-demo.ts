@@ -128,6 +128,10 @@ interface Seed {
 	flow?: Record<string, unknown>;
 	letters?: Record<string, unknown>;
 	released?: string[];
+	/** The `sent` step was signed, then HR sent it back asking for these. */
+	sentBack?: { items: string[]; uploads: string[]; note: string };
+	/** HR has asked the employee for these documents again (EXIT_UPLOAD_DOCS keys). */
+	askDocs?: string[];
 }
 
 let n = 0;
@@ -193,9 +197,28 @@ async function seed(s: Seed) {
 			approverName: null,
 			status: 'sent',
 			sentAt: ago(1),
-			sentCount: 1
+			sentCount: s.sentBack ? 2 : 1,
+			...(s.sentBack
+				? {
+						approverName: 'Manager approver',
+						rows: Object.fromEntries(
+							(NDC_SECTION_BY_DEPT.get(s.sent)?.rows ?? []).map((row) => [row.key, 'no_dues'])
+						),
+						verdict: 'no_dues',
+						sendBack: { ...s.sentBack, at: ago(1), by: admin?.email ?? 'hr@example.com' }
+					}
+				: {})
 		});
 		await createExitToken(id, 'clearance', String(row._id));
+	}
+	if (s.askDocs?.length) {
+		await Exit.findByIdAndUpdate(id, {
+			requestedFields: s.askDocs.map((d) => ({
+				field: `upload.${d}`,
+				note: d === 'signature' ? 'The signature photo is too dark to print — please retake it on white paper.' : null
+			}))
+		});
+		await createExitToken(id, 'forms');
 	}
 	if (s.released) {
 		await createExitToken(id, 'handover');
@@ -215,8 +238,11 @@ async function seed(s: Seed) {
 await seed({ tag: 'Just created — forms link not sent', name: 'Aarav Mehta', track: 'experienced', companyId: infometrics, designation: 'Software Engineer', salutation: 'Mr.', status: 'initiated' });
 await seed({ tag: 'Employee filling their forms', name: 'Diya Sharma', track: 'fresher', companyId: infometrics, designation: 'Associate Analyst', salutation: 'Ms.', status: 'in_progress' });
 await seed({ tag: 'Submitted — waiting for HR to accept', name: 'Kabir Rao', track: 'experienced', companyId: cirrologix, designation: 'QA Engineer', salutation: 'Mr.', status: 'submitted', submitted: true });
+await seed({ tag: 'Chain: manager mail ready — review & send', name: 'Farhan Ali', track: 'experienced', companyId: infometrics, designation: 'Research Analyst', salutation: 'Mr.', status: 'clearances', submitted: true, accepted: true, chain: true });
 await seed({ tag: 'Chain: with the reporting manager', name: 'Ananya Iyer', track: 'experienced', companyId: infometrics, designation: 'Data Analyst', salutation: 'Ms.', status: 'clearances', submitted: true, accepted: true, chain: true, sent: 'manager' });
 await seed({ tag: 'Chain: held — no manager email set', name: 'Rohan Gupta', track: 'contract', companyId: infratech, designation: 'Site Engineer', salutation: 'Mr.', status: 'clearances', submitted: true, accepted: true, chain: true, route: { manager: null } });
+await seed({ tag: 'Sent back: manager asked for a KT document', name: 'Neha Verma', track: 'experienced', companyId: infometrics, designation: 'Account Manager', salutation: 'Ms.', status: 'clearances', submitted: true, accepted: true, chain: true, sent: 'manager', sentBack: { items: ['Knowledge Transfer completed successfully'], uploads: ['KT handover sheet'], note: 'Please attach the KT sheet the team signed.' } });
+await seed({ tag: 'Employee asked to re-upload signature (mid-chain)', name: 'Rahul Shetty', track: 'experienced', companyId: cirrologix, designation: 'Support Engineer', salutation: 'Mr.', status: 'clearances', submitted: true, accepted: true, chain: true, signed: ['manager'], askDocs: ['signature', 'new_employer_offer'] });
 await seed({ tag: 'Chain: with IT (manager signed)', name: 'Meera Pillai', track: 'experienced', companyId: infometrics, designation: 'UI Designer', salutation: 'Ms.', status: 'clearances', submitted: true, accepted: true, chain: true, signed: ['manager'], sent: 'it' });
 await seed({ tag: 'Chain: with Salesforce (sales hire)', name: 'Vikram Singh', track: 'experienced', companyId: infometrics, designation: 'Lead Generation Executive', salutation: 'Mr.', status: 'clearances', submitted: true, accepted: true, chain: true, route: { salesforce: true }, signed: ['manager', 'it'], sent: 'salesforce' });
 await seed({ tag: "Chain: HR's turn — fill the F&F", name: 'Ishita Bose', track: 'experienced', companyId: cirrologix, designation: 'Business Analyst', salutation: 'Ms.', status: 'cleared', submitted: true, accepted: true, chain: true, signed: ['manager', 'it'], flow: { hrNotifiedAt: ago(1) } });
@@ -225,7 +251,7 @@ await seed({ tag: 'Chain: with payroll (HR filled F&F + loan)', name: 'Sneha Kul
 await seed({ tag: 'Chain: payroll email missing', name: 'Arjun Nair', track: 'fresher', companyId: infratech, designation: 'Graduate Engineer Trainee', salutation: 'Mr.', status: 'fnf', submitted: true, accepted: true, chain: true, signed: ['manager', 'it'], hrDone: true, route: { payroll: null }, fnf: fnf({ net: '31,500' }) });
 await seed({ tag: 'Payroll signed — letters scheduled in 29 days', name: 'Pooja Reddy', track: 'experienced', companyId: infometrics, designation: 'Product Analyst', salutation: 'Ms.', status: 'fnf', submitted: true, accepted: true, chain: true, signed: ['manager', 'it', 'payroll'], hrDone: true, fnf: fnf({ net: '62,750', loan: true, payrollSigned: ago(1) }), flow: { scheduledAt: new Date(Date.now() + 29 * DAY) } });
 await seed({ tag: 'Payroll signed — manual release (auto off)', name: 'Karan Malhotra', track: 'consultant', companyId: cirrologix, designation: 'Consultant — Cloud', salutation: 'Mr.', status: 'fnf', submitted: true, accepted: true, chain: true, signed: ['manager', 'it', 'payroll'], hrDone: true, fnf: fnf({ net: '40,000', payrollSigned: ago(2) }), flow: { autoRelease: false } });
-await seed({ tag: 'Chain: IT mail failed to send (error shown)', name: 'Tanvi Desai', track: 'experienced', companyId: infometrics, designation: 'DevOps Engineer', salutation: 'Ms.', status: 'clearances', submitted: true, accepted: true, chain: true, signed: ['manager'], flow: { lastError: { step: 'it', message: 'The IT team mail to ithelpdesk@example.com could not be sent. Check the address and press Resend.', at: ago(0) } } });
+await seed({ tag: 'Chain: IT mail failed to send (error shown)', name: 'Tanvi Desai', track: 'experienced', companyId: infometrics, designation: 'DevOps Engineer', salutation: 'Ms.', status: 'clearances', submitted: true, accepted: true, chain: true, signed: ['manager'], flow: { lastError: { step: 'it', message: 'The IT team mail to ithelpdesk@example.com could not be sent. Check the address, then Review & send again.', at: ago(0) } } });
 await seed({ tag: 'Released — relieving letter sent, exit closed', name: 'Siddharth Menon', track: 'experienced', companyId: infometrics, designation: 'Lead Generation Executive', salutation: 'Mr.', status: 'completed', submitted: true, accepted: true, chain: true, signed: ['manager', 'it', 'payroll'], hrDone: true, fnf: fnf({ net: '71,900', payrollSigned: ago(31) }), flow: { scheduledAt: ago(1) }, released: ['relieving_sales'] });
 await seed({ tag: 'Released — intern, bonafide letter sent', name: 'Riya Kapoor', track: 'intern', companyId: infometrics, designation: 'Process Automation Intern', salutation: 'Ms.', status: 'completed', submitted: true, accepted: true, chain: true, signed: ['manager', 'it', 'payroll'], hrDone: true, fnf: fnf({ net: '17,000', payrollSigned: ago(31) }), flow: { scheduledAt: ago(1) }, released: ['internship_bonafide'] });
 

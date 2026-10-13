@@ -7,12 +7,15 @@
 import { json, error } from '@sveltejs/kit';
 import { ObjectId } from 'mongodb';
 import type { RequestHandler } from './$types';
-import { Exit, ExitDocument } from '$lib/server/db/schema';
+import { Admin, Exit, ExitDocument } from '$lib/server/db/schema';
 import { deleteFromGridFS, uploadBytesToGridFS } from '$lib/server/storage';
 import { audit } from '$lib/server/audit';
-import { resolveExitToken } from '$lib/server/offboarding/exit';
+import { exitCompany, resolveExitToken } from '$lib/server/offboarding/exit';
+import { sendExitAlert } from '$lib/server/offboarding/mail';
+import { baseUrl } from '$lib/server/base-url';
+import { brandBySlug } from '$lib/shared/brands';
 import { extFor } from '$lib/server/offboarding/documents';
-import { EXIT_UPLOAD_DOCS } from '$lib/shared/offboarding';
+import { EXIT_UPLOAD_DOCS, UPLOAD_REQUEST_PREFIX } from '$lib/shared/offboarding';
 import {
 	ACCEPTED_EXIT_MIMES,
 	ACCEPTED_IMAGE_MIMES,
@@ -31,7 +34,16 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	const resolved = await resolveExitToken(params.token, 'forms');
 	if (!resolved) error(404, 'This exit link is invalid, expired, or has been revoked.');
 	const { exit } = resolved;
-	if (!EDITABLE.includes(exit.status))
+	// Past the forms stage, the only uploads open are the ones HR has asked
+	// for again — everything else stays as submitted.
+	const asked = new Set(
+		((exit.requestedFields ?? []) as { field: string }[])
+			.map((r) => r.field)
+			.filter((f) => f.startsWith(UPLOAD_REQUEST_PREFIX))
+			.map((f) => f.slice(UPLOAD_REQUEST_PREFIX.length))
+	);
+	const editable = EDITABLE.includes(exit.status);
+	if (!editable && (exit.status === 'completed' || !asked.size))
 		error(409, 'Your exit documents have been submitted and can no longer be edited.');
 
 	const contentType = request.headers.get('content-type') ?? '';
@@ -40,6 +52,7 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	if (contentType.includes('application/json')) {
 		const body = await request.json();
 		if (body.action !== 'remove') error(400, 'Unknown action');
+		if (!editable) error(409, 'Your exit documents have been submitted and can no longer be edited.');
 		const doc = await ExitDocument.findOne({
 			_id: body.fileId,
 			exitId: exit._id,
@@ -66,6 +79,8 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 
 	const slot = SLOT_BY_TYPE.get(docType);
 	if (!slot) error(400, 'Unknown document type');
+	if (!editable && !asked.has(docType))
+		error(409, 'HR has not asked for this document. Reply to their email if you need to change something.');
 	if (!(fileField instanceof File) || fileField.size === 0) error(400, 'No file provided');
 
 	// A signature must be an image: a PDF cannot be stamped onto a signature line.
@@ -105,6 +120,32 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 
 	if (exit.status === 'link_sent') {
 		await Exit.findByIdAndUpdate(exit._id, { status: 'in_progress' });
+	}
+	// The upload answers HR's request for it.
+	if (asked.has(docType)) {
+		await Exit.findByIdAndUpdate(exit._id, {
+			$pull: { requestedFields: { field: `${UPLOAD_REQUEST_PREFIX}${docType}` } }
+		});
+		// Tell HR. Best-effort — the upload itself has succeeded.
+		try {
+			const company = await exitCompany(exit.companyId);
+			const to: string[] = [];
+			if (exit.createdBy) {
+				const admin = await Admin.findById(exit.createdBy, 'email').lean();
+				if (admin?.email) to.push(admin.email);
+			}
+			const hr = (exit as unknown as { routing?: { hr?: { email?: string | null } } }).routing?.hr?.email;
+			if (hr && !to.includes(hr)) to.push(hr);
+			await sendExitAlert({
+				to,
+				subject: `Document received: ${exit.fullName}`,
+				lines: [`${exit.fullName} (${exit.employeeId}) has uploaded the ${slot.label.replace(/^Your /, '').toLowerCase()} you asked for.`],
+				brand: brandBySlug(company?.brandSlug ?? undefined),
+				url: `${baseUrl()}/admin/offboarding/${String(exit._id)}`
+			});
+		} catch (err) {
+			console.error('[exit] document-received alert failed:', err);
+		}
 	}
 
 	await audit({

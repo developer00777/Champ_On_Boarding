@@ -34,10 +34,12 @@ import {
 import { sendExitAlert } from '$lib/server/offboarding/mail';
 import { advanceFlow, flowSteps } from '$lib/server/offboarding/flow';
 import {
+	ACCEPTED_EXIT_MIMES,
 	ACCEPTED_IMAGE_MIMES,
 	MAX_EXIT_FILE_BYTES,
 	matchesMagicBytes
 } from '$lib/server/offboarding/uploads';
+import { extFor } from '$lib/server/offboarding/documents';
 
 async function ctx(token: string) {
 	const resolved = await resolveExitToken(token, 'clearance');
@@ -134,6 +136,15 @@ export const load: PageServerLoad = async ({ params }) => {
 			completed: clearance.status === 'completed',
 			completedAt: clearance.completedAt?.toISOString() ?? null
 		},
+		/** HR sent this signed clearance back: what is missing, and the
+		 *  documents to attach — shown above the form, which keeps the earlier
+		 *  answers filled in. */
+		sendBack: (() => {
+			const b = (clearance as unknown as Record<string, any>).sendBack;
+			return b?.at
+				? { note: (b.note as string | null) ?? null, items: [...(b.items ?? [])] as string[], uploads: [...(b.uploads ?? [])] as string[] }
+				: null;
+		})(),
 		/** IT and admin also confirm the physical asset return (SOP step 6). */
 		verifiesAssets: dept === 'it' || dept === 'admin',
 		/** Whether this section's rows are ones the employee self-declares. Drives
@@ -224,6 +235,35 @@ export const actions: Actions = {
 			errors.push('Please upload an image of your signature.');
 		}
 
+		// The documents HR asked for when sending this back: each one required,
+		// checked like every other exit upload, and stored only once the whole
+		// submission is valid.
+		const back = (clearance as unknown as Record<string, any>).sendBack;
+		const askedUploads: string[] = back?.at ? [...(back.uploads ?? [])] : [];
+		const attached: { label: string; bytes: Uint8Array; mime: string; size: number }[] = [];
+		for (let i = 0; i < askedUploads.length; i++) {
+			const label = askedUploads[i];
+			const f = form.get(`requested_${i}`);
+			if (!(f instanceof File) || f.size === 0) {
+				errors.push(`Please attach: ${label}.`);
+				continue;
+			}
+			if (!ACCEPTED_EXIT_MIMES.includes(f.type)) {
+				errors.push(`"${label}" must be a PDF, JPG, PNG or WEBP file.`);
+				continue;
+			}
+			if (f.size > MAX_EXIT_FILE_BYTES) {
+				errors.push(`"${label}" is larger than 25 MB.`);
+				continue;
+			}
+			const bytes = new Uint8Array(await f.arrayBuffer());
+			if (!matchesMagicBytes(f.type, bytes)) {
+				errors.push(`"${label}" does not look like a genuine PDF or image.`);
+				continue;
+			}
+			attached.push({ label, bytes, mime: f.type, size: f.size });
+		}
+
 		if (errors.length) {
 			// A signature that uploaded before a later validation error would
 			// otherwise be orphaned in GridFS with nothing pointing at it.
@@ -289,6 +329,34 @@ export const actions: Actions = {
 		clearance.set('rowRemarks', rowRemarks);
 		clearance.verdict = verdict;
 		clearance.remarks = get('remarks') || null;
+		for (const a of attached) {
+			const gridfsId = await uploadBytesToGridFS(
+				a.bytes,
+				`exits/${String(exit._id)}/clearance-${clearance.department}/attached-${crypto.randomUUID()}.${extFor(a.mime)}`,
+				a.mime
+			);
+			await ExitDocument.create({
+				exitId: exit._id,
+				source: 'approver',
+				clearanceId: clearance._id,
+				docType: `approver_${clearance.department}`,
+				label: a.label,
+				gridfsId,
+				mime: a.mime,
+				sizeBytes: a.size
+			});
+		}
+		// The request is answered: it moves to the history, so HR can see a
+		// clearance was sent back once and what for.
+		const wasSentBack = !!back?.at;
+		if (wasSentBack) {
+			const h = clearance.get('sendBackHistory') ?? [];
+			clearance.set('sendBackHistory', [
+				...h,
+				{ note: back.note, items: back.items, uploads: back.uploads, at: back.at, by: back.by, resolvedAt: new Date() }
+			]);
+			clearance.set('sendBack', null);
+		}
 		clearance.status = 'completed';
 		clearance.completedAt = new Date();
 		clearance.completedIp = getClientAddress();
@@ -303,8 +371,9 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 
-		// An exit on the chain moves itself on: this signature is what sends the
-		// next step's mail (or hands the F&F to HR, or schedules the release).
+		// An exit on the chain moves itself on: this signature readies the next
+		// step's mail for HR to review and send (or hands the F&F to HR, or
+		// schedules the release).
 		// Exits from before the chain keep the old rule — every clearance in,
 		// so the exit is cleared — and never pull a completed exit backwards.
 		const onChain = !!(exit as unknown as { flow?: { startedAt?: Date | null } }).flow?.startedAt;
@@ -322,7 +391,13 @@ export const actions: Actions = {
 						(s) => s.status === 'active' || s.status === 'blocked'
 					)
 				: null;
-			next = step ? `Next: ${step.label}${step.status === 'blocked' ? ' — no email set yet' : ''}.` : null;
+			next = !step
+				? null
+				: step.status === 'blocked'
+					? `Next: ${step.label} — no email set yet. Add it in Mail settings on the exit page.`
+					: step.ready
+						? `Next: the ${step.label} mail to ${step.to} is ready — review it on the exit page and send it.`
+						: `Next: ${step.label}.`;
 		} else if (progress.allDone && ['clearances', 'submitted'].includes(exit.status)) {
 			await Exit.findByIdAndUpdate(exit._id, { status: 'cleared' });
 		}
@@ -337,12 +412,15 @@ export const actions: Actions = {
 			}
 			await sendExitAlert({
 				to: recipients,
-				subject: !onChain && progress.allDone
-					? `All clearances signed: ${exit.fullName}`
-					: `Clearance signed: ${exit.fullName}`,
+				subject: wasSentBack
+					? `Clearance updated: ${exit.fullName}`
+					: !onChain && progress.allDone
+						? `All clearances signed: ${exit.fullName}`
+						: `Clearance signed: ${exit.fullName}`,
 				lines: [
-					`${approverName} signed the ${CLEARANCE_DEPT_LABELS[clearance.department as ClearanceDept]} ` +
+					`${approverName} ${wasSentBack ? 'updated and re-signed' : 'signed'} the ${CLEARANCE_DEPT_LABELS[clearance.department as ClearanceDept]} ` +
 						`clearance for ${exit.fullName} (${exit.employeeId}).`,
+					...(attached.length ? [`Attached: ${attached.map((a) => a.label).join(', ')}.`] : []),
 					`Verdict: ${verdict === 'no_dues' ? 'No dues outstanding' : 'Dues outstanding'}.`,
 					onChain
 						? (next ?? 'The exit chain is complete.')

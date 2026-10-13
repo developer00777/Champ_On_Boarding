@@ -1,12 +1,17 @@
 // The exit chain: who is mailed next, and when the letters go out.
 //
 // FLOW_STEPS (shared/offboarding.ts) is the order. Nothing here is sent in
-// parallel: each step's mail goes out only once the step before it is done, so
-// IT is never asked to sign before the manager has, and payroll gets the
+// parallel: each step's mail is readied only once the step before it is done,
+// so IT is never asked to sign before the manager has, and payroll gets the
 // settlement only after HR has filled it. advanceFlow() is the one function
 // that moves an exit along — called when the chain starts, when an approver
 // signs, when HR hands over to payroll, and when HR fixes a missing address —
-// and it is idempotent: calling it twice never mails anyone twice.
+// and it is idempotent.
+//
+// No approver is mailed on its own: when a step comes up, its mail waits for
+// HR, who previews it (draftStep) and sends it (mailStep) from the exit page.
+// A signed step can be sent back (sendBackStep) when something is missing: it
+// reopens, and the same reviewed mail asks for exactly what HR ticked.
 //
 // The last step is the release: the letters HR picked go to the employee a set
 // number of days after payroll signs. A ticker (like the BGV reminders') sends
@@ -30,7 +35,14 @@ import {
 import { createExitToken, exitCompany } from './exit';
 import { EXIT_DOCS, EXIT_DOC_BY_KEY, extFor, loadPdfInput, renderExitDoc, safeFilename } from './documents';
 import { noDuesPdf } from './pdf';
-import { sendClearanceMail, sendExitAlert, sendHandoverMail } from './mail';
+import {
+	buildClearanceMail,
+	buildHandoverMail,
+	sendClearanceMail,
+	sendExitAlert,
+	sendHandoverMail,
+	type MailDraft
+} from './mail';
 
 type Lean = Record<string, any>;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -121,6 +133,8 @@ export interface StepState {
 	/** One line under the label: a verdict, a due date, what is missing. */
 	detail: string | null;
 	clearanceId: string | null;
+	/** The step's mail is waiting for HR to review and send. */
+	ready: boolean;
 }
 
 const fmt = (d: Date | string | null | undefined) =>
@@ -152,7 +166,8 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 			sentAt: null,
 			doneAt: null,
 			detail: null,
-			clearanceId: null
+			clearanceId: null,
+			ready: false
 		};
 		const route = exit.routing?.[def.key as RoutingKey] as Lean | undefined;
 
@@ -175,10 +190,20 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 			if (reached) return base;
 			reached = true;
 			if (!base.to) return { ...base, status: 'blocked', detail: 'Add an email in Mail settings' };
+			const sentBack = !!row?.sendBack?.at;
+			if (row?.status === 'sent')
+				return {
+					...base,
+					status: 'active',
+					detail: sentBack
+						? `Sent back ${fmt(row.sendBack.at)} — waiting for their update`
+						: `Awaiting sign-off · sent ${fmt(row.sentAt)}`
+				};
 			return {
 				...base,
 				status: 'active',
-				detail: row?.status === 'sent' ? `Awaiting sign-off · sent ${fmt(row.sentAt)}` : 'Sending…'
+				ready: true,
+				detail: sentBack ? 'Send-back ready — review and send it' : 'Mail ready — review and send it'
 			};
 		}
 
@@ -244,9 +269,10 @@ async function setLastError(exitId: string, step: string | null, message: string
 	});
 }
 
-/** Moves the exit to its next step: mails that step's recipient, or tells HR
- *  it is their turn, or schedules the release. Safe to call at any time and
- *  any number of times. Errors are recorded on the exit, never thrown. */
+/** Moves the exit to its next step: readies that step's mail for HR to
+ *  review, or tells HR it is their turn, or schedules the release. Safe to
+ *  call at any time and any number of times. Errors are recorded on the exit,
+ *  never thrown. */
 export async function advanceFlow(exitId: string): Promise<void> {
 	try {
 		const exit = await Exit.findById(exitId).lean<Lean>();
@@ -262,12 +288,8 @@ export async function advanceFlow(exitId: string): Promise<void> {
 		if (current.status === 'blocked') return;
 
 		const def = FLOW_STEPS.find((d) => d.key === current.key)!;
-		if (def.dept) {
-			const row = clearances.find((c) => c.department === def.dept);
-			if (row?.status === 'sent') return; // already with them
-			await mailStep(exitId, current.key);
-			return;
-		}
+		// A mail step waits on HR: they review the draft and press Send.
+		if (def.dept) return;
 		if (current.key === 'hr') {
 			await notifyHrTurn(exit);
 			return;
@@ -310,7 +332,7 @@ async function payrollAttachments(exitId: string) {
 			counts[base] = (counts[base] ?? 0) + 1;
 			const suffix = counts[base] > 1 ? `_${counts[base]}` : '';
 			out.push({
-				filename: `${f.source === 'hr' ? 'Handover' : 'Employee'}-${base}${suffix}.${extFor(f.mime)}`,
+				filename: `${f.source === 'hr' ? 'Handover' : f.source === 'approver' ? 'Approver' : 'Employee'}-${base}${suffix}.${extFor(f.mime)}`,
 				content: Buffer.from(bytes)
 			});
 		} catch {
@@ -318,6 +340,176 @@ async function payrollAttachments(exitId: string) {
 		}
 	}
 	return out;
+}
+
+export interface SendBack {
+	note: string | null;
+	items: string[];
+	uploads: string[];
+}
+
+/** What one clearance step's mail says, for the preview and the send alike. */
+function stepMailOpts(
+	exit: Lean,
+	key: FlowStepKey,
+	dept: ClearanceDept,
+	reminder: boolean,
+	sendBack: SendBack | null = null
+) {
+	const route = (exit.routing?.[key as RoutingKey] ?? {}) as Lean;
+	return {
+		sendBack,
+		to: String(route.email ?? '').trim().toLowerCase(),
+		approverName: (route.name as string) || null,
+		department: dept,
+		employeeName: exit.fullName,
+		employeeId: exit.employeeId,
+		lwd: exit.lwd ?? null,
+		reminder,
+		...(dept === 'payroll'
+			? {
+					extraIntro: [
+						'HR has filled in the full & final settlement and the leave position. They are prefilled on your ' +
+							'page — correct anything that needs it, record any loan or salary advance recovery, and sign off.',
+						'Every exit document for this employee is attached to this mail.'
+					],
+					note: {
+						title: 'Your figures are the final ones',
+						text:
+							'What you save on the clearance page is what the employee’s settlement statement shows, and signing ' +
+							'it starts the countdown to their relieving documents.'
+					}
+				}
+			: {})
+	};
+}
+
+export interface StepDraft extends MailDraft {
+	key: FlowStepKey | 'letters';
+	label: string;
+	reminder: boolean;
+	/** False when the mail can only be previewed: an earlier step is still open,
+	 *  or the address is missing. */
+	sendable: boolean;
+	why: string | null;
+	attachments: { name: string; href: string }[];
+	/** Set when this is a send-back: what HR is asking for. */
+	sendBack?: SendBack | null;
+}
+
+const asSendBack = (v: Lean | null | undefined): SendBack | null =>
+	v && (v.items?.length || v.uploads?.length || v.note)
+		? { note: v.note ?? null, items: [...(v.items ?? [])], uploads: [...(v.uploads ?? [])] }
+		: null;
+
+/** The mail a step would send right now, for HR to review before pressing
+ *  Send. The link in it is a placeholder: the real one is minted at send. */
+export async function draftStep(
+	exitId: string,
+	key: FlowStepKey,
+	/** Preview a send-back with these asks, instead of the step's own mail. */
+	proposedBack: SendBack | null = null
+): Promise<StepDraft | { error: string }> {
+	const def = FLOW_STEPS.find((d) => d.key === key);
+	if (!def) return { error: 'Unknown step.' };
+	const exit = await Exit.findById(exitId).lean<Lean>();
+	if (!exit) return { error: 'Exit not found.' };
+	const clearances = await ExitClearance.find({ exitId }).lean<Lean[]>();
+	const state = flowSteps(exit, clearances).find((s) => s.key === key)!;
+	const company = await exitCompany(exit.companyId);
+	const brand = brandBySlug(company?.brandSlug ?? undefined);
+	const base = `/admin/offboarding/${exitId}`;
+	const files = await ExitDocument.find({ exitId }).lean<Lean[]>();
+	const fileLabel = new Map<string, string>(HANDOVER_DOCS.map((d) => [d.docType, d.label]));
+	const fileName = (f: Lean) =>
+		`${fileLabel.get(f.docType) ?? f.label ?? f.docType}${
+			f.source === 'hr' ? '' : f.source === 'approver' ? ' (from an approver)' : ' (from employee)'
+		}`;
+	const placeholder = (path: string) => `${baseUrl()}${path}/«secure link created when you press Send»`;
+
+	if (def.dept) {
+		const dept = def.dept as ClearanceDept;
+		const row = clearances.find((c) => c.department === dept);
+		const back = asSendBack(proposedBack ?? row?.sendBack);
+		const reminder = !proposedBack && row?.status === 'sent';
+		const opts = stepMailOpts(exit, key, dept, reminder, back);
+		const mail = await buildClearanceMail({ ...opts, brand, url: placeholder('/x/clearance') });
+		const input = await loadPdfInput(exitId);
+		const attachments =
+			dept === 'payroll'
+				? [
+						...(input ? EXIT_DOCS.filter((d) => !d.letter && d.applies(input.exit)) : []).map((d) => ({
+							name: d.label,
+							href: `${base}/doc/${d.key}`
+						})),
+						...files.map((f) => ({ name: fileName(f), href: `${base}/file/${String(f._id)}` }))
+					]
+				: [{ name: 'No Dues Certificate', href: `${base}/doc/no_dues` }];
+		if (proposedBack) {
+			const why =
+				exit.status === 'completed'
+					? 'This exit is closed — reopen it first.'
+					: row?.status !== 'completed'
+						? 'They have not signed yet — there is nothing to send back.'
+						: !opts.to
+							? 'No email set — add it in Mail settings.'
+							: !back
+								? 'Tick what is missing, ask for a document, or write a note.'
+								: null;
+			return { ...mail, key, label: def.label, reminder: false, sendable: !why, why, attachments, sendBack: back };
+		}
+		const why =
+			state.status === 'done'
+				? 'Already signed.'
+				: state.status === 'skipped'
+					? 'Not part of this exit.'
+					: !opts.to
+						? 'No email set — add it in Mail settings.'
+						: state.status !== 'active'
+							? 'An earlier step is still open — this is what will go once it is done.'
+							: null;
+		return { ...mail, key, label: def.label, reminder, sendable: !why, why, attachments, sendBack: back };
+	}
+
+	if (key === 'letters') {
+		const keys = releaseLetterKeys(exit);
+		const hrFiles = files.filter((f) => f.source === 'hr');
+		const mail = await buildHandoverMail({
+			to: exit.personalEmail,
+			employeeName: exit.fullName,
+			brand,
+			url: placeholder('/x/final'),
+			fnfAmount: exit.fnf?.netAmount ?? null,
+			fnfDate: exit.fnf?.settlementDate ?? null,
+			documents: [
+				...keys.map((k) => EXIT_DOC_BY_KEY.get(k as never)?.label ?? k),
+				...new Set(hrFiles.map((f) => fileLabel.get(f.docType) ?? f.label ?? f.docType))
+			]
+		});
+		const blocker = exit.flow?.releasedAt
+			? 'Already sent.'
+			: !keys.length && !hrFiles.length
+				? 'Nothing to send — pick at least one letter or upload a handover document.'
+				: null;
+		// Releasing early is allowed (HR's call), but never without saying so.
+		const early =
+			!blocker && state.status !== 'active'
+				? 'Payroll has not signed off yet — releasing now sends this before the rest of the chain is done, and closes the exit.'
+				: null;
+		return {
+			...mail,
+			key,
+			label: def.label,
+			reminder: false,
+			sendable: !blocker,
+			why: blocker ?? early,
+			attachments: keys.map((k) => ({
+				name: EXIT_DOC_BY_KEY.get(k as never)?.label ?? k,
+				href: `${base}/doc/${k}`
+			}))
+		};
+	}
+	return { error: 'That step does not send a mail.' };
 }
 
 /** Sends (or, with `reminder`, re-sends) one clearance step's mail to the
@@ -383,41 +575,65 @@ export async function mailStep(
 				attachments = [{ filename: `No-Dues-${exit.employeeId}.pdf`, content: Buffer.from(await noDuesPdf(input)) }];
 		}
 		await sendClearanceMail({
+			...stepMailOpts(exit, key, dept, !!opts.reminder, asSendBack(existing?.sendBack)),
 			to: email,
-			approverName: route.name || null,
-			department: dept,
-			employeeName: exit.fullName,
-			employeeId: exit.employeeId,
-			lwd: exit.lwd ?? null,
 			brand,
 			url,
-			attachments,
-			reminder: opts.reminder,
-			...(dept === 'payroll'
-				? {
-						extraIntro: [
-							'HR has filled in the full & final settlement and the leave position. They are prefilled on your ' +
-								'page — correct anything that needs it, record any loan or salary advance recovery, and sign off.',
-							'Every exit document for this employee is attached to this mail.'
-						],
-						note: {
-							title: 'Your figures are the final ones',
-							text:
-								'What you save on the clearance page is what the employee’s settlement statement shows, and signing ' +
-								'it starts the countdown to their relieving documents.'
-						}
-					}
-				: {})
+			attachments
 		});
 	} catch (e) {
 		console.error(`[exit-flow] ${key} mail failed for exit=${exitId}:`, e);
 		// Put a first send back so the next advance retries it.
 		if (!opts.reminder)
 			await ExitClearance.updateOne({ _id: row._id, status: 'sent' }, { $set: { status: 'pending' }, $inc: { sentCount: -1 } });
-		await setLastError(exitId, key, `The ${def.label} mail to ${email} could not be sent. Check the address and press Resend.`);
+		await setLastError(exitId, key, `The ${def.label} mail to ${email} could not be sent. Check the address, then Review & send again.`);
 		return { error: `The mail to ${email} could not be sent.` };
 	}
 	if (exit.flow?.lastError?.step) await setLastError(exitId, null, null);
+	return { ok: true };
+}
+
+/** Reopens a signed clearance and mails the approver what HR says is missing
+ *  — the reviewed send-back. Their earlier answers stay filled in; they
+ *  complete what was asked and sign again, and the chain carries on from
+ *  there. Sending payroll back also stops a scheduled release, since the
+ *  figures it would print are no longer final. */
+export async function sendBackStep(
+	exitId: string,
+	key: FlowStepKey,
+	back: SendBack,
+	by: string
+): Promise<{ ok: true } | { error: string }> {
+	const def = FLOW_STEPS.find((d) => d.key === key);
+	if (!def?.dept) return { error: 'That step has no approver to send back to.' };
+	if (!asSendBack(back)) return { error: 'Tick what is missing, ask for a document, or write a note.' };
+	const exit = await Exit.findById(exitId).lean<Lean>();
+	if (!exit) return { error: 'Exit not found.' };
+	if (exit.status === 'completed') return { error: 'This exit is closed — reopen it first.' };
+
+	const reopened = await ExitClearance.findOneAndUpdate(
+		{ exitId, department: def.dept, status: 'completed' },
+		{
+			$set: {
+				status: 'pending',
+				completedAt: null,
+				sendBack: { note: back.note, items: back.items, uploads: back.uploads, at: new Date(), by }
+			}
+		},
+		{ new: true }
+	).lean<Lean>();
+	if (!reopened) return { error: `The ${def.label} has not signed yet — there is nothing to send back.` };
+
+	if (def.dept === 'payroll')
+		await Exit.findByIdAndUpdate(exitId, { 'fnf.submittedByPayrollAt': null, 'flow.scheduledAt': null });
+
+	const res = await mailStep(exitId, key);
+	if ('error' in res) {
+		// Leave it reopened: the map now shows the step as ready, and Review &
+		// send re-sends the same request once the address is fixed.
+		return res;
+	}
+	await advanceFlow(exitId);
 	return { ok: true };
 }
 

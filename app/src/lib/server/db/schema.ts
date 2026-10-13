@@ -1096,7 +1096,36 @@ const exitClearanceSchema = new Schema(
 		sentAt: { type: Date, default: null },
 		sentCount: { type: Number, default: 0 },
 		completedAt: { type: Date, default: null },
-		completedIp: { type: String, default: null }
+		completedIp: { type: String, default: null },
+		/** HR sent a signed clearance back: what is missing, and any documents the
+		 *  approver is asked to attach. Cleared (into sendBackHistory) when they
+		 *  sign again. */
+		sendBack: {
+			type: new Schema(
+				{
+					note: { type: String, default: null },
+					items: { type: [String], default: [] },
+					uploads: { type: [String], default: [] },
+					at: { type: Date, default: null },
+					by: { type: String, default: null }
+				},
+				{ _id: false }
+			),
+			default: null
+		},
+		sendBackHistory: {
+			type: [
+				{
+					note: String,
+					items: [String],
+					uploads: [String],
+					at: Date,
+					by: String,
+					resolvedAt: Date
+				}
+			],
+			default: []
+		}
 	},
 	{ timestamps: true }
 );
@@ -1108,6 +1137,8 @@ export const ExitClearance = models.ExitClearance ?? model('ExitClearance', exit
 //   - `source: 'employee'` — what the employee uploads (their signature image,
 //     an asset-return photo, the new employer's offer letter the Relieving
 //     Formalities form asks for).
+//   - `source: 'approver'` — a document an approver attached because HR sent
+//     their clearance back asking for it (`clearanceId` says whose).
 //   - `source: 'hr'` — what HR uploads for the final handover: the three
 //     payslips, the relieving and experience letters, the recommendation
 //     letter, PF withdrawal proof, Form 16. These are the files the employee
@@ -1118,7 +1149,8 @@ export const ExitClearance = models.ExitClearance ?? model('ExitClearance', exit
 const exitDocumentSchema = new Schema(
 	{
 		exitId: { type: Schema.Types.ObjectId, ref: 'Exit', required: true, index: true },
-		source: { type: String, enum: ['employee', 'hr'], required: true },
+		source: { type: String, enum: ['employee', 'hr', 'approver'], required: true },
+		clearanceId: { type: Schema.Types.ObjectId, ref: 'ExitClearance', default: null },
 		docType: { type: String, required: true },
 		label: { type: String, default: null },
 		gridfsId: { type: Schema.Types.ObjectId, required: true },

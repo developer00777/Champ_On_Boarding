@@ -12,7 +12,12 @@ import { AppSetting } from '$lib/server/db/schema';
 import { brandLogoUrl, escapeHtml, sendBrandedMail, sendMail, brandFromHeader } from '$lib/server/mailer';
 import type { BrandTheme } from '$lib/shared/brands';
 import type { MailAttachment } from '$lib/server/mailer';
-import { CLEARANCE_DEPT_LABELS, type ClearanceDept } from '$lib/shared/offboarding';
+import {
+	CLEARANCE_DEPT_LABELS,
+	UPLOAD_REQUEST_PREFIX,
+	requestedFieldLabel,
+	type ClearanceDept
+} from '$lib/shared/offboarding';
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -131,14 +136,23 @@ function shell(o: ShellOpts): string {
 </html>`;
 }
 
+/** A composed mail, before it is sent. The preview HR reviews and the send
+ *  itself both come from the same builder, so what HR approves is what goes. */
+export interface MailDraft {
+	to: string[];
+	cc: string[];
+	subject: string;
+	html: string;
+	text: string;
+}
+
 function textBody(lines: string[], signoffName: string, signoffDesignation: string, legalName: string): string {
 	return [...lines, '', 'Regards,', signoffName, signoffDesignation, legalName].join('\n');
 }
 
 // ── 1. Exit-forms invitation ─────────────────────────────────────────────────
 
-export async function sendExitFormsMail(opts: {
-	exitId: string;
+export async function buildExitFormsMail(opts: {
 	to: string;
 	employeeName: string;
 	lwd: string | null;
@@ -149,8 +163,17 @@ export async function sendExitFormsMail(opts: {
 }) {
 	const s = await getExitMailSettings();
 	const isRework = !!opts.changesRequested?.length;
+	// Only documents asked for (no form fields): the employee may well have
+	// finished their forms long ago, so the mail asks for uploads, not edits.
+	const uploadsOnly = isRework && opts.changesRequested!.every((c) => c.field.startsWith(UPLOAD_REQUEST_PREFIX));
 
-	const intro = isRework
+	const intro = uploadsOnly
+		? [
+				`Hello ${opts.employeeName},`,
+				'To complete your exit we need the document(s) listed below from you.',
+				'Please open your exit page using the link below and upload them:'
+			]
+		: isRework
 		? [
 				`Hello ${opts.employeeName},`,
 				'Thank you for submitting your exit documents. We need a few details corrected or completed before we can proceed.',
@@ -168,23 +191,35 @@ export async function sendExitFormsMail(opts: {
 	const changeList = isRework
 		? `<ul style="margin:0 0 14px;padding-left:20px;font-size:13.5px;color:#475467;line-height:1.7">${opts
 				.changesRequested!.map(
-					(c) => `<li><strong>${escapeHtml(prettyField(c.field))}</strong>${c.note ? ` — ${escapeHtml(c.note)}` : ''}</li>`
+					(c) => `<li><strong>${escapeHtml(requestedFieldLabel(c.field))}</strong>${c.note ? ` — ${escapeHtml(c.note)}` : ''}</li>`
 				)
 				.join('')}</ul>`
 		: '';
 
 	const html = shell({
 		brand: opts.brand,
-		heading: isRework ? 'A few exit details need your attention' : 'Complete your exit formalities',
+		heading: uploadsOnly
+			? 'A document is needed for your exit'
+			: isRework
+				? 'A few exit details need your attention'
+				: 'Complete your exit formalities',
 		intro,
 		bodyHtml: changeList,
-		cta: { label: isRework ? 'Update my exit forms' : 'Open my exit forms', url: opts.url },
-		note: {
-			title: 'Please complete this on or before your last working day',
-			text:
-				'The link is private to you — please do not forward it. Once you submit, our HR desk reviews your ' +
-				'submission and will come back to you if anything else is needed.'
+		cta: {
+			label: uploadsOnly ? 'Upload my documents' : isRework ? 'Update my exit forms' : 'Open my exit forms',
+			url: opts.url
 		},
+		note: uploadsOnly
+			? {
+					title: 'This link is private to you',
+					text: 'Please do not forward it. HR is told as soon as your upload arrives.'
+				}
+			: {
+					title: 'Please complete this on or before your last working day',
+					text:
+						'The link is private to you — please do not forward it. Once you submit, our HR desk reviews your ' +
+						'submission and will come back to you if anything else is needed.'
+				},
 		signoffName: s.signoffName,
 		signoffDesignation: s.signoffDesignation
 	});
@@ -193,7 +228,7 @@ export async function sendExitFormsMail(opts: {
 		[
 			...intro,
 			...(isRework
-				? opts.changesRequested!.map((c) => `- ${prettyField(c.field)}${c.note ? `: ${c.note}` : ''}`)
+				? opts.changesRequested!.map((c) => `- ${requestedFieldLabel(c.field)}${c.note ? `: ${c.note}` : ''}`)
 				: []),
 			'',
 			`Open your exit forms: ${opts.url}`,
@@ -205,18 +240,27 @@ export async function sendExitFormsMail(opts: {
 		opts.brand.legalName
 	);
 
-	await sendBrandedMail(
-		opts.to,
-		isRework
+	return {
+		to: [opts.to],
+		cc: s.hrCc,
+		subject: uploadsOnly
+			? `Document needed for your exit — ${opts.brand.name}`
+			: isRework
 			? `Action needed: your exit documents — ${opts.brand.name}`
 			: `Your exit formalities — ${opts.brand.name}`,
-		text,
-		opts.brand,
-		undefined,
-		'exit',
-		undefined,
-		{ cc: s.hrCc.length ? s.hrCc : undefined, tagPurpose: isRework ? 'exit_changes' : 'exit_forms', html }
-	);
+		html,
+		text
+	} satisfies MailDraft;
+}
+
+export async function sendExitFormsMail(opts: Parameters<typeof buildExitFormsMail>[0] & { exitId: string }) {
+	const d = await buildExitFormsMail(opts);
+	const isRework = !!opts.changesRequested?.length;
+	await sendBrandedMail(d.to[0], d.subject, d.text, opts.brand, undefined, 'exit', undefined, {
+		cc: d.cc.length ? d.cc : undefined,
+		tagPurpose: isRework ? 'exit_changes' : 'exit_forms',
+		html: d.html
+	});
 }
 
 /** 'ndc.nameAsPerBank' → 'Name as per bank' — a dotted field path rendered for
@@ -230,7 +274,7 @@ export function prettyField(path: string): string {
 
 // ── 2. Clearance request ─────────────────────────────────────────────────────
 
-export async function sendClearanceMail(opts: {
+export async function buildClearanceMail(opts: {
 	to: string;
 	approverName: string | null;
 	department: ClearanceDept;
@@ -246,9 +290,14 @@ export async function sendClearanceMail(opts: {
 	extraIntro?: string[];
 	/** Replaces the boxed "what you are signing" aside. */
 	note?: { title: string; text: string };
+	/** HR sent their signed clearance back: what is missing, what to attach. */
+	sendBack?: { note: string | null; items: string[]; uploads: string[] } | null;
 }) {
 	const s = await getExitMailSettings();
 	const deptLabel = CLEARANCE_DEPT_LABELS[opts.department] ?? opts.department;
+	const back = opts.sendBack && (opts.sendBack.items.length || opts.sendBack.uploads.length || opts.sendBack.note)
+		? opts.sendBack
+		: null;
 
 	const rows: [string, string][] = [
 		['Employee Name', opts.employeeName],
@@ -268,23 +317,42 @@ export async function sendClearanceMail(opts: {
 			.join('')}
 	</table>`;
 
-	const intro = [
-		`Hello${opts.approverName ? ` ${opts.approverName}` : ''},`,
-		opts.reminder
-			? `This is a reminder that the ${deptLabel} clearance for the exit below is still pending.`
-			: `${opts.employeeName} is leaving the organisation and we need your departmental clearance to close their exit.`,
-		'Please open the link below to review the items your section owns, mark each one as cleared or outstanding, ' +
-			'add any remarks, and sign off. It takes a couple of minutes and needs no login.',
-		...(opts.extraIntro ?? [])
-	];
+	const intro = back
+		? [
+				`Hello${opts.approverName ? ` ${opts.approverName}` : ''},`,
+				`Thank you for signing the ${deptLabel} clearance for ${opts.employeeName}. HR needs a little more before the exit can close.`,
+				'Please open the link below — your earlier answers are still filled in — complete what is listed here, and sign off again.'
+			]
+		: [
+				`Hello${opts.approverName ? ` ${opts.approverName}` : ''},`,
+				opts.reminder
+					? `This is a reminder that the ${deptLabel} clearance for the exit below is still pending.`
+					: `${opts.employeeName} is leaving the organisation and we need your departmental clearance to close their exit.`,
+				'Please open the link below to review the items your section owns, mark each one as cleared or outstanding, ' +
+					'add any remarks, and sign off. It takes a couple of minutes and needs no login.',
+				...(opts.extraIntro ?? [])
+			];
+	const backList = back
+		? `<p style="margin:0 0 6px;font-size:13.5px;font-weight:700;color:${opts.brand.colors.ink}">What is needed</p>
+			<ul style="margin:0 0 14px;padding-left:20px;font-size:13.5px;color:#475467;line-height:1.75">
+				${back.items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}
+				${back.uploads.map((u) => `<li>Attach: <strong>${escapeHtml(u)}</strong></li>`).join('')}
+			</ul>`
+		: '';
 
 	const html = shell({
 		brand: opts.brand,
-		heading: opts.reminder ? `Reminder: ${deptLabel} clearance pending` : `${deptLabel} clearance requested`,
+		heading: back
+			? `More needed: ${deptLabel} clearance`
+			: opts.reminder
+				? `Reminder: ${deptLabel} clearance pending`
+				: `${deptLabel} clearance requested`,
 		intro,
-		bodyHtml: table,
-		cta: { label: 'Review & sign clearance', url: opts.url },
-		note: opts.note ?? {
+		bodyHtml: backList + table,
+		cta: { label: back ? 'Update & sign again' : 'Review & sign clearance', url: opts.url },
+		note: back?.note
+			? { title: 'Note from HR', text: back.note }
+			: opts.note ?? {
 			title: 'What you are signing',
 			text:
 				'Your sign-off is recorded against the No Dues Certificate for this employee. A copy of the certificate ' +
@@ -297,6 +365,10 @@ export async function sendClearanceMail(opts: {
 	const text = textBody(
 		[
 			...intro,
+			...(back
+				? ['', 'What is needed:', ...back.items.map((i) => `- ${i}`), ...back.uploads.map((u) => `- Attach: ${u}`)]
+				: []),
+			...(back?.note ? ['', `Note from HR: ${back.note}`] : []),
 			'',
 			...rows.map(([k, v]) => `${k}: ${v}`),
 			'',
@@ -307,16 +379,23 @@ export async function sendClearanceMail(opts: {
 		opts.brand.legalName
 	);
 
-	await sendBrandedMail(
-		opts.to,
-		`${opts.reminder ? 'Reminder: ' : ''}Exit clearance needed — ${opts.employeeName} (${opts.employeeId})`,
-		text,
-		opts.brand,
-		opts.attachments,
-		'exit',
-		undefined,
-		{ tagPurpose: 'exit_clearance', html }
-	);
+	return {
+		to: [opts.to],
+		cc: [],
+		subject: back
+			? `More needed for the exit clearance — ${opts.employeeName} (${opts.employeeId})`
+			: `${opts.reminder ? 'Reminder: ' : ''}Exit clearance needed — ${opts.employeeName} (${opts.employeeId})`,
+		html,
+		text
+	} satisfies MailDraft;
+}
+
+export async function sendClearanceMail(opts: Parameters<typeof buildClearanceMail>[0]) {
+	const d = await buildClearanceMail(opts);
+	await sendBrandedMail(d.to[0], d.subject, d.text, opts.brand, opts.attachments, 'exit', undefined, {
+		tagPurpose: 'exit_clearance',
+		html: d.html
+	});
 }
 
 // ── 3. IT access-revocation mail (SOP step 5) ────────────────────────────────
@@ -407,7 +486,7 @@ export async function sendItExitMail(opts: Parameters<typeof buildItExitMail>[0]
 
 // ── 4. Final handover mail ───────────────────────────────────────────────────
 
-export async function sendHandoverMail(opts: {
+export async function buildHandoverMail(opts: {
 	to: string;
 	employeeName: string;
 	brand: BrandTheme;
@@ -480,16 +559,22 @@ export async function sendHandoverMail(opts: {
 		opts.brand.legalName
 	);
 
-	await sendBrandedMail(
-		opts.to,
-		`Your exit documents & final settlement — ${opts.brand.name}`,
-		text,
-		opts.brand,
-		opts.attachments,
-		'exit',
-		undefined,
-		{ cc: s.hrCc.length ? s.hrCc : undefined, tagPurpose: 'exit_handover', html }
-	);
+	return {
+		to: [opts.to],
+		cc: s.hrCc,
+		subject: `Your exit documents & final settlement — ${opts.brand.name}`,
+		html,
+		text
+	} satisfies MailDraft;
+}
+
+export async function sendHandoverMail(opts: Parameters<typeof buildHandoverMail>[0]) {
+	const d = await buildHandoverMail(opts);
+	await sendBrandedMail(d.to[0], d.subject, d.text, opts.brand, opts.attachments, 'exit', undefined, {
+		cc: d.cc.length ? d.cc : undefined,
+		tagPurpose: 'exit_handover',
+		html: d.html
+	});
 }
 
 // ── 5. Internal alerts ───────────────────────────────────────────────────────

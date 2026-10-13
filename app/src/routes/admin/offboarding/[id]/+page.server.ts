@@ -6,7 +6,9 @@
 //   requestChanges    step 5   send them back to specific fields
 //   acceptSubmission  step 7   accept the submission, which starts the exit chain
 //   startChain        step 7   start the chain on an exit accepted before it existed
-//   resendStep        step 7   re-send one step's mail (reminder or corrected address)
+//   resendStep        step 7   send one step's mail after HR reviewed it (or a reminder)
+//   sendBackStep      step 7   reopen a signed clearance: ask for what is missing
+//   requestUploads    any      ask the employee for a document again, at any stage
 //   saveRouting       —        who each step mails, for this exit (and the default)
 //   sendItBlockMail   step 5   the "block system access" mail to IT
 //   saveFnf           step 8   HR's F&F, leave and loans — and handing them to payroll
@@ -15,7 +17,8 @@
 //   sendHandover      step 9   release now: the letters and the handover link
 //
 // The order the mails go out in lives in offboarding/flow.ts, not here: each
-// step is sent when the one before it finishes.
+// step's mail is readied when the one before it finishes, and goes once HR has
+// reviewed it (mail-preview/[step]) and pressed Send.
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Admin, Exit, ExitClearance, ExitDocument, ExitToken } from '$lib/server/db/schema';
@@ -38,7 +41,10 @@ import {
 	LETTER_SOURCES,
 	ROUTING_KEYS,
 	ROUTING_LABELS,
+	UPLOAD_REQUEST_PREFIX,
 	lettersForTrack,
+	requestedFieldLabel,
+	sendBackItems,
 	type ClearanceDept,
 	type FlowStepKey
 } from '$lib/shared/offboarding';
@@ -66,6 +72,7 @@ import {
 	releaseLetters,
 	saveRoutingDefaults,
 	scheduleRelease,
+	sendBackStep,
 	startFlow
 } from '$lib/server/offboarding/flow';
 import {
@@ -215,7 +222,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			itAccessRevokedMailSentAt: exit.itAccessRevokedMailSentAt?.toISOString() ?? null,
 			handoverMailSentAt: exit.handoverMailSentAt?.toISOString() ?? null,
 			requestedFields: (exit.requestedFields ?? []).map(
-				(r: { field: string; note?: string | null }) => ({ field: r.field, note: r.note ?? null })
+				(r: { field: string; note?: string | null }) => ({
+					field: r.field,
+					label: requestedFieldLabel(r.field),
+					note: r.note ?? null
+				})
 			),
 			// The four form payloads, as plain objects for the review panel. Maps
 			// come back differently from .lean() than from a hydrated doc, so every
@@ -284,7 +295,39 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		 *  out of band when someone says the mail never arrived. */
 		steps: flowSteps(e, clearances as unknown as Record<string, unknown>[]).map((s) => {
 			const i = clearances.findIndex((c) => String(c._id) === s.clearanceId);
-			return { ...s, link: i >= 0 ? exitTokenUrl(clearanceTokens[i]) : null };
+			const c = i >= 0 ? (clearances[i] as unknown as Record<string, any>) : null;
+			const def = FLOW_STEPS.find((d) => d.key === s.key);
+			return {
+				...s,
+				link: i >= 0 ? exitTokenUrl(clearanceTokens[i]) : null,
+				/** What HR can tick when sending this approver back. */
+				sendBackItems: def?.dept ? sendBackItems(def.dept) : [],
+				/** The open send-back, if any — what the approver is still to do. */
+				sendBack: c?.sendBack?.at
+					? { note: c.sendBack.note ?? null, items: c.sendBack.items ?? [], uploads: c.sendBack.uploads ?? [] }
+					: null,
+				sentBackCount: (c?.sendBackHistory?.length ?? 0) + (c?.sendBack?.at ? 1 : 0),
+				/** Documents this approver attached when asked. */
+				files: c
+					? files
+							.filter((f) => f.source === 'approver' && String(f.clearanceId) === String(c._id))
+							.map((f) => ({ id: String(f._id), label: f.label ?? f.docType }))
+					: []
+			};
+		}),
+		/** The documents the employee uploads, and where each stands — what the
+		 *  "Ask for documents" dialog ticks from. */
+		uploadDocs: EXIT_UPLOAD_DOCS.map((d) => {
+			const file = files.find((f) => f.source === 'employee' && f.docType === d.docType);
+			return {
+				docType: d.docType,
+				label: d.label.replace(/^Your s/, 'S'),
+				mandatory: d.mandatory,
+				fileId: file ? String(file._id) : null,
+				requested: (exit.requestedFields ?? []).some(
+					(r: { field: string }) => r.field === `${UPLOAD_REQUEST_PREFIX}${d.docType}`
+				)
+			};
 		}),
 		flow: {
 			startedAt: e.flow?.startedAt ? new Date(e.flow.startedAt).toISOString() : null,
@@ -672,8 +715,9 @@ export const actions: Actions = {
 			action: 'exit_submission_accepted',
 			ip: getClientAddress()
 		});
-		// Accepting is what starts the chain: the reporting manager is mailed
-		// now, and each step after them as the one before it signs.
+		// Accepting is what starts the chain: the reporting manager's mail is
+		// readied for HR to review and send, and each step after it likewise as
+		// the one before it signs.
 		await startFlow(params.id);
 		return { accepted: true };
 	},
@@ -698,8 +742,9 @@ export const actions: Actions = {
 		return { chainStarted: true };
 	},
 
-	/** Re-sends one clearance step's mail: after its address was corrected in
-	 *  the mail settings, or as a reminder to someone who has not signed. */
+	/** Sends one clearance step's mail once HR has reviewed it — the first
+	 *  send, or a reminder to someone who has not signed. Only the step the
+	 *  chain is on can be sent, so nobody is asked out of order. */
 	resendStep: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
@@ -708,7 +753,20 @@ export const actions: Actions = {
 		const key = String((await request.formData()).get('step') ?? '') as FlowStepKey;
 		const def = FLOW_STEPS.find((s) => s.key === key && s.dept);
 		if (!def) return no(400, 'That step does not send a mail.');
-		const current = await ExitClearance.findOne({ exitId: params.id, department: def.dept }, 'status').lean();
+		const clearances = await ExitClearance.find({ exitId: params.id }).lean();
+		const state = flowSteps(row.exit as unknown as Record<string, unknown>, clearances as unknown as Record<string, unknown>[]).find(
+			(s) => s.key === key
+		);
+		if (state?.status !== 'active')
+			return no(
+				409,
+				state?.status === 'done'
+					? `The ${def.label} has already signed.`
+					: state?.status === 'blocked'
+						? `Add the ${def.label} email in Mail settings first.`
+						: `It is not the ${def.label}'s turn yet — the steps before it are still open.`
+			);
+		const current = clearances.find((c) => c.department === def.dept);
 		const res = await mailStep(params.id, key, { reminder: current?.status === 'sent' });
 		if ('error' in res) return no(400, res.error);
 		await advanceFlow(params.id);
@@ -720,6 +778,95 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { stepResent: def.label };
+	},
+
+	/** Sends a signed clearance back to its approver: what HR ticked as
+	 *  missing, any documents to attach, and a note — after HR reviewed the
+	 *  mail. The approver's answers stay filled in; they fix and sign again. */
+	sendBackStep: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		const form = await request.formData();
+		const key = String(form.get('step') ?? '') as FlowStepKey;
+		const def = FLOW_STEPS.find((s) => s.key === key && s.dept);
+		if (!def) return no(400, 'That step has no approver to send back to.');
+		const clean = (v: FormDataEntryValue) => String(v).trim().slice(0, 300);
+		const allowed = new Set(sendBackItems(def.dept!));
+		const back = {
+			note: clean(form.get('note') ?? '') || null,
+			items: form.getAll('item').map(clean).filter((i) => allowed.has(i)),
+			uploads: form.getAll('upload').map(clean).filter(Boolean).slice(0, 5)
+		};
+		const res = await sendBackStep(params.id, key, back, locals.admin!.email);
+		if ('error' in res) return no(400, res.error);
+		await audit({
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_clearance_sent_back',
+			field: key,
+			newValue: [...back.items, ...back.uploads.map((u) => `Attach: ${u}`), back.note ?? ''].filter(Boolean).join('; '),
+			ip: getClientAddress()
+		});
+		return { sentBack: def.label };
+	},
+
+	/** Asks the employee for one or more of their documents again — a new
+	 *  upload, or a re-upload of one HR cannot use. Works at any stage until the
+	 *  exit closes: it reopens only those uploads on their page, never their
+	 *  forms, so signatures already collected stay valid. */
+	requestUploads: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		const { exit, company } = row;
+		if (exit.status === 'completed') return no(409, 'This exit is closed. Reopen it before asking for documents.');
+		if (exit.status === 'initiated') return no(409, 'Send the employee their forms link first.');
+
+		const form = await request.formData();
+		const known = new Set<string>(EXIT_UPLOAD_DOCS.map((d) => d.docType));
+		const docs = [...new Set(form.getAll('doc').map(String))].filter((d) => known.has(d));
+		if (!docs.length) return no(400, 'Tick at least one document.');
+		const note = String(form.get('note') ?? '').trim().slice(0, 300) || null;
+		const requested = docs.map((d) => ({ field: `${UPLOAD_REQUEST_PREFIX}${d}`, note }));
+
+		const token = await createExitToken(params.id, 'forms');
+		try {
+			await sendExitFormsMail({
+				exitId: params.id,
+				to: exit.personalEmail,
+				employeeName: exit.fullName,
+				lwd: exit.lwd ?? null,
+				brand: brandBySlug(company?.brandSlug ?? undefined),
+				url: `${baseUrl()}/x/${token}`,
+				changesRequested: requested
+			});
+		} catch (err) {
+			console.error('[exit] document request send failed:', err);
+			return no(502, 'The mail provider rejected the send. Try again.');
+		}
+
+		// The file HR could not use is flagged rather than deleted: it stays
+		// viewable until the replacement arrives, which then supersedes it.
+		await ExitDocument.updateMany(
+			{ exitId: params.id, source: 'employee', docType: { $in: docs } },
+			{ $set: { reviewStatus: 'reupload_requested', reviewNote: note } }
+		);
+		await Exit.findByIdAndUpdate(params.id, {
+			$pull: { requestedFields: { field: { $in: requested.map((r) => r.field) } } }
+		});
+		await Exit.findByIdAndUpdate(params.id, { $push: { requestedFields: { $each: requested } } });
+		await audit({
+			candidateId: exit.candidateId ? String(exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_documents_requested',
+			field: docs.join(', '),
+			newValue: note,
+			ip: getClientAddress()
+		});
+		return { docsRequested: docs.length };
 	},
 
 	/** The mail settings at the bottom of the page: who each step of this exit
@@ -825,8 +972,9 @@ export const actions: Actions = {
 	},
 
 	/** HR's step in the chain: the F&F, leave and loan figures, plus the PF and
-	 *  tax follow-ups. "Save & send to payroll" also hands the step on, which
-	 *  mails payroll the prefilled settlement with every document attached.
+	 *  tax follow-ups. "Save & hand to payroll" also closes HR's step, which
+	 *  readies payroll's mail — the prefilled settlement with every document
+	 *  attached — for HR to review and send.
 	 *  Once payroll has signed, their figures are final and only the PF/tax
 	 *  block stays HR's to edit. */
 	saveFnf: async ({ params, request, locals, getClientAddress }) => {
@@ -869,7 +1017,7 @@ export const actions: Actions = {
 					'fnf'
 				);
 			if (!String(form.get('netAmount') ?? '').trim())
-				return no(400, 'Fill in the net F&F payable before sending it to payroll.', 'fnf');
+				return no(400, 'Fill in the net F&F payable before handing it to payroll.', 'fnf');
 			patch['flow.hrDoneAt'] = new Date();
 			patch['flow.hrDoneBy'] = locals.admin!.email;
 		}

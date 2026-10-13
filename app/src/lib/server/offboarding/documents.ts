@@ -296,7 +296,7 @@ export async function exitPackZip(
 				const base = safeFilename(f.docType);
 				counts[base] = (counts[base] ?? 0) + 1;
 				const suffix = counts[base] > 1 ? `_${counts[base]}` : '';
-				const folder = f.source === 'hr' ? 'Handover' : 'Employee-uploads';
+				const folder = f.source === 'hr' ? 'Handover' : f.source === 'approver' ? 'Approver-attachments' : 'Employee-uploads';
 				zip.file(`${folder}/${base}${suffix}.${extFor(f.mime)}`, Buffer.from(bytes));
 			} catch (e) {
 				console.error(`[exit-pack] failed to fetch file ${f._id}:`, e);

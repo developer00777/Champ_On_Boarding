@@ -700,6 +700,37 @@ export const ROUTING_LABELS: Record<RoutingKey, string> = {
 	payroll: 'Payroll team'
 };
 
+/** What HR can tick when sending a signed clearance back: the department's
+ *  own No-Dues rows, plus what every clearance carries. Stored and mailed as
+ *  these labels. */
+export function sendBackItems(dept: ClearanceDept): string[] {
+	const rows = NDC_SECTION_BY_DEPT.get(dept)?.rows.map((r) => r.label) ?? [];
+	return [
+		...rows,
+		...(dept === 'it' || dept === 'admin' ? ['Asset return check'] : []),
+		...(dept === 'payroll' ? ['Full & final figures', 'Loan / advance recovery'] : []),
+		'Overall verdict & remarks',
+		'Signature'
+	];
+}
+
+/** An employee upload HR has asked for again is a requestedFields entry under
+ *  this prefix, e.g. 'upload.signature'. */
+export const UPLOAD_REQUEST_PREFIX = 'upload.';
+
+/** How a requestedFields entry reads to a person. */
+export function requestedFieldLabel(field: string): string {
+	if (field.startsWith(UPLOAD_REQUEST_PREFIX)) {
+		const docType = field.slice(UPLOAD_REQUEST_PREFIX.length);
+		const slot = EXIT_UPLOAD_DOCS.find((d) => d.docType === docType);
+		const name = slot?.label.replace(/^Your s/, 'S') ?? docType;
+		return `Upload: ${name}`;
+	}
+	const leaf = field.split('.').pop() ?? field;
+	const spaced = leaf.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^q\d+[a-z]?/i, '').trim() || leaf;
+	return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
 /** Drives the pronouns the letters print. Left unset, they read "they/their". */
 export const LETTER_SALUTATIONS = ['Mr.', 'Ms.', 'Mrs.'] as const;
 
