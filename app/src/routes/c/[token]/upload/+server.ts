@@ -1,38 +1,13 @@
 import { json, error } from '@sveltejs/kit';
 import { ObjectId } from 'mongodb';
 import type { RequestHandler } from './$types';
-import { Candidate, Document } from '$lib/server/db/schema';
+import { Document } from '$lib/server/db/schema';
 import { resolveCandidateToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
-import { uploadBytesToGridFS, deleteFromGridFS, gridFSFileSize } from '$lib/server/storage';
-import { runOcr, hasOcrSchema } from '$lib/server/ocr';
+import { deleteFromGridFS } from '$lib/server/storage';
+import { matchesMagicBytes } from '$lib/server/uploads';
+import { storeCandidateDocument } from '$lib/server/candidate-documents';
 import { slotByType, ACCEPTED_MIMES, MAX_FILE_BYTES } from '$lib/shared/matrix';
-
-const EXT: Record<string, string> = {
-	'image/jpeg': 'jpg',
-	'image/png': 'png',
-	'image/webp': 'webp',
-	'application/pdf': 'pdf'
-};
-
-/** Magic-byte signatures for the file types ACCEPTED_MIMES allows. The
- *  browser-supplied Content-Type on the form field is client-controlled and
- *  proves nothing — a renamed executable can declare "image/png". This checks
- *  the actual bytes so the declared MIME can't be spoofed past validation. */
-const MAGIC_BYTES: Record<string, (bytes: Uint8Array) => boolean> = {
-	'image/jpeg': (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-	'image/png': (b) =>
-		b.length >= 8 &&
-		b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 &&
-		b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a,
-	'application/pdf': (b) =>
-		b.length >= 5 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 && b[4] === 0x2d
-};
-
-function matchesMagicBytes(mime: string, bytes: Uint8Array): boolean {
-	const check = MAGIC_BYTES[mime];
-	return check ? check(bytes) : true; // no signature defined (e.g. webp) — skip, MIME check still applies
-}
 
 // Single-step upload: multipart POST → stored in GridFS → OCR runs server-side.
 export const POST: RequestHandler = async ({ params, request, getClientAddress }) => {
@@ -91,75 +66,20 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 	if (!matchesMagicBytes(mime, bytes)) {
 		error(400, 'File content does not match its declared type. Please upload a genuine JPG, PNG or PDF.');
 	}
-	const filename = `${candidate.id}/${slot.type}/${crypto.randomUUID()}.${EXT[mime]}`;
-	const gridfsId = await uploadBytesToGridFS(bytes, filename, mime);
-
-	const doc = await Document.create({
+	const stored = await storeCandidateDocument({
 		candidateId: candidate.id,
-		docType: slot.type,
-		gridfsId,
+		slot,
+		bytes,
 		mime,
-		sizeBytes: size,
-		ocrStatus: hasOcrSchema(slot.ocr) ? 'pending' : 'store_only'
-	});
-
-	// A file now exists for this slot — any standing "please upload this"
-	// request HR left on the candidate record is resolved.
-	await Candidate.findByIdAndUpdate(candidate.id, {
-		$pull: { requestedDocTypes: { docType: slot.type } }
-	});
-
-	await audit({
-		candidateId: candidate.id,
 		actor: 'candidate',
-		action: 'document_uploaded',
-		field: doc.docType,
 		ip: getClientAddress()
 	});
-
-	if (!hasOcrSchema(slot?.ocr)) {
-		return json({ docId: String(doc._id), ocrStatus: 'store_only', suggestions: {} });
-	}
-
-	try {
-		const result = await runOcr(slot.ocr, gridfsId, mime);
-		if (result.unreadable) {
-			await Document.findByIdAndUpdate(doc._id, {
-				ocrStatus: 'unreadable',
-				ocrJson: result.fields,
-				ocrTranscript: result.transcript
-			});
-			return json({
-				docId: String(doc._id),
-				ocrStatus: 'unreadable',
-				suggestions: {},
-				message:
-					'We could not read this image. Please retake it: flat surface, good light, all corners visible.'
-			});
-		}
-
-		const suggestions: Record<string, string> = { ...result.fields };
-		if (slot.ocr === 'aadhaar_back') {
-			if (suggestions.presentAddress) suggestions.permanentAddress = suggestions.presentAddress;
-			if (suggestions.presentPin) suggestions.permanentPin = suggestions.presentPin;
-		}
-
-		const existing = await Candidate.findById(candidate.id).lean();
-		const s = existing?.ocrSuggestions;
-		const prev = s instanceof Map ? Object.fromEntries(s) : ((s as Record<string, string>) ?? {});
-		const merged = { ...prev, ...suggestions };
-		await Candidate.findByIdAndUpdate(candidate.id, { ocrSuggestions: merged });
-		await Document.findByIdAndUpdate(doc._id, {
-			ocrStatus: 'parsed',
-			ocrJson: result.fields,
-			ocrTranscript: result.transcript
+	if (stored.ocrStatus === 'unreadable') {
+		return json({
+			...stored,
+			message:
+				'We could not read this image. Please retake it: flat surface, good light, all corners visible.'
 		});
-		await audit({ candidateId: candidate.id, actor: 'system', action: 'ocr_parsed', field: doc.docType });
-
-		return json({ docId: String(doc._id), ocrStatus: 'parsed', suggestions });
-	} catch (e) {
-		console.error('[ocr] failed:', e);
-		await Document.findByIdAndUpdate(doc._id, { ocrStatus: 'failed' });
-		return json({ docId: String(doc._id), ocrStatus: 'failed', suggestions: {} });
 	}
+	return json(stored);
 };

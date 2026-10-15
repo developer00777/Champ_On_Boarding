@@ -209,7 +209,7 @@
 	];
 	const SIM_ACTIONS = [
 		'candidate.approve', 'offer.draft', 'offer.preview', 'offer.send', 'offer.upload',
-		'docs.sync', 'docs.reveal', 'docs.zip', 'it.send', 'empid.assign', 'empid.notify',
+		'docs.sync', 'docs.upload', 'docs.reveal', 'docs.zip', 'it.send', 'empid.assign', 'empid.notify',
 		'exit.fnf', 'export.run', 'candidate.delete'
 	];
 

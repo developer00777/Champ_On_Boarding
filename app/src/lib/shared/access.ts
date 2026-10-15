@@ -249,6 +249,12 @@ export const MODULES: Module[] = [
 			// them for this person.
 			{ key: 'candidate.track', label: 'Candidates: change the hiring track', kind: 'write', enforced: true,
 				surface: ['/admin/candidates/[id]::changeTrack'] },
+			// Filing a candidate's papers into their own document slots for them,
+			// for someone who cannot manage the onboarding link. Lands exactly like
+			// their own upload (OCR, checklist, cross-check); Replace deletes the
+			// file it supersedes, which is why this is handed out per person.
+			{ key: 'docs.upload', label: 'Candidates: upload documents on the candidate’s behalf', kind: 'write', enforced: true,
+				surface: ['POST /admin/candidates/[id]/doc-upload'] },
 			// Offer letter powers that were super-admin-only. Each works on top of
 			// being able to open the offer letter at all; hand-editing also needs
 			// the offer form to be editable for them (an HR admin's is).
@@ -360,6 +366,8 @@ export const PRESETS: Record<string, Preset> = {
 			exit: 'act', entities: 'view', comms: 'view', data: 'view', access: 'view' },
 		over: { ...SETTINGS_BASELINE, 'candidate.approve': 'approve', 'candidate.decision': 'approve',
 			'candidate.edit': 'none', 'candidate.link': 'none', 'candidate.delete': 'none',
+			// The HR desk files papers for candidates who cannot use the link.
+			'docs.upload': 'act',
 			// Opens an uploaded letter (whoever sends it has to see it), cannot upload one.
 			'offer.manual': 'none', 'offer.upload': 'view', 'offer.approve': 'none',
 			'docs.reveal': 'none', 'docs.zip': 'none', 'empid.uan': 'none',

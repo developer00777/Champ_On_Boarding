@@ -32,6 +32,58 @@
 	let reuploadFor: string | null = $state(null);
 	let uploadRequestFor: string | null = $state(null);
 
+	// ── HR uploading on the candidate's behalf ───────────────────────────────
+	// For the candidate who cannot manage the onboarding link: HR files their
+	// papers straight into the slot. Lands exactly like a candidate upload (OCR,
+	// checklist, cross-check). Keyed 'slot:<type>' for a new file, 'doc:<id>' to
+	// replace one, so only one picker is open at a time.
+	let hrUploadKey: string | null = $state(null);
+	let hrUploadInput: HTMLInputElement | null = $state(null);
+	let hrUploading = $state(false);
+	let hrUploadError: string | null = $state(null);
+	let hrUploadDone: string | null = $state(null);
+
+	function toggleHrUpload(key: string) {
+		hrUploadKey = hrUploadKey === key ? null : key;
+		hrUploadError = null;
+	}
+
+	async function uploadForCandidate(docType: string, label: string, replaceDocId?: string) {
+		const file = hrUploadInput?.files?.[0];
+		if (!file || hrUploading) return;
+		hrUploading = true;
+		hrUploadError = null;
+		hrUploadDone = null;
+		try {
+			const body = new FormData();
+			body.set('docType', docType);
+			body.set('file', file);
+			if (replaceDocId) body.set('replaceDocId', replaceDocId);
+			const res = await fetch(`/admin/candidates/${c.id}/doc-upload`, { method: 'POST', body });
+			if (!res.ok) {
+				let msg = 'Upload failed.';
+				try {
+					msg = (await res.json()).message ?? msg;
+				} catch {}
+				hrUploadError = msg;
+				return;
+			}
+			const out: { ocrStatus: string } = await res.json();
+			hrUploadDone =
+				out.ocrStatus === 'unreadable'
+					? `${label} uploaded, but it could not be read — check it, or replace it with a clearer scan.`
+					: out.ocrStatus === 'failed'
+						? `${label} uploaded. Auto-reading failed; the file is stored.`
+						: `${label} uploaded ✓`;
+			hrUploadKey = null;
+			await invalidateAll();
+		} catch {
+			hrUploadError = 'Upload failed — check your connection and try again.';
+		} finally {
+			hrUploading = false;
+		}
+	}
+
 	/** "asked 3× · 2 days ago". A document can be chased as often as it takes,
 	 *  so the count is what tells HR whether this is a first ask or the fourth —
 	 *  and the age is what tells them whether it is fair to ask again yet. */
@@ -2139,12 +2191,20 @@
 						{:else if slot.uploadRequested}
 							<span class="pill gold">UPLOAD ASKED</span>
 						{/if}
+						{#if data.can.docUpload && !['approved', 'complete', 'revoked'].includes(c.status)}
+							<button type="button" class="btn ghost small" onclick={() => toggleHrUpload(`slot:${slot.type}`)}>
+								Upload
+							</button>
+						{/if}
 						{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status)}
 							<button type="button" class="btn ghost small" onclick={() => (uploadRequestFor = uploadRequestFor === slot.type ? null : slot.type)}>
 								{slot.uploadRequested ? 'Ask again' : 'Request upload'}
 							</button>
 						{/if}
 					</div>
+					{#if hrUploadKey === `slot:${slot.type}`}
+						{@render hrUploadForm(slot.type, slot.label)}
+					{/if}
 					{#if data.isApprover && uploadRequestFor === slot.type}
 						<form method="POST" action="?/requestUpload" use:enhance class="reupload">
 							<input type="hidden" name="docType" value={slot.type} />
@@ -2161,7 +2221,8 @@
 							<div style="flex:1;min-width:0">
 								<div class="doc-name">{slot.label}</div>
 								<div class="doc-sub">
-									{doc.mime === 'application/pdf' ? 'PDF' : 'Image'} · {(doc.sizeBytes / 1024).toFixed(0)} KB
+									{doc.mime === 'application/pdf' ? 'PDF' : 'Image'} · {prettySize(doc.sizeBytes)}
+									{#if doc.uploadedBy}· uploaded by HR ({doc.uploadedBy}){/if}
 									{#if doc.reuploadCount}· {askedLabel(doc.reuploadCount, doc.reuploadRequestedAt)}{/if}
 									{#if doc.reviewNote}· {doc.reviewNote}{/if}
 								</div>
@@ -2191,12 +2252,20 @@
 							     one re-upload sets the record to changes_requested — which then hid
 							     the button on every other document, capping HR at one request per
 							     submission. -->
+							{#if data.can.docUpload && !['approved', 'complete', 'revoked'].includes(c.status)}
+								<button type="button" class="btn ghost small" onclick={() => toggleHrUpload(`doc:${doc.id}`)}>
+									Replace
+								</button>
+							{/if}
 							{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status)}
 								<button type="button" class="btn ghost small" onclick={() => (reuploadFor = reuploadFor === doc.id ? null : doc.id)}>
-									{doc.reviewStatus === 'reupload_requested' ? 'Ask again' : 'Re-upload'}
+									{doc.reviewStatus === 'reupload_requested' ? 'Ask again' : 'Ask re-upload'}
 								</button>
 							{/if}
 						</div>
+						{#if hrUploadKey === `doc:${doc.id}`}
+							{@render hrUploadForm(slot.type, slot.label, doc.id)}
+						{/if}
 						{#if data.isApprover && reuploadFor === doc.id}
 							<form method="POST" action="?/requestReupload" use:enhance class="reupload">
 								<input type="hidden" name="docId" value={doc.id} />
@@ -2205,10 +2274,35 @@
 							</form>
 						{/if}
 					{/each}
+					{#if data.can.docUpload && !['approved', 'complete', 'revoked'].includes(c.status) && slot.docs.filter((d) => d.reviewStatus !== 'reupload_requested').length < slot.maxFiles}
+						<div class="add-file">
+							<button type="button" class="btn ghost small" onclick={() => toggleHrUpload(`slot:${slot.type}`)}>
+								+ Add another file
+							</button>
+						</div>
+						{#if hrUploadKey === `slot:${slot.type}`}
+							{@render hrUploadForm(slot.type, slot.label)}
+						{/if}
+					{/if}
 				{/if}
 			{/each}
 		</div>
+		{#if hrUploadDone}<p class="saved-chip" style="margin-top:10px">{hrUploadDone}</p>{/if}
 	</section>
+
+	{#snippet hrUploadForm(docType: string, label: string, replaceDocId?: string)}
+		<div class="reupload hr-upload">
+			<input bind:this={hrUploadInput} type="file" accept="image/jpeg,image/png,application/pdf" />
+			<button class="btn small" type="button" disabled={hrUploading} onclick={() => uploadForCandidate(docType, label, replaceDocId)}>
+				{hrUploading ? 'Uploading…' : replaceDocId ? 'Replace file' : 'Upload'}
+			</button>
+			<small class="muted">
+				{replaceDocId ? 'The current file is deleted once the new one is stored.' : 'Filed for the candidate — read and checked like their own upload.'}
+				JPG, PNG or PDF · max 150 MB
+			</small>
+			{#if hrUploadError}<p class="error" style="margin:0;flex-basis:100%">{hrUploadError}</p>{/if}
+		</div>
+	{/snippet}
 
 	<!-- details -->
 	<div style="display:flex;flex-direction:column;gap:18px">
@@ -4072,6 +4166,17 @@
 		display: flex;
 		gap: 8px;
 		padding: 8px 0 12px 48px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.hr-upload {
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.hr-upload small {
+		font-size: 10.5px;
+	}
+	.add-file {
+		padding: 6px 0 8px 48px;
 		border-bottom: 1px solid var(--ae-line-soft);
 	}
 	.group-title {

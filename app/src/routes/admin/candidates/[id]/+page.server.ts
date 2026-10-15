@@ -396,7 +396,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			docs: s.docs.map((d) => ({
 				id: d.id,
 				mime: d.mime,
-				sizeBytes: 0,
+				sizeBytes: d.sizeBytes,
+				uploadedBy: d.uploadedBy,
 				ocrStatus: d.ocrStatus,
 				reviewStatus: d.reviewStatus,
 				reviewNote: d.reviewNote,
@@ -503,8 +504,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		 *  the same checks the actions and endpoints make, read once here so the
 		 *  page shows a button exactly when pressing it would work. */
 		can: await (async () => {
-			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false, entity: false, track: false };
-			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent', 'candidate.entity', 'candidate.track'] as const);
+			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false, entity: false, track: false, docUpload: false };
+			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent', 'candidate.entity', 'candidate.track', 'docs.upload'] as const);
 			const at = (l: Level, min: Level) => ['none', 'view', 'act', 'approve'].indexOf(l) >= ['none', 'view', 'act', 'approve'].indexOf(min);
 			return {
 				edit: at(lv['candidate.edit'], 'act'),
@@ -515,7 +516,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				manual: at(lv['offer.manual'], 'act'),
 				markSent: at(lv['offer.markSent'], 'act'),
 				entity: at(lv['candidate.entity'], 'act'),
-				track: at(lv['candidate.track'], 'act')
+				track: at(lv['candidate.track'], 'act'),
+				docUpload: at(lv['docs.upload'], 'act')
 			};
 		})(),
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'

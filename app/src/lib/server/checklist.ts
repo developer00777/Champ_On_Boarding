@@ -15,6 +15,9 @@ export interface SlotStatus {
 		ocrStatus: string;
 		reviewNote: string | null;
 		mime: string;
+		sizeBytes: number;
+		/** Admin email when HR uploaded it on the candidate's behalf. */
+		uploadedBy: string | null;
 		/** How many times a replacement has been asked for, and when last —
 		 *  so the UI can say "asked 2×" instead of just "asked". */
 		reuploadCount: number;
@@ -40,7 +43,7 @@ export async function checklistFor(
 	const [docs, candidate] = await Promise.all([
 		Document.find(
 			{ candidateId },
-			'docType reviewStatus ocrStatus reviewNote mime reuploadCount reuploadRequestedAt'
+			'docType reviewStatus ocrStatus reviewNote mime sizeBytes uploadedBy reuploadCount reuploadRequestedAt'
 		).lean(),
 		Candidate.findById(candidateId, 'requestedDocTypes').lean()
 	]);
@@ -81,6 +84,8 @@ export async function checklistFor(
 				ocrStatus: d.ocrStatus,
 				reviewNote: d.reviewNote ?? null,
 				mime: d.mime,
+				sizeBytes: d.sizeBytes ?? 0,
+				uploadedBy: d.uploadedBy ?? null,
 				reuploadCount: d.reuploadCount ?? 0,
 				reuploadRequestedAt: d.reuploadRequestedAt
 					? new Date(d.reuploadRequestedAt).toISOString()

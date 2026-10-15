@@ -286,7 +286,11 @@ const documentSchema = new Schema(
 		// chased this, or how hard. Shown on the candidate page so HR is
 		// re-asking deliberately rather than blindly.
 		reuploadCount: { type: Number, default: 0 },
-		reuploadRequestedAt: { type: Date, default: null }
+		reuploadRequestedAt: { type: Date, default: null },
+		// The admin's email when HR uploaded this on the candidate's behalf (for
+		// someone who could not manage the onboarding link); null when the
+		// candidate uploaded it themselves.
+		uploadedBy: { type: String, default: null }
 	},
 	{ timestamps: true }
 );
