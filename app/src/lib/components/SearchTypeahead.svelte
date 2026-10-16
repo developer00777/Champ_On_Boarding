@@ -237,7 +237,7 @@
 
 	@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 		.st-list {
-			background: #1a1e2b;
+			background: var(--ae-elevated);
 		}
 	}
 	:global(.aegis[data-theme='light']) .st-list {

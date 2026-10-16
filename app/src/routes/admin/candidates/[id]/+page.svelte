@@ -748,28 +748,28 @@
 	});
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
-		created: { label: 'LINK SENT', cls: '' },
-		opened: { label: 'OPENED', cls: 'purple' },
-		in_progress: { label: 'IN PROGRESS', cls: 'purple' },
-		submitted: { label: 'AWAITING REVIEW', cls: 'gold' },
-		changes_requested: { label: 'CHANGES REQUESTED', cls: 'red' },
-		approved: { label: 'APPROVED', cls: 'teal' },
-		complete: { label: 'COMPLETE', cls: 'teal' },
-		revoked: { label: 'REVOKED', cls: 'red' }
+		created: { label: 'Link sent', cls: '' },
+		opened: { label: 'Opened', cls: 'purple' },
+		in_progress: { label: 'In progress', cls: 'purple' },
+		submitted: { label: 'Awaiting review', cls: 'gold' },
+		changes_requested: { label: 'Changes requested', cls: 'red' },
+		approved: { label: 'Approved', cls: 'teal' },
+		complete: { label: 'Complete', cls: 'teal' },
+		revoked: { label: 'Revoked', cls: 'red' }
 	};
 
 	const stdPill: Record<string, { label: string; cls: string }> = {
-		pass: { label: 'STANDARD ✓', cls: 'teal' },
-		warn: { label: 'STANDARD ⚠', cls: 'gold' },
-		fail: { label: 'NOT TO STANDARD', cls: 'red' }
+		pass: { label: 'Standard ✓', cls: 'teal' },
+		warn: { label: 'Standard ⚠', cls: 'gold' },
+		fail: { label: 'Not to standard', cls: 'red' }
 	};
 
 	const docPill: Record<string, { label: string; cls: string }> = {
-		parsed: { label: 'AUTO-READ', cls: 'teal' },
-		store_only: { label: 'STORED', cls: '' },
-		pending: { label: 'PROCESSING', cls: '' },
-		unreadable: { label: 'UNREADABLE', cls: 'red' },
-		failed: { label: 'OCR FAILED', cls: 'gold' }
+		parsed: { label: 'Auto-read', cls: 'teal' },
+		store_only: { label: 'Stored', cls: '' },
+		pending: { label: 'Processing', cls: '' },
+		unreadable: { label: 'Unreadable', cls: 'red' },
+		failed: { label: 'OCR failed', cls: 'gold' }
 	};
 
 	const verifStatusPill: Record<string, string> = {
@@ -1574,9 +1574,9 @@
 			</h1>
 			<span class="pill {statusMeta[c.status]?.cls}">{statusMeta[c.status]?.label ?? c.status}</span>
 			{#if c.hiringDecision === 'accepted'}
-				<span class="pill teal">ACCEPTED</span>
+				<span class="pill teal">Accepted</span>
 			{:else if c.hiringDecision === 'rejected'}
-				<span class="pill red">REJECTED</span>
+				<span class="pill red">Rejected</span>
 			{/if}
 			<!-- Who took the decision and when. A decision is one click that the
 			     whole team then works from, so it should never read as though the
@@ -2187,9 +2187,9 @@
 							</div>
 						</div>
 						{#if slot.mandatory}
-							<span class="pill red">MISSING</span>
+							<span class="pill red">Missing</span>
 						{:else if slot.uploadRequested}
-							<span class="pill gold">UPLOAD ASKED</span>
+							<span class="pill gold">Upload asked</span>
 						{/if}
 						{#if data.can.docUpload && !['approved', 'complete', 'revoked'].includes(c.status)}
 							<button type="button" class="btn ghost small" onclick={() => toggleHrUpload(`slot:${slot.type}`)}>
@@ -2242,7 +2242,7 @@
 								{/if}
 							</div>
 							{#if doc.reviewStatus === 'reupload_requested'}
-								<span class="pill red">RE-UPLOAD ASKED</span>
+								<span class="pill red">Re-upload asked</span>
 							{:else}
 								<span class="pill {docPill[doc.ocrStatus]?.cls}">{docPill[doc.ocrStatus]?.label ?? doc.ocrStatus}</span>
 							{/if}
@@ -2486,7 +2486,7 @@
 				<div style="flex:1"></div>
 				{#if uploaded}
 					<span class="pill purple" title="A directly-uploaded letter replaces the generated one">
-						UPLOADED
+						Uploaded
 					</span>
 				{/if}
 				{#if manualEditCount}
@@ -2497,7 +2497,7 @@
 				{#if ol.status === 'sent'}
 					<span class="pill teal">SENT{ol.sentAt ? ' · ' + new Date(ol.sentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span>
 				{:else}
-					<span class="pill">DRAFT</span>
+					<span class="pill">Draft</span>
 				{/if}
 			</div>
 			{#if uploaded}
@@ -3276,8 +3276,8 @@
 		width: 60px;
 		height: 60px;
 		border-radius: 14px;
-		background: linear-gradient(135deg, #ff7d55, #d85a35);
-		box-shadow: 0 0 20px rgba(255, 125, 85, 0.3);
+		background: linear-gradient(135deg, var(--ae-ember), var(--ae-violet));
+		box-shadow: 0 0 20px rgba(var(--ae-ember-rgb), 0.3);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -3292,8 +3292,8 @@
 		color: var(--ae-crimson) !important;
 	}
 	.flagbox {
-		background: rgba(242,177,92,.08);
-		border: 1px solid rgba(242,177,92,.3);
+		background: rgba(var(--ae-amber-rgb), .08);
+		border: 1px solid rgba(var(--ae-amber-rgb), .3);
 		border-radius: 16px;
 		padding: 14px 18px;
 		margin-bottom: 20px;
@@ -3303,7 +3303,7 @@
 	.cols {
 		display: grid;
 		grid-template-columns: 220px 1.1fr 0.9fr;
-		gap: 22px;
+		gap: 18px;
 		align-items: start;
 	}
 	.status-sidebar {
@@ -3385,8 +3385,8 @@
 		font-size: 14px;
 		font-weight: 800;
 		color: var(--ae-verdant);
-		background: rgba(62,207,154,.08);
-		border: 1.5px solid rgba(62,207,154,.3);
+		background: rgba(var(--ae-verdant-rgb), .08);
+		border: 1.5px solid rgba(var(--ae-verdant-rgb), .3);
 		border-radius: 9px;
 		padding: 8px 11px;
 		margin-bottom: 10px;
@@ -3488,8 +3488,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10.5px;
 		font-weight: 600;
-		letter-spacing: 0.09em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		margin-bottom: 4px;
 	}
@@ -3533,8 +3533,8 @@
 		width: 52px;
 		font-family: var(--ae-font-mono);
 		font-size: 10.5px;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		padding-top: 2px;
 	}
@@ -3549,8 +3549,8 @@
 		font-size: 12px;
 		line-height: 1.55;
 		color: var(--ae-text);
-		background: rgba(242, 177, 92, 0.12);
-		border: 1px solid rgba(242, 177, 92, 0.35);
+		background: rgba(var(--ae-amber-rgb), 0.12);
+		border: 1px solid rgba(var(--ae-amber-rgb), 0.35);
 		border-radius: 10px;
 		padding: 10px 12px;
 		margin-bottom: 12px;
@@ -3577,8 +3577,8 @@
 		gap: 8px;
 		margin: 0 0 14px;
 		padding: 9px 11px;
-		border: 1px solid rgba(123, 167, 240, 0.3);
-		background: rgba(123, 167, 240, 0.1);
+		border: 1px solid rgba(var(--ae-azure-rgb), 0.3);
+		background: rgba(var(--ae-azure-rgb), 0.1);
 		border-radius: 9px;
 		font-size: 11.5px;
 		line-height: 1.5;
@@ -3807,8 +3807,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		background: var(--ae-modal-base, rgba(13, 16, 26, 0.94));
 		border-bottom: 1px solid var(--ae-line);
@@ -3835,15 +3835,15 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.07em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 	}
 	.me-badge {
 		font-size: 9.5px;
 		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		padding: 1px 6px;
 		border-radius: 999px;
 		border: 1px solid var(--ae-amber);
@@ -4078,16 +4078,16 @@
 		display: block;
 		font-size: 10.5px;
 		font-weight: 700;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		margin-bottom: 4px;
 	}
 	.move-preview {
 		margin-top: 10px;
 		padding: 10px;
-		border: 1px solid rgba(242,177,92,.3);
-		background: rgba(242,177,92,.08);
+		border: 1px solid rgba(var(--ae-amber-rgb), .3);
+		background: rgba(var(--ae-amber-rgb), .08);
 		border-radius: 10px;
 	}
 	.move-title {
@@ -4109,8 +4109,8 @@
 	.move-group {
 		font-size: 10px;
 		font-weight: 800;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		margin: 8px 0 4px;
 	}
@@ -4182,8 +4182,8 @@
 	.group-title {
 		font-weight: 800;
 		font-size: 11px;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-faint);
 		margin: 14px 0 4px;
 	}
@@ -4289,8 +4289,8 @@
 		gap: 7px;
 		margin: 10px 0 0;
 		padding: 8px 11px;
-		border: 1px solid rgba(62, 207, 154, 0.32);
-		background: rgba(62, 207, 154, 0.08);
+		border: 1px solid rgba(var(--ae-verdant-rgb), 0.32);
+		background: rgba(var(--ae-verdant-rgb), 0.08);
 		border-radius: 9px;
 		font-size: 11.5px;
 		line-height: 1.5;
@@ -4298,7 +4298,7 @@
 	}
 	/* Addresses are one unbreakable word each, and the IT notes sit in the
 	   narrow side column — without this they run out of the card. */
-	.annexure-gross { background: rgba(255, 125, 85, 0.07); border-radius: 8px; }
+	.annexure-gross { background: rgba(var(--ae-ember-rgb), 0.07); border-radius: 8px; }
 	.annexure-gross em { font-style: normal; color: var(--ae-muted); font-weight: 400; }
 	.annexure-gross-note,
 	.annexure-gross-left,
@@ -4370,7 +4370,7 @@
 	}
 	.sig-upload-btn:hover {
 		border-color: var(--ae-ember-glow);
-		background: rgba(255,125,85,.08);
+		background: rgba(var(--ae-ember-rgb), .08);
 	}
 	.sig-file-hidden {
 		display: none;
@@ -4492,7 +4492,7 @@
 	.annexure-head {
 		font-weight: 700;
 		background: rgba(255, 255, 255, 0.04);
-		text-transform: uppercase;
+		text-transform: none;
 		font-size: 10.5px;
 		letter-spacing: 0.03em;
 	}
@@ -4550,7 +4550,7 @@
 	}
 	.annexure-total {
 		font-weight: 800;
-		background: rgba(255, 125, 85, 0.1);
+		background: rgba(var(--ae-ember-rgb), 0.1);
 	}
 	.uan-form {
 		display: flex;
@@ -4574,15 +4574,15 @@
 	}
 	.linkbox {
 		margin: 0 0 16px;
-		background: rgba(62, 207, 154, 0.06);
-		border: 1px solid rgba(62, 207, 154, 0.2);
+		background: rgba(var(--ae-verdant-rgb), 0.06);
+		border: 1px solid rgba(var(--ae-verdant-rgb), 0.2);
 		border-radius: 10px;
 		padding: 15px 16px;
 	}
 	.linkcode {
 		font-family: var(--ae-font-mono);
 		font-size: 12.5px;
-		background: #0b0d12;
+		background: var(--ae-sub-bg);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 7px;
 		padding: 7px 11px;
@@ -4619,8 +4619,8 @@
 	.src-badge {
 		font-size: 10px;
 		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		background: var(--ae-line-soft);
 		padding: 2px 7px;
@@ -4702,14 +4702,34 @@
 	.phys-status.got {
 		color: var(--ae-verdant);
 	}
-	@media (max-width: 1100px) {
+	/* On laptop widths three columns squeeze the documents list until each
+	   name wraps over several lines. Two columns instead: the journey on the
+	   left, documents across the rest, and the side cards under them two-up. */
+	@media (max-width: 1500px) {
 		.cols {
-			grid-template-columns: 200px 1fr 0.9fr;
+			grid-template-columns: 200px minmax(0, 1fr);
+			gap: 16px;
+		}
+		/* Two flowing columns rather than a grid: the side cards differ a lot
+		   in height, and grid rows would leave a gap under every shorter one. */
+		.cols > :nth-child(3) {
+			grid-column: 2;
+			display: block !important;
+			columns: 2 300px;
+			column-gap: 16px;
+		}
+		.cols > :nth-child(3) > :global(*) {
+			break-inside: avoid;
+			margin-bottom: 16px;
 		}
 	}
 	@media (max-width: 800px) {
 		.cols {
 			grid-template-columns: 1fr;
+		}
+		.cols > :nth-child(3) {
+			grid-column: auto;
+			columns: 1;
 		}
 		.status-sidebar {
 			position: static;
@@ -4725,8 +4745,8 @@
 		display: flex;
 		align-items: center;
 		gap: 16px;
-		background: linear-gradient(135deg, rgba(62,207,154,.08) 0%, rgba(62,207,154,.1) 100%);
-		border: 1.5px solid rgba(62,207,154,.3);
+		background: linear-gradient(135deg, rgba(var(--ae-verdant-rgb), .08) 0%, rgba(var(--ae-verdant-rgb), .1) 100%);
+		border: 1.5px solid rgba(var(--ae-verdant-rgb), .3);
 		border-radius: 18px;
 		padding: 18px 22px;
 		margin-bottom: 20px;

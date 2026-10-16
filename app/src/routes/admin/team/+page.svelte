@@ -205,7 +205,7 @@
 			<div class="tcell">{roleLabel[a.role] ?? a.role}</div>
 			<div>
 				<span class="pill {a.status === 'active' ? 'teal' : 'red'}">
-					{a.status === 'active' ? 'ACTIVE' : 'DISABLED'}
+					{a.status === 'active' ? 'Active' : 'Disabled'}
 				</span>
 			</div>
 			<div class="tcell" style="color:var(--smoke)">
@@ -372,15 +372,15 @@
 	}
 	.linkbox {
 		margin-top: 16px;
-		background: rgba(62, 207, 154, 0.06);
-		border: 1px solid rgba(62, 207, 154, 0.2);
+		background: rgba(var(--ae-verdant-rgb), 0.06);
+		border: 1px solid rgba(var(--ae-verdant-rgb), 0.2);
 		border-radius: 10px;
 		padding: 15px 16px;
 	}
 	.linkcode {
 		font-family: var(--ae-font-mono);
 		font-size: 13px;
-		background: #0b0d12;
+		background: var(--ae-sub-bg);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 7px;
 		padding: 7px 11px;
@@ -421,8 +421,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		background: var(--ae-input-bg);
 		border-bottom: 1px solid var(--ae-line-strong);

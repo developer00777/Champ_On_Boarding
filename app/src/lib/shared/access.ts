@@ -438,8 +438,8 @@ export const PRESETS: Record<string, Preset> = {
 export const PRESET_KEYS = Object.keys(PRESETS);
 
 export const TONE_HEX: Record<Module['tone'], string> = {
-	ember: '#ff7d55', verdant: '#3ecf9a', azure: '#7ba7f0',
-	amber: '#f2b15c', crimson: '#f07575', violet: '#9278ff'
+	ember: '#7568ff', verdant: '#2fbfa8', azure: '#55a6ff',
+	amber: '#e9a23b', crimson: '#f0607a', violet: '#a78bfa'
 };
 
 /** Whose records, as distinct from what may be done to them. */

@@ -151,8 +151,8 @@
 </div>
 
 <style>
-	.rq { border: 1px solid var(--ae-azure, #7ba7f0); border-radius: 10px; padding: 10px 12px; background: rgba(123, 167, 240, 0.07); }
-	.rq.access { border-color: var(--ae-amber); background: rgba(242, 177, 92, 0.08); }
+	.rq { border: 1px solid var(--ae-azure); border-radius: 10px; padding: 10px 12px; background: rgba(var(--ae-azure-rgb), 0.07); }
+	.rq.access { border-color: var(--ae-amber); background: rgba(var(--ae-amber-rgb), 0.08); }
 	.rq.settled { border-color: var(--ae-line-strong); background: transparent; }
 	.rq-h {
 		display: flex;
@@ -160,12 +160,12 @@
 		justify-content: space-between;
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		margin-bottom: 7px;
 	}
-	.pill { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--ae-line-strong); letter-spacing: 0.06em; }
+	.pill { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--ae-line-strong); letter-spacing: 0; }
 	.pill.pending { color: var(--ae-amber); border-color: var(--ae-amber); }
 	.pill.approved, .pill.done { color: var(--ae-verdant); border-color: var(--ae-verdant); }
 	.pill.rejected, .pill.declined { color: var(--ae-crimson); border-color: var(--ae-crimson); }
@@ -206,7 +206,7 @@
 		cursor: pointer;
 	}
 	.rq-btn:disabled { opacity: 0.5; cursor: wait; }
-	.rq-btn.go { border-color: var(--ae-verdant); background: rgba(62, 207, 154, 0.14); }
+	.rq-btn.go { border-color: var(--ae-verdant); background: rgba(var(--ae-verdant-rgb), 0.14); }
 	.rq-btn.warn { border-color: var(--ae-crimson); color: var(--ae-crimson); }
 	.rq-btn.ghost { color: var(--ae-muted); }
 </style>

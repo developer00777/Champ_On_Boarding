@@ -485,8 +485,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10px;
 		font-weight: 600;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		margin-bottom: 10px;
 	}
@@ -510,8 +510,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
 		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		padding: 3px 8px;
 		border-radius: 999px;
 		border: 1px solid var(--ae-line-strong);
@@ -534,8 +534,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
 		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		border-bottom: 1px solid var(--ae-line-strong);
 	}
@@ -672,11 +672,11 @@
 	}
 	/* The state colours are the same semantics the pills use elsewhere in the
 	   admin: teal settled, ember in flight, amber needs a human, grey inert. */
-	.rem-state.live { border-color: rgba(255, 125, 85, 0.4); background: rgba(255, 125, 85, 0.08); }
-	.rem-state.live .rem-dot { background: var(--ae-ember); box-shadow: 0 0 10px rgba(255, 125, 85, 0.7); }
-	.rem-state.ok { border-color: rgba(62, 207, 154, 0.38); background: rgba(62, 207, 154, 0.08); }
+	.rem-state.live { border-color: rgba(var(--ae-ember-rgb), 0.4); background: rgba(var(--ae-ember-rgb), 0.08); }
+	.rem-state.live .rem-dot { background: var(--ae-ember); box-shadow: 0 0 10px rgba(var(--ae-ember-rgb), 0.7); }
+	.rem-state.ok { border-color: rgba(var(--ae-verdant-rgb), 0.38); background: rgba(var(--ae-verdant-rgb), 0.08); }
 	.rem-state.ok .rem-dot { background: var(--ae-verdant); }
-	.rem-state.spent { border-color: rgba(242, 177, 92, 0.4); background: rgba(242, 177, 92, 0.09); }
+	.rem-state.spent { border-color: rgba(var(--ae-amber-rgb), 0.4); background: rgba(var(--ae-amber-rgb), 0.09); }
 	.rem-state.spent .rem-dot { background: var(--ae-amber); }
 	.rem-state.off .rem-dot,
 	.rem-state.idle .rem-dot { background: var(--ae-faint); }

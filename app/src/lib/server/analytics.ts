@@ -412,6 +412,9 @@ export interface GraphNode {
 export interface GraphEdge {
 	a: string;
 	b: string;
+	/** Candidates on a company → track link; absent on track → document links,
+	 *  which are requirements rather than volumes. */
+	n?: number;
 }
 
 export async function getGraphData(filters: AnalyticsFilters) {
@@ -442,7 +445,7 @@ export async function getGraphData(filters: AnalyticsFilters) {
 			nodes.push({ id: trId, label: TRACK_LABELS[row._id.track as Track] ?? row._id.track, kind: 'track' });
 			seenTracks.add(trId);
 		}
-		edges.push({ a: coId, b: trId });
+		edges.push({ a: coId, b: trId, n: row.n });
 	}
 	for (const slot of slotSatisfaction) {
 		const slId = 'sl:' + slot.type;

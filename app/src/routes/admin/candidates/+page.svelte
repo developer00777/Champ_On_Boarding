@@ -8,14 +8,14 @@
 	let { data } = $props();
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
-		created: { label: 'LINK SENT', cls: '' },
-		opened: { label: 'OPENED', cls: 'purple' },
-		in_progress: { label: 'IN PROGRESS', cls: 'purple' },
-		submitted: { label: 'AWAITING REVIEW', cls: 'gold' },
-		changes_requested: { label: 'CHANGES REQUESTED', cls: 'red' },
-		approved: { label: 'APPROVED', cls: 'teal' },
-		complete: { label: 'COMPLETE', cls: 'teal' },
-		revoked: { label: 'REVOKED', cls: 'red' }
+		created: { label: 'Link sent', cls: '' },
+		opened: { label: 'Opened', cls: 'purple' },
+		in_progress: { label: 'In progress', cls: 'purple' },
+		submitted: { label: 'Awaiting review', cls: 'gold' },
+		changes_requested: { label: 'Changes requested', cls: 'red' },
+		approved: { label: 'Approved', cls: 'teal' },
+		complete: { label: 'Complete', cls: 'teal' },
+		revoked: { label: 'Revoked', cls: 'red' }
 	};
 
 	const STATUSES = Object.keys(statusMeta);
@@ -176,12 +176,12 @@
 						{statusMeta[c.status]?.label ?? c.status}
 					</span>
 					{#if c.hiringDecision === 'accepted'}
-						<span class="pill teal decision-pill">ACCEPTED</span>
+						<span class="pill teal decision-pill">Accepted</span>
 					{:else if c.hiringDecision === 'rejected'}
-						<span class="pill red decision-pill">REJECTED</span>
+						<span class="pill red decision-pill">Rejected</span>
 					{/if}
 					{#if c.offerLetterSent}
-						<span class="pill purple decision-pill" title="The offer letter has been emailed to this candidate">OFFER SENT</span>
+						<span class="pill purple decision-pill" title="The offer letter has been emailed to this candidate">Offer sent</span>
 					{/if}
 				</div>
 				<div class="tcell nums" style="font-family:var(--ae-font-mono);font-size:12px;color:var(--ae-muted)">{c.joiningDate ?? '—'}</div>
@@ -205,7 +205,7 @@
 	}
 	.seg {
 		display: inline-flex;
-		background: #14171f;
+		background: var(--ae-modal-base);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 9px;
 		padding: 2px;
@@ -224,7 +224,7 @@
 		color: var(--ae-text);
 	}
 	.seg-b.on {
-		background: rgba(255, 125, 85, 0.14);
+		background: rgba(var(--ae-ember-rgb), 0.14);
 		color: var(--ae-ember-glow);
 	}
 	/* Filter dropdowns are content-width, not the full toolbar row. */
@@ -256,7 +256,7 @@
 	}
 	.searchbox:focus-within {
 		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
+		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
 	}
 	.count {
 		margin-left: auto;
@@ -279,7 +279,18 @@
 	}
 	.thead,
 	.trow {
-		grid-template-columns: 1.4fr 1fr 0.8fr 1.1fr 0.9fr 0.7fr auto;
+		grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 0.7fr) 84px;
+	}
+	/* Narrow screens: the shared layout hides the text columns; the whole row is
+	   already the link, so the trailing call-to-action text goes too. */
+	@media (max-width: 900px) {
+		.thead,
+		.trow {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.trow .review-cta {
+			display: none;
+		}
 	}
 
 	/* Sits under the status pill rather than beside it: the Status column is

@@ -1,6 +1,6 @@
 // ACCESS & REPORTING STUDIO — /admin/access
 //
-// Three modes over one set of people: the org chart (not built yet), the
+// Three modes over one set of people: the org chart (drag to re-parent), the
 // permission matrix, and a simulator that shows a chosen person exactly what
 // they would see and press.
 //

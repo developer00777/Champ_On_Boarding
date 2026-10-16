@@ -1,152 +1,158 @@
 /* =========================================================
    AEGIS — Champ Suite design language, admin scope only.
+   Palette: Midnight Indigo.
    ---------------------------------------------------------
    Scoped to `.aegis`, NOT :root. The candidate portal
    (routes/c/[token]) is white-labelled across the 9 light
    brands in lib/shared/brands.ts and must keep its own
    theming — see the `.brand-scope` wrapper there. Bleeding
-   these tokens onto :root would repaint every brand ember.
+   these tokens onto :root would repaint every brand.
 
-   Surface variants: glass (default) | aegis | clay.
-   Swap by changing the class on the admin shell:
-   `.aegis` -> `.aegis.surface-aegis` / `.aegis.surface-clay`.
-   Values mirror the `surface()` method in the prototype
-   (scripts/Onboarding Application (2)/ChampOnboard.dc.html).
+   Token names are historical and kept so every admin page
+   keeps resolving them: `ember` is the primary accent (now
+   indigo), `verdant` success, `amber` warning, `crimson`
+   error, `azure` info. Each accent also has an `-rgb` channel
+   token so tints are written `rgba(var(--ae-ember-rgb), .14)`
+   instead of hardcoding the hex a second time.
 
-   Color mode: dark (default) | light, toggled via [data-theme]
-   on the `.aegis` root (see admin/+layout.svelte). Light values
-   are the prototype's own documented light+glass branch — not
-   invented here — from the same surface() method and the
-   [data-mode="light"] token block in ChampOnboard.dc.html. Only
-   the `glass` surface variant ships a light mode: `aegis`/`clay`
-   have no light branch defined anywhere in the app today, so
-   adding one would be speculative rather than sourced.
-   Semantic accents (ember/verdant/amber/crimson/azure) are
-   mode-invariant in the prototype — same hex in both modes —
-   and stay that way here.
+   Surface variants: default | aegis | clay, swapped by the
+   class on the admin shell. Color mode: dark (default) |
+   light via [data-theme] on the `.aegis` root.
    ========================================================= */
 
 .aegis {
-	/* --- palette (glass variant; softened vs. the flat-aegis README) --- */
-	--ae-ember: #ff7d55;
-	--ae-ember-glow: #ffa184;
-	--ae-ember-deep: #d85a35;
-	--ae-verdant: #3ecf9a;
-	--ae-amber: #f2b15c;
-	--ae-crimson: #f07575;
-	--ae-azure: #7ba7f0;
+	/* --- accents --- */
+	--ae-ember: #7568ff;
+	--ae-ember-glow: #a39bff;
+	--ae-ember-deep: #5a4cf0;
+	--ae-ember-rgb: 117, 104, 255;
+	--ae-violet: #a78bfa;
+	--ae-violet-rgb: 167, 139, 250;
+	--ae-verdant: #5eead4;
+	--ae-verdant-rgb: 94, 234, 212;
+	--ae-amber: #fbbf69;
+	--ae-amber-rgb: 251, 191, 105;
+	--ae-crimson: #fb7185;
+	--ae-crimson-rgb: 251, 113, 133;
+	--ae-azure: #55a6ff;
+	--ae-azure-rgb: 85, 166, 255;
+	/* Text that sits on a filled accent (buttons, badges). */
+	--ae-on-accent: #ffffff;
 
-	--ae-text: #fafaf7;
-	--ae-text-2: #cbd1de;
-	--ae-muted: #8a91a5;
-	--ae-muted-2: #a8afc0;
-	--ae-faint: #4b5160;
-	--ae-numeral: #3a3f4d;
+	/* --- text --- */
+	--ae-text: #f4f6ff;
+	--ae-text-2: #c8d0e6;
+	--ae-muted: #8e9ab6;
+	--ae-muted-2: #a1aec9;
+	--ae-faint: #4b5876;
+	--ae-numeral: #2a3757;
 
-	--ae-line: rgba(255, 255, 255, 0.07);
-	--ae-line-soft: rgba(255, 255, 255, 0.05);
-	--ae-line-strong: rgba(255, 255, 255, 0.1);
+	/* --- lines --- */
+	--ae-line: #172239;
+	--ae-line-soft: #121b31;
+	--ae-line-strong: #202e4a;
 
-	--ae-font-display: 'Space Grotesk', system-ui, sans-serif;
-	--ae-font-body: 'Inter', system-ui, sans-serif;
-	--ae-font-mono: 'JetBrains Mono', ui-monospace, monospace;
-	--ae-font-accent: 'Fraunces', Georgia, serif;
+	--ae-font-display: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--ae-font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	/* Labels, IDs and figures. Inter with tabular numerals reads as data
+	   without the terminal look; true code blocks set their own monospace. */
+	--ae-font-mono: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--ae-font-code: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+	--ae-font-accent: 'Inter', system-ui, sans-serif;
 
-	--ae-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--ae-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--ae-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--ae-dur: 180ms;
 
-	/* --- surface: glass (default) --- */
-	--ae-frost: 18px;
-	--ae-page-bg: radial-gradient(1000px 640px at 82% -8%, rgba(255, 125, 85, 0.26), transparent 60%),
-		radial-gradient(880px 660px at -12% 32%, rgba(146, 120, 255, 0.28), transparent 58%),
-		radial-gradient(760px 560px at 52% 116%, rgba(62, 207, 180, 0.18), transparent 62%),
-		linear-gradient(160deg, #171430 0%, #10131f 55%, #121a2a 100%);
-	--ae-card-bg: linear-gradient(150deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
-	--ae-card-border: rgba(255, 255, 255, 0.2);
-	--ae-card-radius: 20px;
-	--ae-card-shadow: 0 24px 55px -18px rgba(6, 4, 22, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.16);
-	--ae-card-blur: blur(var(--ae-frost)) saturate(175%);
-	--ae-input-bg: rgba(255, 255, 255, 0.07);
-	--ae-sub-bg: rgba(255, 255, 255, 0.05);
-	--ae-rail-bg: rgba(14, 17, 26, 0.55);
-	--ae-hover: rgba(255, 255, 255, 0.07);
-	/* Solid layer under a dialog's card background, so a glass card never
-	   lets the page behind it show through. */
-	--ae-modal-base: #12151f;
+	/* --- surfaces --- */
+	--ae-frost: 0px;
+	--ae-page-solid: #050a18;
+	--ae-page-bg: radial-gradient(1100px 520px at 70% -12%, rgba(117, 104, 255, 0.1), transparent 62%),
+		radial-gradient(700px 480px at 4% 108%, rgba(167, 139, 250, 0.06), transparent 60%), #050a18;
+	--ae-card-bg: linear-gradient(180deg, #0c152d 0%, #0a1227 100%);
+	--ae-card-solid: #0a1227;
+	--ae-elevated: #101a34;
+	--ae-card-border: #1a2642;
+	--ae-card-radius: 14px;
+	--ae-card-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+	--ae-card-blur: none;
+	--ae-input-bg: #0d1631;
+	--ae-sub-bg: #0e1833;
+	--ae-rail-bg: #070d20;
+	--ae-hover: rgba(117, 104, 255, 0.06);
+	--ae-modal-base: #0c1429;
+	--ae-focus: 0 0 0 3px rgba(117, 104, 255, 0.32);
+
+	/* Aliases some pages already reference; they resolve per mode. */
+	--ae-accent: var(--ae-ember-glow);
+	--ae-surface-2: var(--ae-elevated);
+
+	/* The light system's tokens (routes/+layout.svelte, on :root) still appear in
+	   a few admin pages; inside the admin they must follow the admin's mode, or
+	   they paint dark ink on navy. Scoped here, so the candidate portal keeps
+	   the originals. */
+	--ink: var(--ae-text);
+	--ink-2: var(--ae-text);
+	--fg-2: var(--ae-text-2);
+	--smoke: var(--ae-muted);
+	--border: var(--ae-line);
+	--border-2: var(--ae-line-strong);
 }
 
-/* Flat variant — the README's "aegis". Cheapest to render, highest contrast. */
+/* Flat variant — no gradients at all. */
 .aegis.surface-aegis {
-	--ae-page-bg: #0b0d12;
-	--ae-card-bg: #14171f;
-	--ae-card-border: rgba(255, 255, 255, 0.06);
-	--ae-card-radius: 12px;
+	--ae-page-bg: #050a18;
+	--ae-card-bg: #0a1227;
 	--ae-card-shadow: none;
-	--ae-card-blur: none;
-	--ae-input-bg: #1e222d;
-	--ae-sub-bg: #1a1e27;
-	--ae-rail-bg: #0e111a;
 }
 
-/* Soft-UI variant. */
+/* Soft variant — larger radii, deeper shadow. */
 .aegis.surface-clay {
-	--ae-page-bg: #0f121a;
-	--ae-card-bg: #1d2230;
-	--ae-card-border: transparent;
-	--ae-card-radius: 24px;
-	--ae-card-shadow: 10px 10px 24px rgba(0, 0, 0, 0.5), -8px -8px 20px rgba(255, 255, 255, 0.045),
-		inset 2px 2px 5px rgba(255, 255, 255, 0.05), inset -3px -3px 6px rgba(0, 0, 0, 0.35);
-	--ae-card-blur: none;
-	--ae-input-bg: #161a25;
-	--ae-sub-bg: #242a3a;
-	--ae-rail-bg: #131722;
+	--ae-card-radius: 20px;
+	--ae-card-shadow: 0 24px 48px -20px rgba(0, 0, 0, 0.75);
 }
 
-/* Light mode — glass surface. Text/line tokens from the prototype's
-   [data-co-root][data-mode="light"] block; page/card tokens from the
-   light-branch of surface() (styleKey === 'glass'). */
+/* Light mode. Accents darken so text set in them keeps its contrast on white. */
 .aegis[data-theme='light'] {
-	--ae-text: #20243a;
-	--ae-text-2: #3e445c;
-	--ae-muted: #6a7186;
-	--ae-muted-2: #565d72;
-	--ae-faint: #b7bccb;
-	--ae-numeral: #b7bccb;
+	--ae-ember: #5a4cf0;
+	--ae-ember-glow: #4f42e0;
+	--ae-ember-deep: #4335d4;
+	--ae-ember-rgb: 90, 76, 240;
+	--ae-violet: #7c5ce6;
+	--ae-violet-rgb: 124, 92, 230;
+	--ae-verdant: #0f9483;
+	--ae-verdant-rgb: 15, 148, 131;
+	--ae-amber: #b46a0c;
+	--ae-amber-rgb: 180, 106, 12;
+	--ae-crimson: #dc2c52;
+	--ae-crimson-rgb: 220, 44, 82;
+	--ae-azure: #1f6fd6;
+	--ae-azure-rgb: 31, 111, 214;
 
-	--ae-line: rgba(32, 36, 58, 0.09);
-	--ae-line-soft: rgba(32, 36, 58, 0.06);
-	--ae-line-strong: rgba(32, 36, 58, 0.14);
+	--ae-text: #0d1430;
+	--ae-text-2: #36405e;
+	--ae-muted: #646f8c;
+	--ae-muted-2: #4f5a78;
+	--ae-faint: #b5bdd1;
+	--ae-numeral: #c9cfdf;
 
-	--ae-page-bg: radial-gradient(1000px 640px at 82% -8%, rgba(255, 125, 85, 0.3), transparent 60%),
-		radial-gradient(880px 660px at -12% 32%, rgba(146, 120, 255, 0.32), transparent 58%),
-		radial-gradient(760px 560px at 52% 116%, rgba(62, 207, 180, 0.22), transparent 62%),
-		linear-gradient(160deg, #edeffa 0%, #f6f3ee 55%, #eaf0f4 100%);
-	--ae-card-bg: linear-gradient(150deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.45));
-	--ae-card-border: rgba(255, 255, 255, 0.85);
-	--ae-card-shadow: 0 24px 50px -20px rgba(70, 75, 120, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-	--ae-input-bg: rgba(255, 255, 255, 0.65);
-	--ae-sub-bg: rgba(255, 255, 255, 0.5);
-	--ae-rail-bg: rgba(255, 255, 255, 0.55);
-	--ae-hover: rgba(32, 36, 58, 0.05);
-	--ae-modal-base: #f7f7fb;
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.aegis[data-theme='light'] {
-		--ae-card-bg: #ffffff;
-		--ae-card-border: rgba(32, 36, 58, 0.12);
-		--ae-rail-bg: #f2f3f8;
-	}
-}
+	--ae-line: #e6e9f2;
+	--ae-line-soft: #eef0f6;
+	--ae-line-strong: #dce0ec;
 
-/* backdrop-filter is GPU-costly and unsupported on older engines. Without it the
-   translucent card gradient reads as near-invisible on the aurora, so fall back
-   to an opaque surface rather than a washed-out one. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-	.aegis {
-		--ae-card-bg: #1a1e2b;
-		--ae-card-border: rgba(255, 255, 255, 0.12);
-		--ae-card-blur: none;
-		--ae-rail-bg: #0e111a;
-	}
+	--ae-page-solid: #f4f5fa;
+	--ae-page-bg: radial-gradient(1100px 520px at 70% -12%, rgba(90, 76, 240, 0.07), transparent 62%), #f4f5fa;
+	--ae-card-bg: #ffffff;
+	--ae-card-solid: #ffffff;
+	--ae-elevated: #f7f8fc;
+	--ae-card-border: #e3e7f1;
+	--ae-card-shadow: 0 1px 2px rgba(16, 24, 56, 0.04), 0 12px 32px -22px rgba(16, 24, 56, 0.25);
+	--ae-input-bg: #ffffff;
+	--ae-sub-bg: #f6f7fb;
+	--ae-rail-bg: #ffffff;
+	--ae-hover: rgba(90, 76, 240, 0.05);
+	--ae-modal-base: #ffffff;
+	--ae-focus: 0 0 0 3px rgba(90, 76, 240, 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {

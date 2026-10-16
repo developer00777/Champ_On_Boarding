@@ -58,7 +58,7 @@
 	}
 	:global(input, select, textarea) {
 		width: 100%;
-		padding: 11px 13px;
+		padding: 9px 12px;
 		border: 1.5px solid var(--border-2);
 		border-radius: 10px;
 		font-family: 'Montserrat', Arial, sans-serif;
@@ -144,7 +144,7 @@
 		background: #fff;
 		border: 1px solid var(--border);
 		border-radius: 20px;
-		padding: 24px;
+		padding: 18px;
 		box-shadow: 0 4px 12px rgba(11, 7, 24, 0.05);
 	}
 	:global(.eyebrow) {

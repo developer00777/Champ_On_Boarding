@@ -162,12 +162,16 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 10px;
-		padding: 9px 12px;
+		padding: 11px 13px;
 		background: var(--ae-input-bg);
 		border: 1px solid var(--ae-line-strong);
-		border-radius: 8px;
+		border-radius: 9px;
 		color: var(--ae-text);
 		font: inherit;
+		/* Sized like the text inputs beside it, not by whatever card it sits in. */
+		font-size: 13.5px;
+		font-weight: 500;
+		line-height: 1.5;
 		text-align: left;
 		cursor: pointer;
 		transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
@@ -178,7 +182,7 @@
 	.gs-trigger:focus-visible {
 		outline: none;
 		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
+		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
 	}
 	.gs-trigger:disabled {
 		opacity: 0.5;
@@ -257,7 +261,7 @@
 	/* Opaque fallback where backdrop-filter is unsupported (matches aegis.css). */
 	@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 		.gs-list {
-			background: #1a1e2b;
+			background: var(--ae-elevated);
 		}
 	}
 

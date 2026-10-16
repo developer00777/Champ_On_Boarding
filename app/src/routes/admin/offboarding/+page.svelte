@@ -363,7 +363,7 @@
 	}
 	.seg {
 		display: inline-flex;
-		background: #14171f;
+		background: var(--ae-modal-base);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 9px;
 		padding: 2px;
@@ -382,7 +382,7 @@
 		color: var(--ae-text);
 	}
 	.seg-b.on {
-		background: rgba(255, 125, 85, 0.14);
+		background: rgba(var(--ae-ember-rgb), 0.14);
 		color: var(--ae-ember-glow);
 	}
 	.filter-select {
@@ -407,7 +407,7 @@
 	}
 	.searchbox:focus-within {
 		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
+		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
 	}
 	.sinput {
 		border: none;
@@ -463,7 +463,18 @@
 	   from the admin layout. */
 	.thead,
 	.trow {
-		grid-template-columns: 1.5fr 1fr 0.8fr 0.9fr 1.2fr 0.7fr auto;
+		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.7fr) 84px;
+	}
+	/* Narrow screens: the shared layout hides the text columns; the whole row is
+	   already the link, so the trailing call-to-action text goes too. */
+	@media (max-width: 900px) {
+		.thead,
+		.trow {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.trow .review-cta {
+			display: none;
+		}
 	}
 
 	/* Sits in the row's own grid track so the button lines up under the header,
@@ -473,8 +484,13 @@
 		align-items: center;
 		justify-content: flex-end;
 		gap: 6px;
-		padding: 0 14px 12px;
+		padding: 0 14px 10px;
 		margin-top: -8px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	/* The delete control belongs to the row above it: one separator, under both. */
+	.trow:has(+ .delcell) {
+		border-bottom: 0;
 	}
 	.del {
 		display: inline-flex;
@@ -493,24 +509,24 @@
 	}
 	.del:hover {
 		opacity: 1;
-		color: #b42318;
-		border-color: #fda29b;
-		background: #fef3f2;
+		color: var(--ae-crimson);
+		border-color: rgba(var(--ae-crimson-rgb), 0.4);
+		background: rgba(var(--ae-crimson-rgb), 0.1);
 	}
 	.del:focus-visible {
-		outline: 2px solid #b42318;
+		outline: 2px solid var(--ae-crimson);
 		outline-offset: 1px;
 		opacity: 1;
 	}
 	.del.confirm {
 		opacity: 1;
 		color: #fff;
-		background: #b42318;
-		border-color: #b42318;
+		background: #d92d4b;
+		border-color: #d92d4b;
 		font-weight: 600;
 	}
 	.del.confirm:hover {
-		background: #912018;
+		background: #b8213d;
 		color: #fff;
 	}
 	.del.confirm:disabled {

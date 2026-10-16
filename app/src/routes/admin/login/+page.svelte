@@ -47,7 +47,7 @@
 		position: relative;
 		padding: 28px 28px 26px;
 		background: linear-gradient(140deg, rgba(146, 120, 255, 0.2) 0%, rgba(22, 25, 40, 0.5) 52%),
-			radial-gradient(circle at 85% 10%, rgba(255, 125, 85, 0.22), transparent 55%);
+			radial-gradient(circle at 85% 10%, rgba(var(--ae-ember-rgb), 0.22), transparent 55%);
 		border-bottom: 1px solid var(--ae-line);
 		display: flex;
 		align-items: center;

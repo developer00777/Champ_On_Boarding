@@ -362,13 +362,13 @@
 		margin: 0 0 16px;
 	}
 	.flash.err {
-		background: rgba(240, 117, 117, 0.12);
-		border: 1px solid rgba(240, 117, 117, 0.3);
+		background: rgba(var(--ae-crimson-rgb), 0.12);
+		border: 1px solid rgba(var(--ae-crimson-rgb), 0.3);
 		color: var(--ae-crimson);
 	}
 	.flash.ok {
-		background: rgba(62, 207, 154, 0.08);
-		border: 1px solid rgba(62, 207, 154, 0.25);
+		background: rgba(var(--ae-verdant-rgb), 0.08);
+		border: 1px solid rgba(var(--ae-verdant-rgb), 0.25);
 		color: var(--ae-verdant);
 	}
 	@media (max-width: 640px) {

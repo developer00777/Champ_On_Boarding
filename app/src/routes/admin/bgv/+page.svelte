@@ -150,8 +150,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
 		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		padding: 3px 8px;
 		border-radius: 999px;
 		border: 1px solid var(--ae-line-strong);

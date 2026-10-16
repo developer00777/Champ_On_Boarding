@@ -847,7 +847,7 @@
 									</a>
 									<span class="muted tiny">{kb(f.sizeBytes)} · {stamp(f.createdAt)}</span>
 									{#if f.reviewStatus === 'reupload_requested'}
-										<span class="pill red">RE-UPLOAD ASKED</span>
+										<span class="pill red">Re-upload asked</span>
 									{/if}
 								</div>
 							{/each}
@@ -1395,7 +1395,7 @@
 					<div class="ndcrow">
 						<span class="ndclabel">{s.deptLabel}</span>
 						<span class="pill {s.signed ? (s.verdict === 'dues' ? 'gold' : 'teal') : ''}">
-							{s.signed ? (s.verdict ? VERDICT_LABEL[s.verdict] : 'SIGNED') : 'PENDING'}
+							{s.signed ? (s.verdict ? VERDICT_LABEL[s.verdict] : 'Signed') : 'Pending'}
 						</span>
 					</div>
 				{/each}
@@ -1727,8 +1727,8 @@
 	.rv-pill {
 		font-size: 10.5px;
 		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		padding: 2px 8px;
 		border-radius: 999px;
 		color: var(--ae-amber);
@@ -1766,8 +1766,8 @@
 		color: var(--ae-muted);
 		font-size: 11px;
 		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
+		text-transform: none;
+		letter-spacing: 0;
 	}
 	.rv-meta dd {
 		margin: 0;
@@ -2084,8 +2084,8 @@
 	.banner {
 		margin: 0 0 14px;
 		padding: 10px 14px;
-		background: rgba(240, 117, 117, 0.1);
-		border: 1px solid rgba(240, 117, 117, 0.3);
+		background: rgba(var(--ae-crimson-rgb), 0.1);
+		border: 1px solid rgba(var(--ae-crimson-rgb), 0.3);
 		border-radius: 8px;
 	}
 	.cols {
@@ -2195,7 +2195,7 @@
 	.node.active .dot {
 		border-color: var(--ae-amber);
 		color: var(--ae-amber);
-		box-shadow: 0 0 0 4px rgba(242, 177, 92, 0.16);
+		box-shadow: 0 0 0 4px rgba(var(--ae-amber-rgb), 0.16);
 		animation: map-pulse 2s ease-in-out infinite;
 	}
 	.node.blocked .dot {
@@ -2208,7 +2208,7 @@
 	}
 	@keyframes map-pulse {
 		50% {
-			box-shadow: 0 0 0 7px rgba(242, 177, 92, 0.06);
+			box-shadow: 0 0 0 7px rgba(var(--ae-amber-rgb), 0.06);
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
@@ -2408,7 +2408,7 @@
 		font-family: var(--ae-font-mono);
 		font-size: 11px;
 		color: var(--ae-ember);
-		border: 1px solid rgba(255, 125, 85, 0.3);
+		border: 1px solid rgba(var(--ae-ember-rgb), 0.3);
 		border-radius: 6px;
 		padding: 3px 7px;
 		flex: none;
@@ -2538,11 +2538,11 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10.5px;
 		color: var(--ae-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
+		text-transform: none;
+		letter-spacing: 0;
 	}
 	.callout {
-		background: rgba(242, 177, 92, 0.08);
+		background: rgba(var(--ae-amber-rgb), 0.08);
 		border-left: 3px solid var(--ae-amber);
 		border-radius: 0 8px 8px 0;
 		padding: 11px 14px;
@@ -2554,8 +2554,8 @@
 		margin-bottom: 4px;
 		color: var(--ae-amber);
 		font-size: 11.5px;
-		text-transform: uppercase;
-		letter-spacing: 0.07em;
+		text-transform: none;
+		letter-spacing: 0;
 	}
 	.callout ul {
 		margin: 0;
@@ -2652,8 +2652,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
 		color: var(--ae-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.07em;
+		text-transform: none;
+		letter-spacing: 0;
 		margin-left: 6px;
 	}
 	.arow {
@@ -2720,7 +2720,7 @@
 		font-size: 11.5px;
 		font-weight: 500;
 		color: var(--ae-ember-glow);
-		border: 1px solid rgba(255, 125, 85, 0.3);
+		border: 1px solid rgba(var(--ae-ember-rgb), 0.3);
 		border-radius: 7px;
 		padding: 5px 11px;
 		cursor: pointer;
@@ -2782,8 +2782,8 @@
 	.pk-tag {
 		font-family: var(--ae-font-mono);
 		font-size: 9px;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 5px;
@@ -2859,8 +2859,8 @@
 	.cgroup-title {
 		font-family: var(--ae-font-mono);
 		font-size: 10px;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		text-transform: none;
+		letter-spacing: 0;
 		color: var(--ae-muted);
 		margin-bottom: 6px;
 	}

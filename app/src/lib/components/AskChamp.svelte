@@ -649,8 +649,8 @@
 		align-items: baseline;
 		font-family: var(--ae-font-mono);
 		font-size: 9.5px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		margin-top: 4px;
 	}
@@ -701,7 +701,7 @@
 	}
 	.proposal.noop { border-color: var(--ae-line-strong); background: transparent; opacity: 0.8; }
 	.proposal.noop .prop-h { color: var(--ae-muted); }
-	.turn.user .bubble { background: rgba(255, 125, 85, 0.16); border: 1px solid rgba(255, 125, 85, 0.3); }
+	.turn.user .bubble { background: rgba(var(--ae-ember-rgb), 0.16); border: 1px solid rgba(var(--ae-ember-rgb), 0.3); }
 	.turn.assistant .bubble { background: var(--ae-line); color: var(--ae-text-2); }
 	.thinking { color: var(--ae-muted); font-style: italic; }
 	.err { font-size: 12px; color: var(--ae-crimson); margin: 0; }
@@ -715,8 +715,8 @@
 	th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--ae-line); white-space: nowrap; }
 	th { position: sticky; top: 0; background: var(--ae-card-bg), rgba(13, 16, 26, 0.98); font-weight: 600; font-size: 10.5px; }
 
-	.proposal { border: 1px solid var(--ae-amber); border-radius: 10px; padding: 10px 12px; background: rgba(242, 177, 92, 0.08); }
-	.prop-h { font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ae-amber); margin-bottom: 7px; }
+	.proposal { border: 1px solid var(--ae-amber); border-radius: 10px; padding: 10px 12px; background: rgba(var(--ae-amber-rgb), 0.08); }
+	.prop-h { font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0; text-transform: none; color: var(--ae-amber); margin-bottom: 7px; }
 	.prop-b { font-size: 12px; line-height: 1.6; }
 	.prop-b code { font-family: var(--ae-font-mono); font-size: 10.5px; color: var(--ae-muted); }
 	.from { color: var(--ae-muted); }
@@ -729,7 +729,7 @@
 		padding: 6px 12px;
 		border-radius: 8px;
 		border: 1px solid var(--ae-amber);
-		background: rgba(242, 177, 92, 0.16);
+		background: rgba(var(--ae-amber-rgb), 0.16);
 		color: var(--ae-text);
 		font: inherit;
 		font-size: 12px;
@@ -755,7 +755,7 @@
 		height: 34px;
 		border-radius: 9px;
 		border: 1px solid var(--ae-line-strong);
-		background: rgba(255, 125, 85, 0.16);
+		background: rgba(var(--ae-ember-rgb), 0.16);
 		color: var(--ae-text);
 		cursor: pointer;
 	}

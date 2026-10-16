@@ -380,8 +380,8 @@
 		font-size: 10px;
 		font-weight: 600;
 		color: var(--ae-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
+		text-transform: none;
+		letter-spacing: 0;
 	}
 	/* Recently-deleted bin — collapsed by default so it never competes with the
 	   live entities list above; a quiet affordance, not a second table. */
@@ -531,6 +531,7 @@
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 8px;
 		padding: 6px 11px;
+		margin: 0;
 		font-size: 12.5px;
 		font-weight: 500;
 		cursor: pointer;
@@ -550,13 +551,13 @@
 		margin: 0 0 16px;
 	}
 	.flash.err {
-		background: rgba(240, 117, 117, 0.12);
-		border: 1px solid rgba(240, 117, 117, 0.3);
+		background: rgba(var(--ae-crimson-rgb), 0.12);
+		border: 1px solid rgba(var(--ae-crimson-rgb), 0.3);
 		color: var(--ae-crimson);
 	}
 	.flash.ok {
-		background: rgba(62, 207, 154, 0.08);
-		border: 1px solid rgba(62, 207, 154, 0.25);
+		background: rgba(var(--ae-verdant-rgb), 0.08);
+		border: 1px solid rgba(var(--ae-verdant-rgb), 0.25);
 		color: var(--ae-verdant);
 	}
 	@media (max-width: 640px) {

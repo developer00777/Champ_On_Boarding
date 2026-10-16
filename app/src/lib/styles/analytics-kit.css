@@ -14,7 +14,7 @@
 .aegis .chart-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
-	gap: 14px;
+	gap: 12px;
 }
 .aegis .chart-grid.wide {
 	grid-template-columns: 1fr;
@@ -28,7 +28,7 @@
 	background: var(--ae-sub-bg);
 	border: 1px solid var(--ae-line-strong);
 	border-radius: 14px;
-	padding: 16px 18px 14px;
+	padding: 14px 16px 12px;
 }
 .aegis .chart-card-head {
 	display: flex;
@@ -46,8 +46,9 @@
 }
 .aegis .chart-note {
 	font-size: 11.5px;
+	line-height: 1.45;
 	color: var(--ae-muted);
-	margin-bottom: 12px;
+	margin-bottom: 10px;
 }
 .aegis .legend {
 	display: flex;
@@ -68,33 +69,6 @@
 	flex: none;
 }
 
-/* Clickable legend variant — the knowledge graph filter chips */
-.aegis .legend-filterable .legend-item {
-	margin: 0;
-	background: var(--ae-input-bg);
-	border: 1px solid var(--ae-line-strong);
-	border-radius: 999px;
-	padding: 4px 10px 4px 8px;
-	font-family: var(--ae-font-body);
-	font-size: 11px;
-	color: var(--ae-text-2);
-	cursor: pointer;
-	transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-.aegis .legend-filterable .legend-item:hover {
-	background: rgba(255, 255, 255, 0.1);
-	color: var(--ae-text);
-}
-.aegis .legend-filterable .legend-item.active {
-	background: rgba(255, 125, 85, 0.16);
-	border-color: var(--ae-ember);
-	color: var(--ae-text);
-}
-.aegis .legend-filterable .legend-item:focus-visible {
-	outline: 2px solid var(--ae-ember);
-	outline-offset: 1px;
-}
-
 /* Tooltip — appended to <body>, so styled globally within the admin scope.
    Being a sibling of .aegis (not a descendant), it can't inherit that
    element's --ae-* custom properties — CSS variables cascade to
@@ -105,7 +79,7 @@
 .viz-tooltip {
 	position: fixed;
 	pointer-events: none;
-	background: #0d0f18;
+	background: #0c1429;
 	border: 1px solid rgba(255, 255, 255, 0.1);
 	border-radius: 9px;
 	padding: 8px 11px;
@@ -116,7 +90,7 @@
 	transition: opacity 0.1s;
 	max-width: 220px;
 	font-family: 'Inter', system-ui, sans-serif;
-	color: #cbd1de;
+	color: #c8d0e6;
 }
 body:has(.aegis[data-theme='light']) .viz-tooltip {
 	background: #ffffff;
@@ -129,13 +103,13 @@ body:has(.aegis[data-theme='light']) .viz-tooltip {
 }
 .viz-tooltip .tt-title {
 	font-weight: 650;
-	color: #fafaf7;
+	color: #f4f6ff;
 	margin-bottom: 4px;
 	font-family: 'JetBrains Mono', ui-monospace, monospace;
 	font-size: 10.5px;
 }
 body:has(.aegis[data-theme='light']) .viz-tooltip .tt-title {
-	color: #20243a;
+	color: #0d1430;
 }
 .viz-tooltip .tt-row {
 	display: flex;
@@ -152,11 +126,11 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-title {
 	margin-left: auto;
 	font-family: 'JetBrains Mono', ui-monospace, monospace;
 	font-variant-numeric: tabular-nums;
-	color: #fafaf7;
+	color: #f4f6ff;
 	font-weight: 600;
 }
 body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
-	color: #20243a;
+	color: #0d1430;
 }
 
 .aegis svg text {
@@ -173,47 +147,7 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	font-family: var(--ae-font-mono);
 }
 
-/* ---------- Knowledge graph: how-to strip, explain panel, insights ---------- */
-.aegis .howto-strip {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 12px;
-	background: rgba(123, 167, 240, 0.07);
-	border: 1px solid rgba(123, 167, 240, 0.22);
-	border-radius: 12px;
-	padding: 14px 16px;
-	margin-bottom: 14px;
-}
-.aegis .howto-step {
-	display: flex;
-	gap: 10px;
-	align-items: flex-start;
-	font-size: 12px;
-	color: var(--ae-text-2);
-	line-height: 1.45;
-}
-.aegis .howto-step strong {
-	color: var(--ae-text);
-}
-.aegis .howto-num {
-	flex: none;
-	width: 20px;
-	height: 20px;
-	border-radius: 50%;
-	background: var(--ae-azure);
-	color: #0b1220;
-	font-family: var(--ae-font-mono);
-	font-weight: 700;
-	font-size: 11px;
-	display: grid;
-	place-items: center;
-}
-@media (max-width: 900px) {
-	.aegis .howto-strip {
-		grid-template-columns: 1fr;
-	}
-}
-
+/* ---------- Knowledge graph: explain panel, insights ---------- */
 .aegis #graphExplain {
 	min-height: 64px;
 }
@@ -242,8 +176,8 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	font-family: var(--ae-font-mono);
 	font-size: 10px;
 	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
+	text-transform: none;
+	letter-spacing: 0;
 	color: var(--ae-muted);
 }
 .aegis #graphExplain p {
@@ -284,8 +218,8 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	font-family: var(--ae-font-mono);
 	font-size: 9.5px;
 	font-weight: 700;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
+	letter-spacing: 0;
+	text-transform: none;
 	border: 1px solid;
 	border-radius: 5px;
 	padding: 1px 6px;
@@ -294,9 +228,1522 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	font-family: var(--ae-font-mono);
 	font-size: 10px;
 	color: var(--ae-muted);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+	text-transform: none;
+	letter-spacing: 0;
 }
 .aegis .finding-text {
 	color: var(--ae-text-2);
+}
+
+/* ── Funnel snapshot ─────────────────────────────────────────────────────
+   Each stage takes its step of an ordered burnt orange → raspberry → indigo ramp (--c,
+   set inline from charts.ts's FUNNEL_RAMP so it follows the theme) and
+   blends into the next stage's colour (--c2). Each band is clipped to a trapezoid from its stage's
+   width to the next one's, centred, so the stack reads as a funnel. Counts
+   sit in a fixed column so the rows read as a table too. */
+.aegis .fnl-hero {
+	font-size: 11.5px;
+	color: var(--ae-muted);
+}
+.aegis .fnl-hero b {
+	font-family: var(--ae-font-display);
+	font-size: 20px;
+	font-weight: 700;
+	color: var(--ae-text);
+	margin-right: 4px;
+	font-variant-numeric: tabular-nums;
+}
+.aegis .fnl-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.aegis .fnl-row {
+	display: grid;
+	grid-template-columns: 112px minmax(0, 1fr) 64px;
+	align-items: center;
+	gap: 12px;
+	padding: 0 6px;
+	margin: 0 -6px;
+	border-radius: 9px;
+	cursor: default;
+	outline: none;
+}
+.aegis .fnl-row:focus-visible {
+	box-shadow: 0 0 0 2px var(--c);
+}
+.aegis .fnl-name {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12.5px;
+	color: var(--ae-text-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.aegis .fnl-row:hover .fnl-name {
+	color: var(--ae-text);
+}
+.aegis .fnl-ix {
+	flex: none;
+	width: 18px;
+	height: 18px;
+	border-radius: 6px;
+	display: grid;
+	place-items: center;
+	font-family: var(--ae-font-mono);
+	font-size: 9.5px;
+	font-weight: 700;
+	color: #fff;
+	background: var(--c);
+	box-shadow: 0 2px 8px color-mix(in srgb, var(--c) 40%, transparent);
+}
+.aegis .fnl-cone {
+	position: relative;
+	height: 44px;
+	display: grid;
+	place-items: center;
+}
+.aegis .fnl-band {
+	position: absolute;
+	inset: 0;
+	/* A soft top-to-bottom shade gives the band some depth without a second hue. */
+	background: linear-gradient(180deg, var(--c), var(--c2));
+	transition: clip-path 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.15s ease;
+}
+.aegis .fnl-row:hover .fnl-band,
+.aegis .fnl-row:focus-visible .fnl-band {
+	filter: brightness(1.14) saturate(1.1);
+}
+/* A soft glow under the whole funnel in its own colours. */
+.aegis .fnl-rows {
+	filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--fnl) 22%, transparent));
+}
+.aegis .fnl-row:first-child .fnl-band {
+	border-radius: 6px 6px 0 0;
+}
+.aegis .fnl-row:last-child .fnl-band {
+	border-radius: 0 0 6px 6px;
+}
+.aegis .fnl-in {
+	position: relative;
+	font-family: var(--ae-font-mono);
+	font-size: 11.5px;
+	font-weight: 700;
+	color: #fff;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+}
+.aegis .fnl-num {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	line-height: 1.2;
+	font-variant-numeric: tabular-nums;
+}
+.aegis .fnl-num b {
+	font-family: var(--ae-font-mono);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .fnl-num small {
+	font-size: 10.5px;
+	color: var(--ae-muted);
+}
+.aegis .fnl-leaks {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-top: 14px;
+	padding-top: 12px;
+	border-top: 1px solid var(--ae-line);
+}
+.aegis .fnl-leaks-k {
+	font-family: var(--ae-font-mono);
+	font-size: 9.5px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--ae-muted);
+	margin-right: 2px;
+}
+.aegis .fnl-leak {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 9px;
+	border-radius: 999px;
+	font-size: 11px;
+	color: var(--ae-text-2);
+	border: 1px solid var(--ae-line-strong);
+}
+.aegis .fnl-leak b {
+	font-family: var(--ae-font-mono);
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .fnl-leak-n {
+	color: var(--ae-muted);
+}
+.aegis .fnl-leak.bad {
+	color: var(--fnl-bad);
+	border-color: color-mix(in srgb, var(--fnl-bad) 45%, transparent);
+	background: color-mix(in srgb, var(--fnl-bad) 10%, transparent);
+}
+.aegis .fnl-leak.bad b,
+.aegis .fnl-leak.bad .fnl-leak-n {
+	color: var(--fnl-bad);
+}
+.aegis .fnl-leak-tag {
+	font-weight: 600;
+}
+.aegis .fnl-empty {
+	padding: 28px 0;
+	text-align: center;
+	font-size: 12.5px;
+	color: var(--ae-muted);
+}
+@media (max-width: 520px) {
+	.aegis .fnl-row {
+		grid-template-columns: 84px minmax(0, 1fr) 54px;
+		gap: 8px;
+	}
+	.aegis .fnl-ix {
+		display: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.aegis .fnl-band {
+		transition: none;
+	}
+}
+
+/* ── Trends ──────────────────────────────────────────────────────────────
+   Stage colours (--c) are set inline from charts.ts's TREND_COLORS so they
+   follow the theme. Text always wears text tokens; the colour sits on the
+   dot, the line and the sparkline beside it. */
+.aegis .tr-tiles {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+}
+@media (max-width: 1000px) {
+	.aegis .tr-tiles {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+.aegis .tr-tile {
+	position: relative;
+	overflow: hidden;
+	background: var(--ae-sub-bg);
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 14px;
+	padding: 13px 14px 12px;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas: 'k k' 'v spark' 'sub spark';
+	column-gap: 10px;
+	align-items: end;
+}
+.aegis .tr-tile::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	right: 0;
+	height: 2px;
+	background: var(--c);
+	opacity: 0.85;
+}
+.aegis .tr-tile-k {
+	grid-area: k;
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 11.5px;
+	color: var(--ae-text-2);
+	margin-bottom: 6px;
+}
+.aegis .tr-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--c);
+	flex: none;
+}
+.aegis .tr-tile-v {
+	grid-area: v;
+	font-family: var(--ae-font-display);
+	font-size: 24px;
+	font-weight: 700;
+	line-height: 1.05;
+	color: var(--ae-text);
+	font-variant-numeric: tabular-nums;
+}
+.aegis .tr-tile-sub {
+	grid-area: sub;
+	font-size: 10.5px;
+	color: var(--ae-muted);
+	margin-top: 4px;
+	white-space: nowrap;
+}
+.aegis .tr-spark {
+	grid-area: spark;
+	align-self: end;
+}
+.aegis .tr-delta {
+	font-family: var(--ae-font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	margin-left: 4px;
+	padding: 1px 5px;
+	border-radius: 5px;
+}
+.aegis .tr-delta.up {
+	color: var(--ae-verdant);
+	background: rgba(var(--ae-verdant-rgb), 0.12);
+}
+.aegis .tr-delta.down {
+	color: var(--ae-crimson);
+	background: rgba(var(--ae-crimson-rgb), 0.12);
+}
+.aegis .tr-delta.flat {
+	color: var(--ae-muted);
+	background: var(--ae-line);
+}
+.aegis .tr-toggles {
+	gap: 6px;
+}
+.aegis .tr-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 10px;
+	border-radius: 999px;
+	border: 1px solid var(--ae-line-strong);
+	background: none;
+	font: inherit;
+	font-size: 11px;
+	color: var(--ae-text-2);
+	cursor: pointer;
+	transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+.aegis .tr-toggle:hover {
+	border-color: var(--c);
+}
+.aegis .tr-toggle:focus-visible {
+	outline: 2px solid var(--c);
+	outline-offset: 2px;
+}
+.aegis .tr-toggle[aria-pressed='false'] {
+	opacity: 0.45;
+	text-decoration: line-through;
+}
+.aegis .tr-toggle[aria-pressed='false'] .tr-dot {
+	background: transparent;
+	box-shadow: inset 0 0 0 1.5px var(--c);
+}
+.aegis .tr-plot {
+	width: 100%;
+	min-height: 220px;
+}
+.aegis .tr-plot svg {
+	display: block;
+	overflow: visible;
+}
+.aegis svg .axis-line.grid {
+	stroke: var(--ae-line);
+	stroke-dasharray: 2 4;
+}
+.aegis svg .crosshair {
+	stroke: var(--ae-muted);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+}
+.aegis svg .tr-end-v {
+	font-family: var(--ae-font-mono);
+	font-size: 12px;
+	font-weight: 600;
+	fill: var(--ae-text);
+}
+.aegis svg .tr-end-n {
+	font-size: 10px;
+	fill: var(--ae-muted);
+}
+.aegis .tr-net {
+	font-size: 11.5px;
+	color: var(--ae-muted);
+}
+.aegis .tr-net b {
+	font-family: var(--ae-font-mono);
+	font-size: 13px;
+	margin-right: 3px;
+}
+.aegis .tr-net.up b {
+	color: var(--ae-amber);
+}
+.aegis .tr-net.down b {
+	color: var(--ae-verdant);
+}
+.aegis .tr-empty {
+	padding: 32px 0;
+	text-align: center;
+	font-size: 12.5px;
+	color: var(--ae-muted);
+}
+@media (max-width: 640px) {
+	.aegis .tr-tile {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: 'k' 'v' 'sub' 'spark';
+	}
+	.aegis .tr-spark {
+		width: 100%;
+		height: 30px;
+		margin-top: 8px;
+	}
+}
+
+/* ── Documents & Quality ─────────────────────────────────────────────────
+   Status colours (--dq-good/warn/crit) are set inline from charts.ts's ST
+   palette so they follow the theme; every use sits beside an icon and a word.
+   Text stays in text tokens. */
+.aegis .dq-tiles {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+}
+@media (max-width: 1000px) {
+	.aegis .dq-tiles {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+.aegis .dq-tile {
+	--h: var(--ae-muted);
+	position: relative;
+	overflow: hidden;
+	background: var(--ae-sub-bg);
+	border: 1px solid var(--ae-line-strong);
+	border-radius: 14px;
+	padding: 13px 14px 12px 17px;
+}
+.aegis .dq-tile.good { --h: var(--dq-good); }
+.aegis .dq-tile.warn { --h: var(--dq-warn); }
+.aegis .dq-tile.crit { --h: var(--dq-crit); }
+.aegis .dq-tile::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 4px;
+	background: var(--h);
+}
+.aegis .dq-tile-k {
+	font-size: 11.5px;
+	color: var(--ae-text-2);
+}
+.aegis .dq-tile-v {
+	font-family: var(--ae-font-display);
+	font-size: 24px;
+	font-weight: 700;
+	color: var(--ae-text);
+	margin: 4px 0 2px;
+	font-variant-numeric: tabular-nums;
+}
+.aegis .dq-tile-sub {
+	font-size: 10.5px;
+	color: var(--ae-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.aegis .dq-chip {
+	--h: var(--ae-muted);
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 10.5px;
+	font-weight: 600;
+	white-space: nowrap;
+	color: var(--h);
+	border: 1px solid color-mix(in srgb, var(--h) 45%, transparent);
+	background: color-mix(in srgb, var(--h) 10%, transparent);
+}
+.aegis .dq-chip.good { --h: var(--dq-good); }
+.aegis .dq-chip.warn { --h: var(--dq-warn); }
+.aegis .dq-chip.crit { --h: var(--dq-crit); }
+.aegis .dq-legend {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 5px;
+	font-size: 10.5px;
+	color: var(--ae-muted);
+}
+.aegis .dq-legend > span:not(.dq-chip) {
+	margin-right: 6px;
+}
+.aegis .dq-slots {
+	display: flex;
+	flex-direction: column;
+}
+.aegis .dq-slot {
+	--h: var(--dq-good);
+	display: grid;
+	grid-template-columns: minmax(150px, 1.25fr) minmax(120px, 2fr) 72px 128px;
+	align-items: center;
+	gap: 14px;
+	padding: 8px 8px;
+	margin: 0 -8px;
+	border-radius: 9px;
+	border-top: 1px solid var(--ae-line);
+	outline: none;
+}
+.aegis .dq-slot:first-child {
+	border-top: 0;
+}
+.aegis .dq-slot.warn { --h: var(--dq-warn); }
+.aegis .dq-slot.crit { --h: var(--dq-crit); }
+.aegis .dq-slot:hover,
+.aegis .dq-slot:focus-visible {
+	background: var(--ae-line);
+}
+.aegis .dq-slot:focus-visible {
+	box-shadow: 0 0 0 2px var(--h);
+}
+.aegis .dq-slot-id {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	min-width: 0;
+}
+.aegis .dq-slot-name {
+	font-size: 12.5px;
+	color: var(--ae-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+.aegis .dq-tag {
+	flex: none;
+	font-family: var(--ae-font-mono);
+	font-size: 8.5px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	padding: 1px 5px;
+	border-radius: 4px;
+	color: var(--ae-muted);
+	border: 1px solid var(--ae-line-strong);
+}
+.aegis .dq-tag.req {
+	color: var(--ae-text-2);
+}
+.aegis .dq-meter {
+	position: relative;
+	height: 10px;
+	border-radius: 5px;
+	background: var(--ae-line);
+}
+.aegis .dq-fill {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	border-radius: 5px;
+	background: var(--h);
+	z-index: 1;
+	transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* Threshold ticks sit behind the fill, poking out above and below it, so the
+   bar stays one solid piece and the 65% / 80% marks still read. */
+.aegis .dq-tick {
+	position: absolute;
+	top: -4px;
+	bottom: -4px;
+	width: 1.5px;
+	margin-left: -0.75px;
+	border-radius: 1px;
+	background: var(--ae-muted);
+	opacity: 0.55;
+	z-index: 0;
+}
+.aegis .dq-slot-v,
+.aegis .dq-mm-v {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	line-height: 1.2;
+	font-variant-numeric: tabular-nums;
+}
+.aegis .dq-slot-v b,
+.aegis .dq-mm-v b {
+	font-family: var(--ae-font-mono);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .dq-slot-v small,
+.aegis .dq-mm-v small {
+	font-size: 10px;
+	color: var(--ae-muted);
+}
+.aegis .dq-slot .dq-chip {
+	justify-self: start;
+}
+.aegis .dq-more {
+	align-self: center;
+	margin-top: 10px;
+	padding: 6px 14px;
+	border-radius: 999px;
+	border: 1px solid var(--ae-line-strong);
+	background: none;
+	font: inherit;
+	font-size: 11.5px;
+	color: var(--ae-text-2);
+	cursor: pointer;
+}
+.aegis .dq-more:hover {
+	color: var(--ae-text);
+	border-color: var(--ae-muted);
+}
+.aegis .dq-hero {
+	font-size: 11.5px;
+	color: var(--ae-muted);
+}
+.aegis .dq-hero b {
+	font-family: var(--ae-font-display);
+	font-size: 20px;
+	font-weight: 700;
+	color: var(--ae-text);
+	margin-right: 4px;
+}
+.aegis .dq-cols {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 12px;
+	height: 190px;
+	padding-top: 4px;
+}
+.aegis .dq-col {
+	--h: var(--dq-good);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	border-radius: 8px;
+	outline: none;
+}
+.aegis .dq-col.warn { --h: var(--dq-warn); }
+.aegis .dq-col.crit { --h: var(--dq-crit); }
+.aegis .dq-col:focus-visible {
+	box-shadow: 0 0 0 2px var(--h);
+}
+.aegis .dq-col-v {
+	font-family: var(--ae-font-mono);
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .dq-col-track {
+	position: relative;
+	flex: 1;
+	width: 100%;
+	max-width: 46px;
+	border-bottom: 1px solid var(--ae-line-strong);
+}
+.aegis .dq-col-bar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	border-radius: 5px 5px 0 0;
+	background: linear-gradient(180deg, var(--h), color-mix(in srgb, var(--h) 70%, transparent));
+	transition: height 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.15s ease;
+}
+.aegis .dq-col:hover .dq-col-bar {
+	filter: brightness(1.12);
+}
+.aegis .dq-col-k {
+	font-family: var(--ae-font-mono);
+	font-size: 10px;
+	color: var(--ae-muted);
+}
+.aegis .dq-mm {
+	display: flex;
+	flex-direction: column;
+}
+.aegis .dq-mm-row {
+	display: grid;
+	grid-template-columns: minmax(90px, 1fr) minmax(80px, 1.6fr) 64px 82px;
+	align-items: center;
+	gap: 12px;
+	padding: 7px 8px;
+	margin: 0 -8px;
+	border-radius: 9px;
+	outline: none;
+}
+.aegis .dq-mm-row:hover,
+.aegis .dq-mm-row:focus-visible {
+	background: var(--ae-line);
+}
+.aegis .dq-mm-name {
+	font-size: 12.5px;
+	color: var(--ae-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.aegis .dq-mm-track {
+	position: relative;
+	height: 10px;
+	border-radius: 5px;
+	background: var(--ae-line);
+}
+.aegis .dq-mm-bar {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	border-radius: 5px;
+	background: color-mix(in srgb, var(--dq-crit) 55%, transparent);
+}
+.aegis .dq-mm-row.worst .dq-mm-bar {
+	background: var(--dq-crit);
+}
+.aegis .dq-empty {
+	padding: 30px 0;
+	text-align: center;
+	font-size: 12.5px;
+	color: var(--ae-muted);
+}
+@media (max-width: 700px) {
+	.aegis .dq-slot {
+		grid-template-columns: minmax(0, 1fr) 64px;
+		grid-template-areas: 'id v' 'meter meter' 'chip chip';
+		row-gap: 6px;
+	}
+	.aegis .dq-slot-id { grid-area: id; }
+	.aegis .dq-slot-v { grid-area: v; }
+	.aegis .dq-meter { grid-area: meter; }
+	.aegis .dq-slot .dq-chip { grid-area: chip; }
+	.aegis .dq-mm-row {
+		grid-template-columns: minmax(0, 1fr) 60px;
+	}
+	.aegis .dq-mm-track { grid-column: 1 / -1; grid-row: 2; }
+	.aegis .dq-mm-row > span:last-child { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.aegis .dq-fill,
+	.aegis .dq-col-bar {
+		transition: none;
+	}
+}
+
+/* ── Breakdown ───────────────────────────────────────────────────────────
+   The heat grid's hue (--hm) is set inline from charts.ts's HEAT_HUE; each
+   cell mixes it in by --k. Status colours reuse the --dq-* tokens. */
+/* A grid track's default minimum is its content's width, so a wide table
+   would push its card past the screen edge instead of scrolling inside it. */
+.aegis .chart-grid > .chart-card {
+	min-width: 0;
+}
+.aegis .bd-scroll {
+	overflow-x: auto;
+	margin: 0 -4px;
+	padding: 0 4px 4px;
+}
+.aegis .bd-heat {
+	width: 100%;
+	border-collapse: separate;
+	border-spacing: 3px;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+.aegis .bd-heat th,
+.aegis .bd-heat td {
+	padding: 0;
+	text-align: center;
+	font-weight: 400;
+}
+.aegis .bd-heat thead th {
+	font-family: var(--ae-font-mono);
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ae-muted);
+	padding: 4px 6px 6px;
+	white-space: nowrap;
+	max-width: 120px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: color 0.12s ease;
+}
+.aegis .bd-heat thead th.x-col {
+	color: var(--ae-text);
+}
+.aegis .bd-heat .bd-corner {
+	text-align: left;
+}
+.aegis .bd-co {
+	position: sticky;
+	left: 0;
+	z-index: 1;
+	background: var(--ae-sub-bg);
+	text-align: left !important;
+	padding: 0 12px 0 2px !important;
+	font-size: 12.5px;
+	color: var(--ae-text-2);
+	white-space: nowrap;
+	/* Shrink to the longest name; the track columns share what is left. */
+	width: 1%;
+	max-width: 230px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.aegis .bd-heat tr.x-row .bd-co {
+	color: var(--ae-text);
+}
+.aegis .bd-cell {
+	height: 36px;
+	min-width: 64px;
+	border-radius: 7px;
+	font-family: var(--ae-font-mono);
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ae-text-2);
+	background: color-mix(in srgb, var(--hm) var(--k), var(--ae-line));
+	cursor: default;
+	transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+.aegis .bd-cell.hot {
+	color: #fff;
+}
+.aegis .bd-cell.zero {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--ae-line);
+	color: var(--ae-muted);
+	font-weight: 400;
+}
+.aegis .bd-heat tr.x-row .bd-cell,
+.aegis .bd-cell.x-col {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hm) 60%, transparent);
+}
+.aegis .bd-cell:hover {
+	transform: scale(1.06);
+	box-shadow: 0 0 0 2px var(--hm) !important;
+}
+.aegis .bd-tot,
+.aegis .bd-tot-h {
+	position: relative;
+	min-width: 96px;
+	text-align: right !important;
+	padding: 0 4px 0 12px !important;
+}
+.aegis .bd-tot b {
+	position: relative;
+	font-family: var(--ae-font-mono);
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .bd-tot-bar {
+	position: absolute;
+	right: 4px;
+	top: 50%;
+	height: 22px;
+	margin-top: -11px;
+	max-width: calc(100% - 16px);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--hm) 16%, transparent);
+}
+.aegis .bd-heat tfoot td,
+.aegis .bd-heat tfoot th {
+	padding-top: 8px !important;
+	border-top: 1px solid var(--ae-line-strong);
+	font-family: var(--ae-font-mono);
+	font-size: 12px;
+	color: var(--ae-text);
+}
+.aegis .bd-heat tfoot .bd-co {
+	font-family: inherit;
+	font-size: 11.5px;
+	color: var(--ae-muted);
+}
+.aegis .bd-heat tfoot small {
+	display: block;
+	font-size: 9.5px;
+	color: var(--ae-muted);
+	margin-top: 1px;
+}
+.aegis .bd-team {
+	display: flex;
+	flex-direction: column;
+}
+.aegis .bd-mate {
+	display: grid;
+	grid-template-columns: 18px 32px minmax(0, 1fr) minmax(110px, 1fr) auto;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 0;
+	border-top: 1px solid var(--ae-line);
+}
+.aegis .bd-mate:first-child {
+	border-top: 0;
+}
+.aegis .bd-rank {
+	font-family: var(--ae-font-mono);
+	font-size: 10.5px;
+	color: var(--ae-muted);
+	text-align: center;
+}
+.aegis .bd-av {
+	width: 32px;
+	height: 32px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	font-size: 11px;
+	font-weight: 700;
+	color: #fff;
+	background: var(--a);
+}
+.aegis .bd-who {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.aegis .bd-who b {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--ae-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.aegis .bd-who small {
+	font-family: var(--ae-font-mono);
+	font-size: 10px;
+	color: var(--ae-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.aegis .bd-load {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.aegis .bd-load-track {
+	flex: 1;
+	height: 8px;
+	border-radius: 4px;
+	background: var(--ae-line);
+	overflow: hidden;
+}
+.aegis .bd-load-bar {
+	display: block;
+	height: 100%;
+	border-radius: 4px;
+	background: linear-gradient(90deg, color-mix(in srgb, var(--ae-ember) 60%, transparent), var(--ae-ember));
+}
+.aegis .bd-load-v {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	line-height: 1.15;
+	min-width: 62px;
+}
+.aegis .bd-load-v b {
+	font-family: var(--ae-font-mono);
+	font-size: 13px;
+	color: var(--ae-text);
+}
+.aegis .bd-load-v small {
+	font-size: 9.5px;
+	color: var(--ae-muted);
+	white-space: nowrap;
+}
+.aegis .bd-muted {
+	font-size: 11px;
+	color: var(--ae-muted);
+}
+.aegis .bd-gauges {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+	margin-top: 4px;
+}
+.aegis .bd-gauge {
+	--h: var(--ae-muted);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: 4px;
+	padding: 16px 10px 14px;
+	border-radius: 12px;
+	border: 1px solid var(--ae-line);
+	background: color-mix(in srgb, var(--h) 5%, transparent);
+}
+.aegis .bd-gauge.good { --h: var(--dq-good); }
+.aegis .bd-gauge.warn { --h: var(--dq-warn); }
+.aegis .bd-gauge.crit { --h: var(--dq-crit); }
+.aegis .bd-ring {
+	position: relative;
+	width: 88px;
+	height: 88px;
+	display: grid;
+	place-items: center;
+	margin-bottom: 4px;
+}
+.aegis .bd-ring svg {
+	position: absolute;
+	inset: 0;
+}
+.aegis .bd-ring-track {
+	stroke: var(--ae-line);
+}
+.aegis .bd-ring-fill {
+	stroke: var(--h);
+	transition: stroke-dasharray 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.aegis .bd-ring-v {
+	position: relative;
+	font-family: var(--ae-font-display);
+	font-size: 19px;
+	font-weight: 700;
+	color: var(--ae-text);
+}
+.aegis .bd-gauge-k {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--ae-text);
+}
+.aegis .bd-gauge-sub {
+	font-size: 10.5px;
+	color: var(--ae-muted);
+	margin-bottom: 4px;
+}
+@media (max-width: 700px) {
+	.aegis .bd-mate {
+		grid-template-columns: 32px minmax(0, 1fr) auto;
+		grid-template-areas: 'av who v' 'load load load' 'speed speed speed';
+		row-gap: 6px;
+	}
+	.aegis .bd-rank { display: none; }
+	.aegis .bd-av { grid-area: av; }
+	.aegis .bd-who { grid-area: who; }
+	.aegis .bd-load { grid-area: load; }
+	.aegis .bd-mate > :last-child { grid-area: speed; justify-self: start; }
+	.aegis .bd-co { max-width: 140px; }
+}
+@media (max-width: 420px) {
+	.aegis .bd-gauges { grid-template-columns: minmax(0, 1fr); }
+}
+/* Trends with a single period: plain bars, and created vs approved. */
+.aegis .tr-single {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 4px 0 2px;
+}
+.aegis .tr-single-row {
+	display: grid;
+	grid-template-columns: 130px minmax(0, 1fr) 56px;
+	align-items: center;
+	gap: 12px;
+}
+.aegis .tr-single-k {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 12.5px;
+	color: var(--ae-text-2);
+}
+.aegis .tr-single-track {
+	height: 12px;
+	border-radius: 6px;
+	background: var(--ae-line);
+	overflow: hidden;
+}
+.aegis .tr-single-bar {
+	display: block;
+	height: 100%;
+	border-radius: 6px;
+	background: var(--c);
+}
+.aegis .tr-single-row b {
+	text-align: right;
+	font-family: var(--ae-font-mono);
+	font-size: 13px;
+	color: var(--ae-text);
+}
+.aegis .tr-single-note {
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--ae-muted);
+}
+.aegis .tr-vs {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 28px;
+	padding: 18px 0 10px;
+}
+.aegis .tr-vs > div {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+}
+.aegis .tr-vs b {
+	font-family: var(--ae-font-display);
+	font-size: 30px;
+	font-weight: 700;
+	color: var(--ae-text);
+}
+.aegis .tr-vs small {
+	font-size: 11px;
+	color: var(--ae-muted);
+}
+.aegis .tr-vs-sep {
+	font-size: 12px;
+	color: var(--ae-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+
+/* ── Knowledge graph (flow layout) ───────────────────────────────────────
+   Colours on marks come from charts.ts; every label wears text tokens. When
+   something is hovered, pinned or filtered, the svg gets .kg-focus and only
+   the .lit nodes and links stay at full strength. */
+.aegis .kg-stats {
+	font-size: 11.5px;
+	color: var(--ae-muted);
+}
+.aegis .kg-stats b {
+	color: var(--ae-text);
+	font-weight: 600;
+}
+.aegis .kg-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 10px;
+}
+.aegis .kg-filter {
+	--h: var(--ae-muted);
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 11px;
+	border-radius: 999px;
+	border: 1px solid var(--ae-line-strong);
+	background: none;
+	font: inherit;
+	font-size: 11.5px;
+	color: var(--ae-text-2);
+	cursor: pointer;
+}
+.aegis .kg-filter[data-tier='crit'] { --h: var(--dq-crit); }
+.aegis .kg-filter[data-tier='warn'] { --h: var(--dq-warn); }
+.aegis .kg-filter[data-tier='good'] { --h: var(--dq-good); }
+.aegis .kg-filter svg {
+	color: var(--h);
+}
+.aegis .kg-filter b {
+	font-family: var(--ae-font-mono);
+	font-size: 10.5px;
+	color: var(--ae-muted);
+}
+.aegis .kg-filter:hover {
+	border-color: var(--h);
+}
+.aegis .kg-filter.on {
+	color: var(--ae-text);
+	border-color: var(--h);
+	background: color-mix(in srgb, var(--h) 14%, transparent);
+}
+.aegis .kg-filter[data-tier='all'].on {
+	--h: var(--ae-ember);
+}
+.aegis .kg-scroll {
+	overflow-x: auto;
+	margin: 0 -6px;
+	padding: 0 6px;
+	border-radius: 12px;
+	background: radial-gradient(var(--ae-line) 1px, transparent 1px) 0 0 / 18px 18px;
+}
+.aegis .kg-plot {
+	min-width: 680px;
+}
+.aegis .kg-svg {
+	display: block;
+	overflow: visible;
+}
+.aegis svg .kg-col {
+	font-family: var(--ae-font-mono);
+	font-size: 9.5px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	fill: var(--ae-muted);
+}
+.aegis svg .kg-link {
+	/* Requirement links are many and similar, so at rest they are a faint
+	   texture; hovering, pinning or filtering brings the relevant ones up. */
+	stroke-opacity: 0.12;
+	transition: stroke-opacity 0.18s ease;
+}
+.aegis svg .kg-link.flow {
+	stroke-opacity: 0.22;
+	stroke-linecap: round;
+}
+.aegis svg.kg-focus .kg-link {
+	stroke-opacity: 0.05;
+}
+.aegis svg.kg-focus .kg-link.lit {
+	stroke-opacity: 0.75;
+}
+.aegis svg .kg-node {
+	cursor: pointer;
+	outline: none;
+	transition: opacity 0.18s ease;
+}
+.aegis svg.kg-focus .kg-node:not(.lit) {
+	opacity: 0.22;
+}
+.aegis svg .kg-halo {
+	opacity: 0;
+	transition: opacity 0.18s ease;
+}
+.aegis svg .kg-node:hover .kg-halo,
+.aegis svg .kg-node:focus-visible .kg-halo,
+.aegis svg .kg-node.pinned .kg-halo {
+	opacity: 0.22;
+}
+.aegis svg .kg-node.pinned .kg-dot {
+	stroke: var(--ae-text);
+}
+.aegis svg .kg-name {
+	font-size: 12px;
+	fill: var(--ae-text);
+}
+.aegis svg .kg-name.track {
+	font-size: 11px;
+	font-weight: 600;
+}
+.aegis svg .kg-sub {
+	font-size: 10px;
+	fill: var(--ae-muted);
+}
+.aegis svg .kg-pill {
+	fill: var(--ae-sub-bg);
+	stroke: var(--ae-line-strong);
+}
+.aegis svg .kg-rate {
+	font-family: var(--ae-font-mono);
+	font-size: 11.5px;
+	font-weight: 600;
+	fill: var(--ae-text-2);
+}
+.aegis svg .kg-rate.crit {
+	fill: var(--dq-crit);
+}
+.aegis .kg-below {
+	align-items: start;
+}
+.aegis .kg-list {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+}
+.aegis .kg-list li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 6px 0;
+	border-top: 1px solid var(--ae-line);
+	font-size: 12px;
+	color: var(--ae-text-2);
+}
+.aegis .kg-list li b {
+	font-family: var(--ae-font-mono);
+	color: var(--ae-text);
+}
+.aegis .kg-list-k {
+	margin-top: 10px;
+	font-family: var(--ae-font-mono);
+	font-size: 9.5px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--ae-muted);
+}
+.aegis .kg-none {
+	font-size: 12px;
+	color: var(--ae-muted);
+}
+.aegis .explain-head .dq-chip {
+	margin-left: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+	.aegis svg .kg-link,
+	.aegis svg .kg-node,
+	.aegis svg .kg-halo {
+		transition: none;
+	}
+}
+
+
+/* ── Layout: a wide main column with a stack of smaller cards beside it ────
+   Every tab uses this instead of giving each small card a full-width row of
+   its own, which is what left most of the page empty. */
+.aegis .an-split {
+	display: grid;
+	grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+	gap: 12px;
+	/* Side cards keep their natural height: an empty card stretched to match
+	   a tall neighbour reads as wasted space. */
+	align-items: start;
+}
+.aegis .an-split.trends {
+	grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+	margin-top: 12px;
+}
+.aegis .an-split > .chart-card,
+.aegis .an-stack > .chart-card {
+	min-width: 0;
+}
+.aegis .an-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+@media (max-width: 1100px) {
+	.aegis .an-split,
+	.aegis .an-split.trends {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* ── Funnel tab: time in stage and the hiring decision ─────────────────── */
+.aegis .fx-dur {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.aegis .fx-dur-row {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr) 44px;
+	align-items: center;
+	gap: 10px;
+	font-size: 12px;
+}
+.aegis .fx-dur-k {
+	color: var(--ae-text-2);
+	white-space: nowrap;
+}
+.aegis .fx-dur-track {
+	height: 8px;
+	border-radius: 4px;
+	background: var(--ae-line);
+	overflow: hidden;
+}
+.aegis .fx-dur-bar {
+	display: block;
+	height: 100%;
+	border-radius: 4px;
+	background: var(--dq-info);
+}
+.aegis .fx-dur-row b {
+	text-align: right;
+	font-family: var(--ae-font-mono);
+	font-size: 12px;
+	color: var(--ae-text);
+}
+.aegis .fx-dur-none {
+	grid-column: 2 / 4;
+	white-space: nowrap;
+	font-size: 11px;
+	color: var(--ae-muted);
+}
+.aegis .fx-dec-bar {
+	display: flex;
+	gap: 2px;
+	height: 26px;
+	border-radius: 7px;
+	overflow: hidden;
+}
+.aegis .fx-dec-bar span {
+	display: grid;
+	place-items: center;
+	font-size: 11.5px;
+	font-weight: 700;
+	color: #fff;
+}
+.aegis .fx-dec-bar .acc,
+.aegis .fx-dec-keys i.acc {
+	background: var(--dq-good);
+}
+.aegis .fx-dec-bar .rej,
+.aegis .fx-dec-keys i.rej {
+	background: var(--dq-crit);
+}
+.aegis .fx-dec-keys {
+	display: flex;
+	gap: 16px;
+	margin-top: 8px;
+	font-size: 11.5px;
+	color: var(--ae-text-2);
+}
+.aegis .fx-dec-keys span {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.aegis .fx-dec-keys i {
+	width: 9px;
+	height: 9px;
+	border-radius: 3px;
+}
+.aegis .fx-dec-keys b {
+	font-family: var(--ae-font-mono);
+	color: var(--ae-text);
+}
+.aegis .fx-dec-empty {
+	padding: 10px 12px;
+	border-radius: 9px;
+	border: 1px dashed var(--ae-line-strong);
+	font-size: 12px;
+	color: var(--ae-muted);
+}
+.aegis .fx-dec-note {
+	margin-top: 8px;
+	font-size: 10.5px;
+	color: var(--ae-muted);
+}
+
+/* ── Density pass: rows, tiles and empty states take what they need ─────── */
+.aegis .dq-empty,
+.aegis .tr-empty {
+	padding: 14px 12px;
+	border-radius: 9px;
+	border: 1px dashed var(--ae-line-strong);
+	font-size: 12px;
+}
+.aegis .dq-slot {
+	padding: 6px 8px;
+	gap: 14px;
+	grid-template-columns: minmax(0, 1.6fr) minmax(90px, 1fr) 70px;
+}
+.aegis .dq-ic {
+	display: inline-flex;
+	vertical-align: -1px;
+	margin-right: 5px;
+}
+.aegis .dq-ic.crit { color: var(--dq-crit); }
+.aegis .dq-ic.warn { color: var(--dq-warn); }
+.aegis .dq-ic.good { color: var(--dq-good); }
+.aegis .dq-tiles,
+.aegis .tr-tiles {
+	gap: 10px;
+}
+.aegis .dq-tile,
+.aegis .tr-tile {
+	padding: 10px 13px 10px 16px;
+}
+.aegis .dq-tile-v,
+.aegis .tr-tile-v {
+	font-size: 21px;
+	margin: 2px 0 1px;
+}
+.aegis .tr-tile-k {
+	margin-bottom: 3px;
+}
+.aegis .dq-cols {
+	height: 150px;
+	gap: 8px;
+}
+.aegis .dq-mm-row {
+	padding: 5px 8px;
+}
+.aegis .bd-mate {
+	padding: 7px 0;
+}
+.aegis .bd-gauges {
+	gap: 10px;
+}
+.aegis .bd-gauge {
+	padding: 10px 8px;
+}
+.aegis .bd-ring {
+	transform: scale(0.82);
+	margin: -8px 0 -6px;
+}
+.aegis .fnl-cone {
+	height: 40px;
+}
+.aegis .fnl-leaks {
+	margin-top: 10px;
+	padding-top: 10px;
+}
+.aegis .tr-single {
+	gap: 8px;
+}
+.aegis .tr-vs {
+	padding: 10px 0 4px;
+}
+/* Knowledge graph: details beside the insights, and the insights in two
+   columns, so neither card trails off into empty space. */
+.aegis .kg-below {
+	grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+	align-items: start;
+}
+.aegis .kg-below .insight-list {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px 16px;
+}
+@media (max-width: 1100px) {
+	.aegis .kg-below,
+	.aegis .kg-below .insight-list {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+@media (max-width: 700px) {
+	/* After the density pass above, so it wins on narrow screens. */
+	.aegis .dq-slot {
+		grid-template-columns: minmax(0, 1fr) 70px;
+		grid-template-areas: 'id v' 'meter meter';
+	}
+}
+
+/* Breakdown heat map, sized for the main column beside the side cards. */
+.aegis .bd-cell {
+	min-width: 46px;
+	height: 34px;
+}
+.aegis .bd-heat thead th {
+	letter-spacing: 0.02em;
+	padding: 4px 4px 6px;
+}
+.aegis .bd-tot,
+.aegis .bd-tot-h {
+	min-width: 52px;
+	padding-left: 6px !important;
+}
+/* Long names ellipsise (the full name is in the row's title) rather than
+   pushing the Total column out of the card. */
+.aegis .bd-co {
+	max-width: 180px;
+	font-size: 12px;
 }

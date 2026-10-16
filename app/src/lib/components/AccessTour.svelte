@@ -35,7 +35,7 @@
 		{
 			title: 'Three ways to look at the same people',
 			body:
-				'<b>Permission matrix</b> for reading and editing access across everyone at once. <b>Simulate</b> for seeing one person’s screen before you commit to it. <b>Org chart</b> is coming; until it lands, reporting lines are set per person in the panel on the right.',
+				'<b>Permission matrix</b> for reading and editing access across everyone at once. <b>Simulate</b> for seeing one person’s screen before you commit to it. <b>Org chart</b> for reporting lines: drag a card onto someone to change who they report to, and pick a person to see where their sign-offs go.',
 			view: 'matrix',
 			target: '.modes'
 		},

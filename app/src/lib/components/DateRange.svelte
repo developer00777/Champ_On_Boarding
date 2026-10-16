@@ -51,14 +51,14 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		background: #14171f;
+		background: var(--ae-modal-base);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 9px;
 		padding: 2px 4px 2px 10px;
 	}
 	.dr.on {
-		border-color: rgba(255, 125, 85, 0.5);
-		background: rgba(255, 125, 85, 0.08);
+		border-color: rgba(var(--ae-ember-rgb), 0.5);
+		background: rgba(var(--ae-ember-rgb), 0.08);
 	}
 	label {
 		display: inline-flex;

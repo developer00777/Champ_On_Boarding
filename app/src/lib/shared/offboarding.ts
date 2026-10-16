@@ -821,13 +821,13 @@ export const EXIT_UPLOAD_DOCS = [
 
 // ── Status labels ────────────────────────────────────────────────────────────
 export const EXIT_STATUS_META: Record<string, { label: string; cls: string }> = {
-	initiated: { label: 'INITIATED', cls: '' },
-	link_sent: { label: 'LINK SENT', cls: 'purple' },
-	in_progress: { label: 'IN PROGRESS', cls: 'purple' },
-	submitted: { label: 'AWAITING REVIEW', cls: 'gold' },
-	changes_requested: { label: 'CHANGES REQUESTED', cls: 'red' },
-	clearances: { label: 'CLEARANCES PENDING', cls: 'gold' },
-	cleared: { label: 'CLEARED', cls: 'teal' },
-	fnf: { label: 'F&F IN PROGRESS', cls: 'purple' },
-	completed: { label: 'COMPLETED', cls: 'teal' }
+	initiated: { label: 'Initiated', cls: '' },
+	link_sent: { label: 'Link sent', cls: 'purple' },
+	in_progress: { label: 'In progress', cls: 'purple' },
+	submitted: { label: 'Awaiting review', cls: 'gold' },
+	changes_requested: { label: 'Changes requested', cls: 'red' },
+	clearances: { label: 'Clearances pending', cls: 'gold' },
+	cleared: { label: 'Cleared', cls: 'teal' },
+	fnf: { label: 'F&F in progress', cls: 'purple' },
+	completed: { label: 'Completed', cls: 'teal' }
 };

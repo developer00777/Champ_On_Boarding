@@ -7,15 +7,15 @@
 	let { data } = $props();
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
-		sent: { label: 'SENT', cls: '' },
-		delivered: { label: 'DELIVERED', cls: 'teal' },
-		opened: { label: 'OPENED', cls: 'teal' },
-		clicked: { label: 'CLICKED', cls: 'teal' },
-		bounced: { label: 'BOUNCED', cls: 'red' },
-		complained: { label: 'COMPLAINED', cls: 'red' },
-		delayed: { label: 'DELAYED', cls: 'gold' },
-		failed: { label: 'FAILED', cls: 'red' },
-		received: { label: 'REPLY', cls: 'purple' }
+		sent: { label: 'Sent', cls: '' },
+		delivered: { label: 'Delivered', cls: 'teal' },
+		opened: { label: 'Opened', cls: 'teal' },
+		clicked: { label: 'Clicked', cls: 'teal' },
+		bounced: { label: 'Bounced', cls: 'red' },
+		complained: { label: 'Complained', cls: 'red' },
+		delayed: { label: 'Delayed', cls: 'gold' },
+		failed: { label: 'Failed', cls: 'red' },
+		received: { label: 'Reply', cls: 'purple' }
 	};
 
 	const DIRECTIONS = [
@@ -235,7 +235,7 @@
 	}
 	.seg {
 		display: inline-flex;
-		background: #14171f;
+		background: var(--ae-modal-base);
 		border: 1px solid var(--ae-line-strong);
 		border-radius: 9px;
 		padding: 2px;
@@ -254,7 +254,7 @@
 		color: var(--ae-text);
 	}
 	.seg-b.on {
-		background: rgba(255, 125, 85, 0.14);
+		background: rgba(var(--ae-ember-rgb), 0.14);
 		color: var(--ae-ember-glow);
 	}
 	.filter-select {
@@ -280,7 +280,7 @@
 	}
 	.searchbox:focus-within {
 		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(255, 125, 85, 0.25);
+		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
 	}
 	.count {
 		margin-left: auto;
@@ -305,8 +305,8 @@
 		font-family: var(--ae-font-mono);
 		font-size: 10.5px;
 		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		letter-spacing: 0;
+		text-transform: none;
 		color: var(--ae-muted);
 		border-bottom: 1px solid var(--ae-card-border);
 	}
