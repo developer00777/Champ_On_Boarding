@@ -147,8 +147,10 @@
 }
 
 /* Light mode: "sunrise". A warm cream page washed with orange, indigo and
-   rose light; frosted white glass cards that catch those washes, warm
-   orange-tinted shadows, and deep indigo ink. Accents darken so text set in
+   rose light; near-opaque white cards with warm orange-tinted shadows, and
+   deep indigo ink. No backdrop blur: at this opacity it barely shows, and
+   a dozen blurred layers over the page gradient made every click repaint
+   slowly. Accents darken so text set in
    them keeps its contrast on white (charts.ts validates against these). */
 .aegis[data-theme='light'] {
 	--ae-ember: #ea580c;
@@ -188,7 +190,7 @@
 		radial-gradient(760px 520px at 78% 96%, rgba(251, 191, 36, 0.14), transparent 60%), #fbf5ef;
 	--ae-card-bg:
 		radial-gradient(120% 90% at 0% 0%, rgba(255, 237, 220, 0.55), transparent 55%),
-		linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82));
+		linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.9));
 	--ae-card-solid: #ffffff;
 	--ae-elevated: #fff8f2;
 	--ae-card-border: rgba(234, 88, 12, 0.12);
@@ -201,7 +203,7 @@
 		0 2px 4px rgba(124, 45, 18, 0.06),
 		0 22px 42px -20px rgba(234, 88, 12, 0.38);
 	--ae-card-border-hover: rgba(234, 88, 12, 0.28);
-	--ae-card-blur: blur(18px) saturate(160%);
+	--ae-card-blur: none;
 	--ae-input-bg: #ffffff;
 	--ae-sub-bg: #fff8f2;
 	--ae-rail-bg:

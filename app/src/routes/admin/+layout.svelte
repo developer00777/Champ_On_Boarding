@@ -408,10 +408,13 @@
 		min-height: 100vh;
 	}
 
-	/* Light mode: a frosted warm-white sidebar that lets the page's orange
-	   wash through; the current page is a solid orange pill with white type. */
+	/* Light mode: a warm-white sidebar that lets the page's orange wash
+	   through (unblurred, like the cards); the current page is a solid orange
+	   pill with white type. */
 	:global(.aegis[data-theme='light']) .rail {
 		border-right: 1px solid rgba(234, 88, 12, 0.12);
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
 		box-shadow: 8px 0 30px -24px rgba(234, 88, 12, 0.35);
 	}
 	:global(.aegis[data-theme='light']) .rail .navitem:hover {
