@@ -588,16 +588,24 @@
 		-webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
 		mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
 	}
-	/* Light mode: the banner is a white card with one soft orange glow in
-	   its corner and dark type. */
+	/* Light mode: the banner is the boldest thing on the page, an indigo to
+	   orange sweep with white type, and the white number cards sit over its
+	   lower edge. */
 	:global(.aegis[data-theme='light']) .overview::before {
 		background:
-			radial-gradient(420px 220px at 100% 0%, rgba(251, 146, 60, 0.16), transparent 70%),
-			#ffffff;
-		border-color: #eceef2;
-		box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px -10px rgba(16, 24, 40, 0.1);
+			radial-gradient(520px 260px at 100% 0%, rgba(253, 186, 116, 0.75), transparent 70%),
+			radial-gradient(420px 240px at 0% 0%, rgba(129, 140, 248, 0.55), transparent 70%),
+			linear-gradient(115deg, #312e81 0%, #5b3aa6 38%, #db5a3c 74%, #f97316 100%);
+		border-color: transparent;
+		box-shadow: 0 24px 48px -28px rgba(91, 58, 166, 0.55);
 		-webkit-mask-image: none;
 		mask-image: none;
+	}
+	:global(.aegis[data-theme='light']) .hero-copy h2 {
+		color: #ffffff;
+	}
+	:global(.aegis[data-theme='light']) .hero-copy p {
+		color: rgba(255, 255, 255, 0.86);
 	}
 	.hero-copy {
 		padding: 0 32px;
@@ -638,21 +646,26 @@
 			border-color var(--ae-dur) var(--ae-ease),
 			transform var(--ae-dur) var(--ae-ease);
 	}
-	/* Light mode: plain white number cards; each icon sits on a pale tile
-	   of its own colour. */
+	/* Light mode: solid white number cards, each with a stripe, a corner
+	   wash and a filled icon tile in its own colour. */
 	:global(.aegis[data-theme='light']) .metric {
-		background: #ffffff;
-		border-color: #eceef2;
-		box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px -10px rgba(16, 24, 40, 0.1);
+		background:
+			radial-gradient(120% 90% at 100% 0%, rgba(var(--tone), 0.1), transparent 55%),
+			#ffffff;
+		border-color: rgba(var(--tone), 0.16);
+		box-shadow:
+			inset 0 3px 0 rgb(var(--tone)),
+			0 1px 2px rgba(27, 24, 56, 0.05),
+			0 18px 34px -20px rgba(var(--tone), 0.45);
 	}
 	:global(.aegis[data-theme='light']) .metric .metric-ico {
-		color: rgb(var(--tone));
-		background: rgba(var(--tone), 0.1);
+		color: #ffffff;
+		background: linear-gradient(150deg, rgba(var(--tone), 0.95), rgba(var(--tone), 0.72));
 		border: 0;
-		box-shadow: none;
+		box-shadow: 0 8px 16px -8px rgba(var(--tone), 0.8);
 	}
 	:global(.aegis[data-theme='light']) .metric .metric-value {
-		color: #111827;
+		color: var(--ae-text);
 	}
 	.metric.tone-blue {
 		--tone: var(--ae-azure-rgb);
@@ -1014,9 +1027,43 @@
 			border-color var(--ae-dur) var(--ae-ease),
 			background var(--ae-dur) var(--ae-ease);
 	}
+	/* Light mode: white tiles, each icon on a filled chip of its own colour. */
 	:global(.aegis[data-theme='light']) .qa-item {
-		background: var(--ae-elevated);
-		border-color: var(--ae-card-border);
+		--tone: var(--ae-orange-rgb);
+		background:
+			radial-gradient(120% 100% at 0% 0%, rgba(var(--tone), 0.08), transparent 60%),
+			#ffffff;
+		border-color: rgba(var(--tone), 0.16);
+		box-shadow: 0 10px 22px -18px rgba(var(--tone), 0.6);
+	}
+	:global(.aegis[data-theme='light']) .qa-item:nth-child(2) {
+		--tone: var(--ae-violet-rgb);
+	}
+	:global(.aegis[data-theme='light']) .qa-item:nth-child(3) {
+		--tone: var(--ae-azure-rgb);
+	}
+	:global(.aegis[data-theme='light']) .qa-item:nth-child(4) {
+		--tone: var(--ae-verdant-rgb);
+	}
+	:global(.aegis[data-theme='light']) .qa-item:hover {
+		border-color: rgba(var(--tone), 0.4);
+		background:
+			radial-gradient(120% 100% at 0% 0%, rgba(var(--tone), 0.14), transparent 60%),
+			#ffffff;
+	}
+	:global(.aegis[data-theme='light']) .qa-ico {
+		width: 32px;
+		height: 32px;
+		display: grid;
+		place-items: center;
+		border-radius: 8px;
+		background: linear-gradient(150deg, rgba(var(--tone), 0.95), rgba(var(--tone), 0.72));
+		box-shadow: 0 6px 12px -6px rgba(var(--tone), 0.8);
+	}
+	:global(.aegis[data-theme='light']) .qa-ico :global(svg) {
+		width: 16px;
+		height: 16px;
+		color: #ffffff;
 	}
 	.qa-item:hover {
 		border-color: rgba(var(--ae-ember-rgb), 0.45);

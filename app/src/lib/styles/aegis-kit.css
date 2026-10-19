@@ -498,27 +498,55 @@
 }
 
 /* =========================================================
-   Light mode: plain grey table headers, a quiet row hover,
-   near-black page titles.
+   Light mode: warm peach table headers, an orange-washed row
+   hover, and the same glowing orange call to action as dark.
    ========================================================= */
 .aegis[data-theme='light'] .content .thead {
-	background: #f9fafb;
-	color: #6b7280;
-	font-weight: 500;
+	background: linear-gradient(90deg, #fff3e8, #fdf1f6);
+	color: var(--ae-muted-2);
+	font-weight: 600;
 }
 .aegis[data-theme='light'] .content .trow:hover {
-	background: #fafafa;
+	background: linear-gradient(90deg, rgba(251, 146, 60, 0.08), rgba(251, 146, 60, 0.02));
 }
 .aegis[data-theme='light'] .page-title {
-	color: #111827;
+	color: var(--ae-text);
 }
-/* The main button: solid orange, no gradient. */
 .aegis[data-theme='light'] .btn:not(.ghost):not(.teal):not(:disabled) {
-	background: #ea580c;
-	border-color: #ea580c;
-	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+	background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+	border-color: rgba(194, 65, 12, 0.35);
+	box-shadow:
+		0 1px 0 rgba(255, 255, 255, 0.35) inset,
+		0 10px 20px -10px rgba(234, 88, 12, 0.7);
 }
 .aegis[data-theme='light'] .btn:not(.ghost):not(.teal):not(:disabled):hover {
-	background: #c2410c;
-	filter: none;
+	filter: brightness(1.05);
+	box-shadow:
+		0 1px 0 rgba(255, 255, 255, 0.35) inset,
+		0 14px 24px -10px rgba(234, 88, 12, 0.8);
+}
+.aegis[data-theme='light'] .btn.ghost:hover:not(:disabled) {
+	background: #fff4ea;
+}
+.aegis[data-theme='light'] .btn.teal {
+	background: linear-gradient(180deg, #10b981 0%, var(--ae-verdant) 100%);
+	box-shadow:
+		0 1px 0 rgba(255, 255, 255, 0.3) inset,
+		0 10px 20px -10px rgba(var(--ae-verdant-rgb), 0.7);
+}
+/* The selected filter or tab is a raised white chip with an orange edge. */
+.aegis[data-theme='light'] .seg .seg-b.on,
+.aegis[data-theme='light'] .tabbar .tabbtn.on {
+	background: #ffffff;
+	box-shadow:
+		inset 0 0 0 1px rgba(var(--ae-orange-rgb), 0.3),
+		inset 0 -2px 0 var(--ae-orange),
+		0 6px 14px -8px rgba(var(--ae-orange-rgb), 0.5);
+}
+.aegis[data-theme='light'] .pill:not(.purple):not(.gold):not(.teal):not(.red) {
+	background: rgba(99, 102, 241, 0.08);
+	color: #4338ca;
+}
+.aegis[data-theme='light'] ::selection {
+	background: rgba(var(--ae-orange-rgb), 0.22);
 }

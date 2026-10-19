@@ -402,28 +402,33 @@
 	}
 	:global(html:has(.aegis[data-theme='light'])),
 	:global(body:has(.aegis[data-theme='light'])) {
-		background: #f4f5fa;
+		background: #fbf5ef;
 	}
 	.shell {
 		min-height: 100vh;
 	}
 
-	/* Light mode: a plain white sidebar with a hairline edge; the current
-	   page is a soft orange pill with deep orange text and icon. */
+	/* Light mode: a frosted warm-white sidebar that lets the page's orange
+	   wash through; the current page is a solid orange pill with white type. */
 	:global(.aegis[data-theme='light']) .rail {
-		border-right: 1px solid #eceef2;
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
+		border-right: 1px solid rgba(234, 88, 12, 0.12);
+		box-shadow: 8px 0 30px -24px rgba(234, 88, 12, 0.35);
 	}
 	:global(.aegis[data-theme='light']) .rail .navitem:hover {
-		background: #f6f7f9;
+		background: rgba(251, 146, 60, 0.1);
 	}
 	:global(.aegis[data-theme='light']) .rail .navitem.on {
-		background: #fff1e8;
-		color: #c2410c;
+		background: linear-gradient(135deg, #fb923c 0%, #ea580c 100%);
+		color: #ffffff;
+		box-shadow:
+			0 1px 0 rgba(255, 255, 255, 0.3) inset,
+			0 10px 20px -10px rgba(234, 88, 12, 0.75);
+	}
+	:global(.aegis[data-theme='light']) .rail .navitem.on :global(svg) {
+		color: #ffffff;
 	}
 	:global(.aegis[data-theme='light']) .rail .navitem.on::before {
-		box-shadow: none;
+		display: none;
 	}
 
 	/* ---------- shell grid ---------- */

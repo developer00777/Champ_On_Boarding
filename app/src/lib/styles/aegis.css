@@ -146,11 +146,10 @@
 	--ae-card-shadow: 0 24px 48px -20px rgba(0, 0, 0, 0.75);
 }
 
-/* Light mode. Accents darken so text set in them keeps its contrast on white. */
-/* Light mode: clean and bright. A neutral off-white page, solid white
-   cards with soft neutral shadows, near-black type, and orange as the one
-   accent (links, selection, focus, the active menu item, buttons). No
-   gradients, tints or glass: the content and the orange do the work. */
+/* Light mode: "sunrise". A warm cream page washed with orange, indigo and
+   rose light; frosted white glass cards that catch those washes, warm
+   orange-tinted shadows, and deep indigo ink. Accents darken so text set in
+   them keeps its contrast on white (charts.ts validates against these). */
 .aegis[data-theme='light'] {
 	--ae-ember: #ea580c;
 	--ae-ember-glow: #c2410c;
@@ -170,33 +169,47 @@
 	--ae-azure: #2563eb;
 	--ae-azure-rgb: 37, 99, 235;
 
-	--ae-text: #111827;
-	--ae-text-2: #374151;
-	--ae-muted: #6b7280;
-	--ae-muted-2: #4b5563;
-	--ae-faint: #d1d5db;
-	--ae-numeral: #e5e7eb;
+	--ae-text: #1b1838;
+	--ae-text-2: #3d3a5a;
+	--ae-muted: #6f6b86;
+	--ae-muted-2: #54506e;
+	--ae-faint: #d9cfc6;
+	--ae-numeral: #efe4da;
 
-	--ae-line: #eceef2;
-	--ae-line-soft: #f3f4f6;
-	--ae-line-strong: #e2e5ea;
+	--ae-line: #f0e6dc;
+	--ae-line-soft: #f7f0e9;
+	--ae-line-strong: #e9dccf;
 
-	--ae-page-solid: #f6f7f9;
-	--ae-page-bg: #f6f7f9;
-	--ae-card-bg: #ffffff;
+	--ae-page-solid: #fbf5ef;
+	--ae-page-bg:
+		radial-gradient(900px 620px at 94% -10%, rgba(251, 146, 60, 0.26), transparent 60%),
+		radial-gradient(820px 620px at 22% 4%, rgba(99, 102, 241, 0.13), transparent 62%),
+		radial-gradient(900px 640px at 4% 106%, rgba(244, 114, 182, 0.13), transparent 60%),
+		radial-gradient(760px 520px at 78% 96%, rgba(251, 191, 36, 0.14), transparent 60%), #fbf5ef;
+	--ae-card-bg:
+		radial-gradient(120% 90% at 0% 0%, rgba(255, 237, 220, 0.55), transparent 55%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82));
 	--ae-card-solid: #ffffff;
-	--ae-elevated: #f9fafb;
-	--ae-card-border: #eceef2;
-	--ae-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px -10px rgba(16, 24, 40, 0.1);
-	--ae-card-shadow-hover: 0 1px 2px rgba(16, 24, 40, 0.05), 0 12px 28px -12px rgba(16, 24, 40, 0.16);
-	--ae-card-border-hover: #e0e3e9;
-	--ae-card-blur: none;
+	--ae-elevated: #fff8f2;
+	--ae-card-border: rgba(234, 88, 12, 0.12);
+	--ae-card-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.95),
+		0 1px 2px rgba(124, 45, 18, 0.05),
+		0 16px 34px -20px rgba(234, 88, 12, 0.28);
+	--ae-card-shadow-hover:
+		inset 0 1px 0 rgba(255, 255, 255, 0.95),
+		0 2px 4px rgba(124, 45, 18, 0.06),
+		0 22px 42px -20px rgba(234, 88, 12, 0.38);
+	--ae-card-border-hover: rgba(234, 88, 12, 0.28);
+	--ae-card-blur: blur(18px) saturate(160%);
 	--ae-input-bg: #ffffff;
-	--ae-sub-bg: #f9fafb;
-	--ae-rail-bg: #ffffff;
-	--ae-hover: #fafafa;
+	--ae-sub-bg: #fff8f2;
+	--ae-rail-bg:
+		radial-gradient(160% 40% at 0% 100%, rgba(251, 146, 60, 0.16), transparent 60%),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 248, 241, 0.74));
+	--ae-hover: rgba(234, 88, 12, 0.05);
 	--ae-modal-base: #ffffff;
-	--ae-focus: 0 0 0 3px rgba(234, 88, 12, 0.18);
+	--ae-focus: 0 0 0 3px rgba(234, 88, 12, 0.2);
 }
 
 @media (prefers-reduced-motion: reduce) {
