@@ -1932,7 +1932,10 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 .aegis .an-split.trends .an-stack > .chart-card {
 	flex: 1 0 auto;
 }
-.aegis .tabpanel.on .tr-plot {
+/* Specific enough to beat ".chart-card > :last-child" above: its auto basis
+   is 0 here, since the svg inside is absolutely positioned, and the plot
+   then draws taller than its box and spills over the card below. */
+.aegis .tabpanel.on .chart-card > .tr-plot {
 	flex: 1 0 160px;
 	height: auto;
 	max-height: 300px;

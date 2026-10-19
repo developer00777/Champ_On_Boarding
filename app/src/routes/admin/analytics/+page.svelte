@@ -171,7 +171,9 @@
 	let docsEl: HTMLDivElement | undefined = $state();
 	let breakdownEl: HTMLDivElement | undefined = $state();
 
-	let rendered: Record<string, boolean> = {};
+	// Which data each tab was last drawn from: a range change is a client-side
+	// navigation, so the page stays mounted and only `data` changes.
+	let rendered: Record<string, unknown> = {};
 
 	$effect(() => {
 		if (!chartsMod) return;
@@ -187,18 +189,18 @@
 				conversion: data.conversion,
 				funnel: data.funnel
 			});
-		} else if (activeTab === 'trends' && trendsEl && !rendered.trends) {
+		} else if (activeTab === 'trends' && trendsEl && rendered.trends !== data) {
 			chartsMod.renderTrendsTab(trendsEl, data.trend, data.bucket);
-			rendered.trends = true;
-		} else if (activeTab === 'funnel' && funnelEl && !rendered.funnel) {
+			rendered.trends = data;
+		} else if (activeTab === 'funnel' && funnelEl && rendered.funnel !== data) {
 			chartsMod.renderFunnelTab(funnelEl, data.funnel, data.stageDurations, data.hiringDecision);
-			rendered.funnel = true;
-		} else if (activeTab === 'docs' && docsEl && !rendered.docs) {
+			rendered.funnel = data;
+		} else if (activeTab === 'docs' && docsEl && rendered.docs !== data) {
 			chartsMod.renderDocsTab(docsEl, data.docSlots, data.verification);
-			rendered.docs = true;
-		} else if (activeTab === 'breakdown' && breakdownEl && !rendered.breakdown) {
+			rendered.docs = data;
+		} else if (activeTab === 'breakdown' && breakdownEl && rendered.breakdown !== data) {
 			chartsMod.renderBreakdownTab(breakdownEl, data.breakdown, data.adminWorkload, data.conversion);
-			rendered.breakdown = true;
+			rendered.breakdown = data;
 		}
 	});
 </script>
