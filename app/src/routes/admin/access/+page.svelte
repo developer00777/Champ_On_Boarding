@@ -798,8 +798,10 @@
 	}
 	.note { font-size: 11.5px; line-height: 1.55; color: var(--ae-text-2); border: 1px solid rgba(var(--ae-azure-rgb), 0.3); background: rgba(var(--ae-azure-rgb), 0.09); border-radius: 10px; padding: 10px 13px; margin-bottom: 14px; }
 	/* Both columns end on the same line, set by the table card: the person
-	   panel takes no height of its own (contain: size) and scrolls inside,
-	   so neither column leaves bare page under it. */
+	   panel takes no height of its own (contain: size), so it is always
+	   exactly as tall as the table beside it — growing when modules are
+	   opened — and scrolls inside. It sits in the layout rather than pinned
+	   to the window, so it never slides down the page on its own. */
 	.stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: stretch; }
 	.stage > .insp { align-self: stretch; contain: size; }
 	.main { padding: 0; overflow: hidden; min-height: 460px; display: flex; flex-direction: column; }
@@ -807,9 +809,7 @@
 	.main > .mscroll { margin-bottom: 14px; }
 	/* Each person's column keeps one width whether modules are open or folded. */
 	.matrix thead th:not(.corner) { width: 132px; }
-	/* Pinned beside the table as it scrolls, so the right column is never a
-	   long empty strip under a short panel. */
-	.insp { padding: 16px; position: sticky; top: 16px; max-height: calc(100vh - 110px); display: flex; flex-direction: column; }
+	.insp { padding: 16px; display: flex; flex-direction: column; }
 
 	.mbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--ae-line); flex-wrap: wrap; }
 	.picks { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -1004,8 +1004,8 @@
 	.avatar.tiny { width: 24px; height: 24px; border-radius: 7px; font-size: 9.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); flex: none; }
 	@media (max-width: 1100px) {
 		.stage { grid-template-columns: minmax(0, 1fr); }
-		.insp { position: static; max-height: none; }
 		.stage > .insp { contain: none; }
+		.insp-body { overflow-y: visible; }
 		.simgrid { grid-template-columns: minmax(0, 1fr); }
 	}
 </style>
