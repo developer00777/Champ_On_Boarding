@@ -3,7 +3,6 @@
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
 	import DateRange from '$lib/components/DateRange.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
-	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 
 	let { data } = $props();
 
@@ -34,18 +33,6 @@
 	const isFiltered = $derived(
 		data.range !== 'all' || !!data.entity || !!data.track || !!data.status || !!data.q
 	);
-
-	async function fetchCandidateSuggestions(q: string) {
-		const res = await fetch(`/admin/candidates/search?q=${encodeURIComponent(q)}`);
-		if (!res.ok) return [];
-		const { results } = await res.json();
-		return results.map((c: { id: string; fullName: string | null; email: string; employeeId: string | null }) => ({
-			id: c.id,
-			primary: c.fullName || c.email,
-			secondary: c.employeeId ? `Employee code ${c.employeeId}` : c.email,
-			href: `/admin/candidates/${c.id}`
-		}));
-	}
 
 	function when(iso: string): string {
 		const d = new Date(iso);
@@ -112,25 +99,6 @@
 		/>
 	</div>
 
-	<!-- GET form keeps the search in the URL like the other filters; hidden
-	     inputs carry the active filters so a search doesn't silently drop them. -->
-	<form class="searchbox" method="GET" action="/admin/candidates" role="search" data-sveltekit-noscroll data-sveltekit-keepfocus>
-		{#if data.range !== 'all' && data.range !== 'custom'}<input type="hidden" name="range" value={data.range} />{/if}
-		{#if data.fromDay}<input type="hidden" name="from" value={data.fromDay} />{/if}
-		{#if data.toDay}<input type="hidden" name="to" value={data.toDay} />{/if}
-		{#if data.entity}<input type="hidden" name="entity" value={data.entity} />{/if}
-		{#if data.track}<input type="hidden" name="track" value={data.track} />{/if}
-		{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}
-		<SearchTypeahead
-			name="q"
-			value={data.q ?? ''}
-			placeholder="Search name or employee code"
-			ariaLabel="Search candidates by name or employee code"
-			clearHref={href({ q: '' })}
-			fetchSuggestions={fetchCandidateSuggestions}
-			onSelect={(s) => s.href ?? `/admin/candidates/${s.id}`}
-		/>
-	</form>
 
 	<span class="count">
 		{#if isFiltered}
@@ -240,24 +208,6 @@
 		font-weight: 500;
 	}
 	/* Search box matches the GlassSelect trigger chrome. */
-	.searchbox {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: var(--ae-input-bg);
-		border: 1px solid var(--ae-line-strong);
-		border-radius: 8px;
-		padding: 0 4px 0 12px;
-		min-width: 230px;
-		transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
-	}
-	.searchbox:hover {
-		background: var(--ae-hover);
-	}
-	.searchbox:focus-within {
-		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
-	}
 	.count {
 		margin-left: auto;
 		font-family: var(--ae-font-mono);

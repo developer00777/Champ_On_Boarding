@@ -207,53 +207,6 @@
 <div class="dash">
 	<div class="dash-main">
 		<section class="overview" aria-labelledby="hero-title">
-			<svg class="silk" viewBox="0 0 820 190" preserveAspectRatio="xMaxYMin slice" aria-hidden="true">
-				<defs>
-					<linearGradient id="hs-c" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#ffffff" stop-opacity="0" />
-						<stop offset="0.55" stop-color="#d9ccff" stop-opacity="0.8" />
-						<stop offset="1" stop-color="#ffffff" />
-					</linearGradient>
-					<linearGradient id="hs-l" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#8b74ff" stop-opacity="0" />
-						<stop offset="0.6" stop-color="#9d88ff" />
-						<stop offset="1" stop-color="#c8b8ff" />
-					</linearGradient>
-					<linearGradient id="hs-p" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#ff9bd8" stop-opacity="0" />
-						<stop offset="0.6" stop-color="#f0a6ff" />
-						<stop offset="1" stop-color="#ffd3f1" />
-					</linearGradient>
-					<!-- a very thin sheet of colour between the outer strands -->
-					<linearGradient id="hs-sheet" x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0" stop-color="#9a84ff" stop-opacity="0.32" />
-						<stop offset="1" stop-color="#4a36d4" stop-opacity="0" />
-					</linearGradient>
-					<radialGradient id="hs-glow" cx="0.82" cy="0.12" r="0.55">
-						<stop offset="0" stop-color="#7457ff" stop-opacity="0.42" />
-						<stop offset="0.6" stop-color="#4b36c9" stop-opacity="0.12" />
-						<stop offset="1" stop-color="#4b36c9" stop-opacity="0" />
-					</radialGradient>
-					<linearGradient id="hs-fadeg" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0.3" stop-color="#000" />
-						<stop offset="0.75" stop-color="#fff" />
-					</linearGradient>
-					<mask id="hs-fade"><rect width="820" height="190" fill="url(#hs-fadeg)" /></mask>
-					<filter id="hs-blur" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="9" /></filter>
-				</defs>
-				<rect width="820" height="190" fill="url(#hs-glow)" />
-				<g mask="url(#hs-fade)">
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6 L 820 40 C 780 52, 720 70, 650 92 C 540 126, 430 150, 300 168 Z" fill="url(#hs-sheet)" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 6)" fill="none" stroke="#6b52f0" stroke-width="14" opacity="0.55" filter="url(#hs-blur)" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 0)" fill="none" stroke="url(#hs-c)" stroke-width="1.8" opacity="1" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 7)" fill="none" stroke="url(#hs-l)" stroke-width="1.1" opacity="0.9" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 15)" fill="none" stroke="url(#hs-l)" stroke-width="0.9" opacity="0.7" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 26)" fill="none" stroke="url(#hs-l)" stroke-width="0.8" opacity="0.5" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 40)" fill="none" stroke="url(#hs-l)" stroke-width="0.7" opacity="0.35" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 -9)" fill="none" stroke="url(#hs-p)" stroke-width="0.9" opacity="0.85" />
-					<path d="M300 128 C 430 120, 530 82, 636 48 C 718 22, 780 6, 820 -6" transform="translate(0 -18)" fill="none" stroke="url(#hs-p)" stroke-width="0.7" opacity="0.5" />
-				</g>
-			</svg>
 			<div class="hero-copy">
 				<h2 id="hero-title">{greeting}{firstName ? `, ${firstName}` : ''}</h2>
 				<p>Here's where onboarding stands today.</p>
@@ -353,7 +306,7 @@
 					</defs>
 					<rect x="6" y="22" width="22" height="40" rx="5" fill="#141842" opacity="0.8" />
 					<rect x="24" y="8" width="72" height="68" rx="9" fill="url(#nh-card)" stroke="#4b47b8" stroke-opacity="0.6" />
-					<circle cx="42" cy="28" r="8" fill="#7568ff" />
+					<circle cx="42" cy="28" r="8" fill="#6366f1" />
 					<circle cx="42" cy="25.5" r="2.6" fill="#e6e3ff" />
 					<path d="M37 32.5a5 5 0 0 1 10 0" fill="#e6e3ff" />
 					<rect x="34" y="44" width="48" height="5" rx="2.5" fill="#5f5ad6" opacity="0.85" />
@@ -423,49 +376,6 @@
 
 	<aside class="dash-rail" aria-label="Shortcuts and lists">
 		<section class="panel qa">
-			<svg class="qa-art" viewBox="0 0 400 110" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-				<defs>
-					<linearGradient id="qa-bg" x1="0" y1="0" x2="1" y2="1">
-						<stop offset="0" stop-color="#121842" />
-						<stop offset="1" stop-color="#1b1652" />
-					</linearGradient>
-					<radialGradient id="qa-glow" cx="0.8" cy="0.2" r="0.7">
-						<stop offset="0" stop-color="#b05cf0" stop-opacity="0.45" />
-						<stop offset="1" stop-color="#5a3fe0" stop-opacity="0" />
-					</radialGradient>
-					<linearGradient id="qa-c" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#ffffff" stop-opacity="0.1" />
-						<stop offset="0.6" stop-color="#ffd6f4" stop-opacity="0.85" />
-						<stop offset="1" stop-color="#ffffff" />
-					</linearGradient>
-					<linearGradient id="qa-l" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#7a64ff" stop-opacity="0.2" />
-						<stop offset="1" stop-color="#c9a8ff" />
-					</linearGradient>
-					<linearGradient id="qa-p" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#ff8fd0" stop-opacity="0.1" />
-						<stop offset="1" stop-color="#ffb8e6" />
-					</linearGradient>
-					<linearGradient id="qa-b" x1="0" y1="0" x2="1" y2="0">
-						<stop offset="0" stop-color="#6aa8ff" stop-opacity="0.1" />
-						<stop offset="1" stop-color="#a9c8ff" />
-					</linearGradient>
-					<linearGradient id="qa-sheet" x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0" stop-color="#b47cff" stop-opacity="0.3" />
-						<stop offset="1" stop-color="#5a3fe0" stop-opacity="0" />
-					</linearGradient>
-					<filter id="qa-blur" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="7" /></filter>
-				</defs>
-				<rect width="400" height="110" fill="url(#qa-bg)" />
-				<rect width="400" height="110" fill="url(#qa-glow)" />
-				<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6 L 400 50 C 350 64, 300 80, 230 86 C 150 92, 80 106, 0 110 Z" fill="url(#qa-sheet)" />
-				<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6" transform="translate(0 4)" fill="none" stroke="#8a5cf2" stroke-width="12" opacity="0.5" filter="url(#qa-blur)" />
-					<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6" transform="translate(0 0)" fill="none" stroke="url(#qa-c)" stroke-width="1.6" opacity="1" />
-					<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6" transform="translate(0 7)" fill="none" stroke="url(#qa-l)" stroke-width="1" opacity="0.85" />
-					<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6" transform="translate(0 15)" fill="none" stroke="url(#qa-l)" stroke-width="0.9" opacity="0.6" />
-					<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6" transform="translate(0 26)" fill="none" stroke="url(#qa-b)" stroke-width="0.8" opacity="0.55" />
-					<path d="M0 100 C 90 92, 150 58, 230 52 C 310 46, 356 22, 400 6" transform="translate(0 -8)" fill="none" stroke="url(#qa-p)" stroke-width="0.9" opacity="0.8" />
-			</svg>
 			<header class="panel-head tight">
 				<div>
 					<h2>Quick actions</h2>
@@ -575,16 +485,22 @@
 	/* ---------- layout ---------- */
 	.dash {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(280px, 330px);
-		gap: 16px;
-		align-items: start;
+		grid-template-columns: minmax(0, 1fr) minmax(300px, 370px);
+		gap: 22px;
+		align-items: stretch;
 	}
 	.dash-main,
 	.dash-rail {
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
+		gap: 22px;
 		min-width: 0;
+	}
+	/* Both columns end on the same line: the last card in each takes up the
+	   slack instead of leaving the shorter column hanging. */
+	.dash-main > :last-child,
+	.dash-rail > :last-child {
+		flex: 1 0 auto;
 	}
 
 	/* ---------- panels ---------- */
@@ -594,14 +510,14 @@
 		border: 1px solid var(--ae-card-border);
 		border-radius: 14px;
 		box-shadow: var(--ae-card-shadow);
-		padding: 14px 16px;
+		padding: 22px 24px;
 		overflow: hidden;
 	}
 	.panel.flush {
 		padding: 0;
 	}
 	.panel.flush .panel-head {
-		padding: 14px 16px 10px;
+		padding: 22px 24px 14px;
 		margin: 0;
 	}
 	/* The form's dropdowns must be able to open past the card edge. */
@@ -613,29 +529,29 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 12px;
-		margin-bottom: 16px;
+		margin-bottom: 22px;
 	}
 	.panel-head.tight {
-		margin-bottom: 12px;
+		margin-bottom: 16px;
 	}
 	.panel-head h2,
 	.newhire-head h2 {
-		font-size: 15px;
-		font-weight: 550;
-		margin: 0 0 3px;
+		font-size: 16.5px;
+		font-weight: 600;
+		margin: 0 0 5px;
 		letter-spacing: -0.01em;
 	}
 	.panel-head p,
 	.newhire-head p {
 		margin: 0;
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--ae-muted-2);
 	}
 	.panel-link {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--ae-azure);
 		text-decoration: none;
 		white-space: nowrap;
@@ -653,83 +569,90 @@
 	/* ---------- overview: hero + metrics ---------- */
 	.overview {
 		position: relative;
-		padding: 24px 0 0;
+		padding: 34px 0 0;
 		isolation: isolate;
 	}
-	/* The silk sits on a dark panel that fades out behind the metric cards. */
+	/* A dark indigo panel with a soft orange glow, fading out behind the metric
+	   cards. No wave artwork: the brand colour carries it. */
 	.overview::before {
 		content: '';
 		position: absolute;
 		inset: 0 0 92px 0;
 		border-radius: 16px;
-		background: linear-gradient(115deg, #0b1230 0%, #0f1640 48%, #1a1b58 100%);
+		background:
+			radial-gradient(560px 240px at 100% 0%, rgba(251, 146, 60, 0.2), transparent 70%),
+			linear-gradient(115deg, #0b1230 0%, #0e1640 55%, #121a4a 100%);
 		border: 1px solid #1c2550;
 		z-index: -2;
 		/* Fades out behind the metric cards instead of ending on a hard edge. */
 		-webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
 		mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
 	}
-	.silk {
-		position: absolute;
-		top: 0;
-		right: 0;
-		width: 100%;
-		height: calc(100% - 92px);
-		border-radius: 16px;
-		z-index: -1;
-		pointer-events: none;
-	}
+	/* Light mode: the banner is a white card with one soft orange glow in
+	   its corner and dark type. */
 	:global(.aegis[data-theme='light']) .overview::before {
-		background: linear-gradient(115deg, #ffffff 0%, #f1efff 60%, #e6e1ff 100%);
-		border-color: #e3e0f7;
-	}
-	:global(.aegis[data-theme='light']) .silk {
-		opacity: 0.55;
+		background:
+			radial-gradient(420px 220px at 100% 0%, rgba(251, 146, 60, 0.16), transparent 70%),
+			#ffffff;
+		border-color: #eceef2;
+		box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px -10px rgba(16, 24, 40, 0.1);
+		-webkit-mask-image: none;
+		mask-image: none;
 	}
 	.hero-copy {
-		padding: 0 24px;
-		margin-bottom: 18px;
+		padding: 0 32px;
+		margin-bottom: 30px;
 	}
 	.hero-copy h2 {
-		font-size: 27px;
+		font-size: 32px;
 		font-weight: 600;
 		letter-spacing: -0.028em;
 		line-height: 1.15;
-		margin: 0 0 6px;
+		margin: 0 0 8px;
 	}
 	.hero-copy p {
 		margin: 0;
 		color: var(--ae-text-2);
-		font-size: 13.5px;
+		font-size: 15px;
 	}
 
 	/* ---------- metrics ---------- */
 	.metrics {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 12px;
+		gap: 18px;
 	}
 	.metric {
 		--tone: var(--ae-ember-rgb);
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		padding: 13px 14px 12px;
-		border-radius: 12px;
-		background: linear-gradient(180deg, rgba(12, 20, 46, 0.92), rgba(9, 15, 36, 0.96));
-		border: 1px solid #1b2546;
-		box-shadow: 0 16px 34px -22px rgba(0, 0, 0, 0.9);
+		padding: 20px 22px 20px;
+		border-radius: 14px;
+		background: var(--ae-card-bg);
+		border: 1px solid var(--ae-card-border);
+		box-shadow: var(--ae-card-shadow);
 		text-decoration: none;
 		color: var(--ae-text);
-		backdrop-filter: blur(6px);
 		transition:
 			border-color var(--ae-dur) var(--ae-ease),
 			transform var(--ae-dur) var(--ae-ease);
 	}
+	/* Light mode: plain white number cards; each icon sits on a pale tile
+	   of its own colour. */
 	:global(.aegis[data-theme='light']) .metric {
 		background: #ffffff;
-		border-color: var(--ae-card-border);
-		box-shadow: var(--ae-card-shadow);
+		border-color: #eceef2;
+		box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px -10px rgba(16, 24, 40, 0.1);
+	}
+	:global(.aegis[data-theme='light']) .metric .metric-ico {
+		color: rgb(var(--tone));
+		background: rgba(var(--tone), 0.1);
+		border: 0;
+		box-shadow: none;
+	}
+	:global(.aegis[data-theme='light']) .metric .metric-value {
+		color: #111827;
 	}
 	.metric.tone-blue {
 		--tone: var(--ae-azure-rgb);
@@ -748,11 +671,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 12px;
+		margin-bottom: 18px;
 	}
 	.metric-ico {
-		width: 34px;
-		height: 34px;
+		width: 40px;
+		height: 40px;
 		display: grid;
 		place-items: center;
 		border-radius: 8px;
@@ -766,8 +689,8 @@
 		background: linear-gradient(150deg, rgba(var(--tone), 0.42), rgba(var(--tone), 0.18));
 	}
 	.metric-ico :global(svg) {
-		width: 17px;
-		height: 17px;
+		width: 19px;
+		height: 19px;
 	}
 	.metric-go :global(svg) {
 		display: block;
@@ -781,23 +704,23 @@
 		transform: translateX(2px);
 	}
 	.metric-label {
-		font-size: 13px;
+		font-size: 14px;
 		color: var(--ae-text-2);
-		margin-bottom: 4px;
+		margin-bottom: 6px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.metric-value {
-		font-size: 27px;
-		font-weight: 500;
+		font-size: 34px;
+		font-weight: 550;
 		letter-spacing: -0.03em;
-		line-height: 1.15;
-		margin-bottom: 6px;
+		line-height: 1.1;
+		margin-bottom: 8px;
 		font-variant-numeric: tabular-nums;
 	}
 	.metric-note {
-		font-size: 12px;
+		font-size: 12.5px;
 		color: var(--ae-muted-2);
 		white-space: nowrap;
 		overflow: hidden;
@@ -807,7 +730,7 @@
 	/* ---------- pipeline ---------- */
 	.pipeline {
 		list-style: none;
-		margin: 4px 0 2px;
+		margin: 10px 0 6px;
 		padding: 0;
 		display: grid;
 		grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -821,7 +744,7 @@
 		left: 10%;
 		right: 10%;
 		height: 1.5px;
-		background: linear-gradient(90deg, #4d47b8, #36407a 60%, #2a4f63);
+		background: linear-gradient(90deg, #6366f1, #8b6cf0 45%, #f97316);
 	}
 	.stage-inner {
 		position: relative;
@@ -849,7 +772,7 @@
 		background: radial-gradient(circle, #59607e 0 28%, #1f2747 32% 100%);
 	}
 	.stage.lit .node {
-		background: radial-gradient(circle, #ffffff 0 28%, #6f63f4 32% 100%);
+		background: radial-gradient(circle, #ffffff 0 28%, #6366f1 32% 100%);
 	}
 	.stage.done.lit .node {
 		background: radial-gradient(circle, #e6fffb 0 28%, #2fbfa8 32% 100%);
@@ -865,36 +788,43 @@
 			0 0 16px rgba(var(--ae-ember-rgb), 0.75);
 	}
 	.stage-label {
-		font-size: 12px;
+		font-size: 13px;
 		color: var(--ae-text);
 		text-align: center;
 		transition: color var(--ae-dur) var(--ae-ease);
 	}
 	.stage-value {
-		font-size: 12.5px;
-		color: var(--ae-text-2);
+		font-size: 18px;
+		font-weight: 600;
+		margin-top: 2px;
+		color: var(--ae-text);
 		font-variant-numeric: tabular-nums;
 	}
 
 	/* ---------- recent table ---------- */
 	.recent-grid {
 		grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 1.1fr) 70px;
-		padding-left: 18px;
-		padding-right: 18px;
+		padding-left: 24px;
+		padding-right: 24px;
 	}
 	.panel :global(.thead.recent-grid) {
 		border-bottom: 0;
 		padding-top: 0;
-		padding-bottom: 6px;
-		color: var(--ae-text-2);
+		padding-bottom: 10px;
+		font-size: 12.5px;
+		color: var(--ae-muted-2);
 	}
 	.panel :global(.trow.recent-grid) {
-		padding-top: 7px;
-		padding-bottom: 7px;
-		border-bottom: 0;
+		padding-top: 12px;
+		padding-bottom: 12px;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.panel :global(.trow.recent-grid .tcell) {
+		font-size: 13px;
 	}
 	.panel :global(.trow.recent-grid:last-child) {
-		margin-bottom: 10px;
+		border-bottom: 0;
+		margin-bottom: 12px;
 	}
 	.clip {
 		overflow: hidden;
@@ -915,7 +845,7 @@
 	}
 	.who-name {
 		display: block;
-		font-size: 12.5px;
+		font-size: 13.5px;
 		color: var(--ae-text);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -983,20 +913,21 @@
 	/* ---------- new hire panel ---------- */
 	.newhire {
 		background:
-			radial-gradient(70% 140% at 0% 0%, rgba(var(--ae-ember-rgb), 0.14), transparent 60%),
-			linear-gradient(100deg, #0e1538 0%, #0c1330 60%, #121648 100%);
-		border-color: #232c5c;
+			radial-gradient(70% 140% at 100% 100%, rgba(var(--ae-orange-rgb), 0.16), transparent 60%),
+			var(--ae-card-bg);
+		border-color: var(--ae-card-border);
 		scroll-margin-top: 24px;
 	}
 	:global(.aegis[data-theme='light']) .newhire {
-		background: linear-gradient(100deg, #ffffff, #f3f1ff);
-		border-color: var(--ae-card-border);
+		background:
+			radial-gradient(70% 140% at 100% 100%, rgba(var(--ae-orange-rgb), 0.12), transparent 60%),
+			var(--ae-card-bg);
 	}
 	.newhire-head {
 		display: flex;
 		align-items: center;
-		gap: 18px;
-		margin-bottom: 16px;
+		gap: 22px;
+		margin-bottom: 24px;
 	}
 	.newhire-art {
 		width: 96px;
@@ -1007,25 +938,25 @@
 		/* Name · email · mobile, then track · company · submit. */
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 12px;
+		gap: 18px 20px;
 		align-items: end;
 	}
 	.gen-grid label {
-		font-size: 12px;
-		margin-bottom: 5px;
+		font-size: 12.5px;
+		margin-bottom: 7px;
 	}
 	.gen-grid input {
-		padding: 9px 12px;
+		padding: 11px 14px;
 	}
 	.gen-grid .btn {
-		height: 40px;
+		height: 44px;
 	}
 	.gen-grid .btn :global(svg) {
 		width: 14px;
 		height: 14px;
 	}
 	.newhire :global(.gs-trigger) {
-		padding: 9px 12px;
+		padding: 11px 14px;
 	}
 	.linkbox {
 		margin-top: 14px;
@@ -1062,35 +993,22 @@
 	}
 
 	/* ---------- right rail ---------- */
-	.qa {
-		padding-top: 0;
-	}
-	.qa-art {
-		display: block;
-		/* Bleeds to the panel edges: matches .panel's 16px side padding. */
-		width: calc(100% + 32px);
-		height: 56px;
-		margin: 0 -16px 12px;
-	}
-	:global(.aegis[data-theme='light']) .qa-art {
-		opacity: 0.85;
-	}
 	.qa-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 10px;
+		gap: 12px;
 	}
 	.qa-item {
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 9px;
-		padding: 13px 14px 14px;
-		border-radius: 10px;
-		background: rgba(20, 30, 64, 0.55);
-		border: 1px solid #1d2850;
+		gap: 12px;
+		padding: 18px 16px;
+		border-radius: 12px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(var(--ae-orange-rgb), 0.16);
 		color: var(--ae-text);
-		font-size: 12px;
+		font-size: 13px;
 		text-decoration: none;
 		transition:
 			border-color var(--ae-dur) var(--ae-ease),
@@ -1144,7 +1062,7 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 6px;
 	}
 	.list.scroll {
 		max-height: 320px;
@@ -1154,8 +1072,8 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 8px;
-		border-radius: 9px;
+		padding: 10px 8px;
+		border-radius: 10px;
 		text-decoration: none;
 		transition: background var(--ae-dur) var(--ae-ease);
 	}
@@ -1199,8 +1117,7 @@
 		.metrics {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
-		.overview::before,
-		.silk {
+		.overview::before {
 			bottom: auto;
 			height: 150px;
 		}

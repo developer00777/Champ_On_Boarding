@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AskChamp from '$lib/components/AskChamp.svelte';
+	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 	import { page } from '$app/stores';
 	import { afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
@@ -77,13 +78,80 @@
 		menuOpen = false;
 	});
 
-	let searchEl: HTMLInputElement | undefined = $state();
+	/* The one search box. On Inbox and Offboarding it searches that list; from
+	   anywhere else it searches candidates. On the list it searches, it keeps
+	   the list's other filters and shows the current query. */
+	type Scope = {
+		path: string;
+		placeholder: string;
+		label: string;
+		suggest?: (q: string) => Promise<{ id: string; primary: string; secondary?: string; href?: string }[]>;
+	};
+	const SCOPES: Record<string, Scope> = {
+		candidates: {
+			path: '/admin/candidates',
+			placeholder: 'Search candidates by name or employee ID…',
+			label: 'Search candidates',
+			async suggest(q) {
+				const res = await fetch(`/admin/candidates/search?q=${encodeURIComponent(q)}`);
+				if (!res.ok) return [];
+				const { results } = await res.json();
+				return results.map((c: { id: string; fullName: string | null; email: string; employeeId: string | null }) => ({
+					id: c.id,
+					primary: c.fullName || c.email,
+					secondary: c.employeeId ? `Employee code ${c.employeeId}` : c.email,
+					href: `/admin/candidates/${c.id}`
+				}));
+			}
+		},
+		inbox: {
+			path: '/admin/inbox',
+			placeholder: 'Search mail by subject, address or candidate…',
+			label: 'Search mail',
+			async suggest(q) {
+				const res = await fetch(`/admin/inbox/search?q=${encodeURIComponent(q)}`);
+				if (!res.ok) return [];
+				const { results } = await res.json();
+				return results.map(
+					(m: { id: string; direction: string; candidateName: string | null; from: string; to: string; subject: string | null; href: string }) => ({
+						id: m.id,
+						primary: m.subject || '(no subject)',
+						secondary: m.candidateName ?? (m.direction === 'inbound' ? m.from : m.to),
+						href: m.href
+					})
+				);
+			}
+		},
+		offboarding: {
+			path: '/admin/offboarding',
+			placeholder: 'Search exits by name, employee ID or email…',
+			label: 'Search exits'
+		}
+	};
+	const scope = $derived(
+		$page.url.pathname === '/admin/inbox' ? SCOPES.inbox : $page.url.pathname === '/admin/offboarding' ? SCOPES.offboarding : SCOPES.candidates
+	);
+	const onScopePage = $derived($page.url.pathname === scope.path);
+	/** The list's other filters, carried through a search; page is dropped so a
+	 *  new search starts on page 1. */
+	const keepParams = $derived(
+		onScopePage ? [...$page.url.searchParams].filter(([k]) => k !== 'q' && k !== 'page') : []
+	);
+	const currentQ = $derived(onScopePage ? ($page.url.searchParams.get('q') ?? '') : '');
+	const clearHref = $derived.by(() => {
+		const p = new URLSearchParams(keepParams);
+		const qs = p.toString();
+		return `${scope.path}${qs ? `?${qs}` : ''}`;
+	});
+
+	let searchForm: HTMLFormElement | undefined = $state();
 	let shortcut = $state('Ctrl K');
 	onMount(() => {
 		if (/Mac|iPhone|iPad/.test(navigator.platform)) shortcut = '⌘K';
 	});
 
 	function onKey(e: KeyboardEvent) {
+		const searchEl = searchForm?.querySelector<HTMLInputElement>('input[type="search"]');
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && searchEl) {
 			e.preventDefault();
 			searchEl.focus();
@@ -186,12 +254,12 @@
 						<svg viewBox="0 0 32 32">
 							<defs>
 								<linearGradient id="bm" x1="0" y1="0" x2="1" y2="1">
-									<stop offset="0" stop-color="#9b8cff" />
-									<stop offset="1" stop-color="#5a4cf0" />
+									<stop offset="0" stop-color="#818cf8" />
+									<stop offset="1" stop-color="#4f46e5" />
 								</linearGradient>
 							</defs>
 							<path d="M16 3a13 13 0 1 0 13 13h-6.5A6.5 6.5 0 1 1 16 9.5Z" fill="url(#bm)" />
-							<circle cx="23.5" cy="8.5" r="4" fill="#55a6ff" />
+							<circle cx="23.5" cy="8.5" r="4" fill="#fb923c" />
 						</svg>
 					</span>
 					<span class="brand-word">ChampHR</span>
@@ -238,37 +306,6 @@
 				</a>
 			</div>
 
-			<svg class="rail-glow" viewBox="0 0 280 200" preserveAspectRatio="xMinYMax meet" aria-hidden="true">
-				<defs>
-					<linearGradient id="rw-c" x1="0" y1="1" x2="1" y2="0">
-						<stop offset="0" stop-color="#8f7bff" stop-opacity="0.2" />
-						<stop offset="0.6" stop-color="#d9ccff" />
-						<stop offset="1" stop-color="#8f7bff" stop-opacity="0" />
-					</linearGradient>
-					<linearGradient id="rw-l" x1="0" y1="1" x2="1" y2="0">
-						<stop offset="0" stop-color="#6d55f2" stop-opacity="0.15" />
-						<stop offset="0.6" stop-color="#9d88ff" />
-						<stop offset="1" stop-color="#6d55f2" stop-opacity="0" />
-					</linearGradient>
-					<linearGradient id="rw-p" x1="0" y1="1" x2="1" y2="0">
-						<stop offset="0" stop-color="#f0a6ff" stop-opacity="0" />
-						<stop offset="0.6" stop-color="#f0a6ff" />
-						<stop offset="1" stop-color="#f0a6ff" stop-opacity="0" />
-					</linearGradient>
-					<linearGradient id="rw-sheet" x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0" stop-color="#7a5cf5" stop-opacity="0.45" />
-						<stop offset="1" stop-color="#2c2192" stop-opacity="0" />
-					</linearGradient>
-					<filter id="rw-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="10" /></filter>
-				</defs>
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200" transform="translate(4 8)" fill="none" stroke="#5a43e6" stroke-width="14" opacity="0.45" filter="url(#rw-blur)" />
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200 L 240 200 L 0 200 Z" fill="url(#rw-sheet)" />
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200" transform="translate(0.0 0)" fill="none" stroke="url(#rw-c)" stroke-width="1.5" opacity="1" />
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200" transform="translate(2.4000000000000004 6)" fill="none" stroke="url(#rw-l)" stroke-width="1" opacity="0.85" />
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200" transform="translate(5.2 13)" fill="none" stroke="url(#rw-l)" stroke-width="0.9" opacity="0.6" />
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200" transform="translate(8.8 22)" fill="none" stroke="url(#rw-l)" stroke-width="0.8" opacity="0.4" />
-				<path d="M0 150 C 40 128, 74 96, 104 74 C 124 60, 138 56, 146 66 C 158 82, 162 120, 182 152 C 196 176, 214 192, 240 200" transform="translate(-2.8000000000000003 -7)" fill="none" stroke="url(#rw-p)" stroke-width="0.8" opacity="0.7" />
-			</svg>
 
 			<div class="account">
 				<button
@@ -311,18 +348,33 @@
 				<button class="icon-btn nav-toggle" type="button" aria-label="Open navigation" onclick={() => (navOpen = true)}>
 					{@render icon('menu')}
 				</button>
-				<!-- Plain GET into the Candidates page's own `q` filter, so this is the
-				     same search as there, not a second one. -->
-				<form class="search" method="GET" action="/admin/candidates" role="search">
+				<!-- Plain GET into the list's own `q` filter, so this is that list's
+				     search, not a second one. Keyed so it resets when the scope or
+				     the query in the URL changes. -->
+				<form
+					class="search"
+					method="GET"
+					action={scope.path}
+					role="search"
+					bind:this={searchForm}
+					data-sveltekit-noscroll
+					data-sveltekit-keepfocus
+				>
 					{@render icon('search')}
-					<input
-						bind:this={searchEl}
-						name="q"
-						type="search"
-						placeholder="Search candidates by name or employee ID…"
-						aria-label="Search candidates"
-						autocomplete="off"
-					/>
+					{#each keepParams as [k, v], i (i)}
+						<input type="hidden" name={k} value={v} />
+					{/each}
+					{#key `${scope.path}|${currentQ}`}
+						<SearchTypeahead
+							name="q"
+							value={currentQ}
+							placeholder={scope.placeholder}
+							ariaLabel={scope.label}
+							{clearHref}
+							fetchSuggestions={scope.suggest ?? (async () => [])}
+							onSelect={(s) => s.href ?? scope.path}
+						/>
+					{/key}
 					<kbd>{shortcut}</kbd>
 				</form>
 				<div class="top-right">
@@ -353,6 +405,39 @@
 </div>
 
 <style>
+	/* The document under the admin shell takes the shell's own page colour, so
+	   overscroll and anything taller than the shell never shows the candidate
+	   portal's white body. */
+	:global(html:has(.aegis)),
+	:global(body:has(.aegis)) {
+		background: #050a18;
+	}
+	:global(html:has(.aegis[data-theme='light'])),
+	:global(body:has(.aegis[data-theme='light'])) {
+		background: #f4f5fa;
+	}
+	.shell {
+		min-height: 100vh;
+	}
+
+	/* Light mode: a plain white sidebar with a hairline edge; the current
+	   page is a soft orange pill with deep orange text and icon. */
+	:global(.aegis[data-theme='light']) .rail {
+		border-right: 1px solid #eceef2;
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+	:global(.aegis[data-theme='light']) .rail .navitem:hover {
+		background: #f6f7f9;
+	}
+	:global(.aegis[data-theme='light']) .rail .navitem.on {
+		background: #fff1e8;
+		color: #c2410c;
+	}
+	:global(.aegis[data-theme='light']) .rail .navitem.on::before {
+		box-shadow: none;
+	}
+
 	/* ---------- shell grid ---------- */
 	.shell.signed-in {
 		--rail-w: 232px;
@@ -411,7 +496,9 @@
 		display: flex;
 		flex-direction: column;
 		background: var(--ae-rail-bg);
-		border-right: 1px solid var(--ae-line);
+		border-right: 1px solid rgba(var(--ae-orange-rgb), 0.14);
+		backdrop-filter: blur(22px) saturate(150%);
+		-webkit-backdrop-filter: blur(22px) saturate(150%);
 		overflow: hidden;
 		z-index: 40;
 	}
@@ -510,31 +597,31 @@
 		background: rgba(148, 163, 220, 0.06);
 		color: var(--ae-text);
 	}
+	/* Current page: an indigo wash with an orange marker and icon. */
 	.navitem.on {
-		background: linear-gradient(90deg, rgba(var(--ae-ember-rgb), 0.24), rgba(var(--ae-ember-rgb), 0.12));
+		background: linear-gradient(90deg, rgba(var(--ae-ember-rgb), 0.28), rgba(var(--ae-ember-rgb), 0.1));
 		color: var(--ae-text);
 		font-weight: 500;
 	}
+	.navitem.on::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 9px;
+		bottom: 9px;
+		width: 3px;
+		border-radius: 0 3px 3px 0;
+		background: var(--ae-orange);
+		box-shadow: 0 0 10px rgba(var(--ae-orange-rgb), 0.6);
+	}
 	.navitem.on :global(svg) {
-		color: var(--ae-text);
+		color: var(--ae-orange);
 	}
 	.navitem:focus-visible {
 		outline: 2px solid var(--ae-ember);
 		outline-offset: 1px;
 	}
 
-	/* Decorative ribbon at the foot of the rail, as in the reference. */
-	.rail-glow {
-		position: absolute;
-		left: 0;
-		bottom: 88px;
-		width: 100%;
-		height: 190px;
-		pointer-events: none;
-	}
-	:global(.aegis[data-theme='light']) .rail-glow {
-		opacity: 0.3;
-	}
 
 	/* ---------- account ---------- */
 	.account {
@@ -542,7 +629,7 @@
 		z-index: 2;
 		border-top: 1px solid var(--ae-line);
 		padding: 16px 18px 20px;
-		background: var(--ae-rail-bg);
+		background: transparent;
 	}
 	.account-btn {
 		width: 100%;
@@ -661,8 +748,7 @@
 	.collapsed .brand-word,
 	.collapsed .nav-label,
 	.collapsed .acct-text,
-	.collapsed .acct-chev,
-	.collapsed .rail-glow {
+	.collapsed .acct-chev {
 		display: none;
 	}
 	.collapsed .collapse-btn :global(svg) {
@@ -702,39 +788,45 @@
 	.nav-toggle {
 		display: none;
 	}
+	/* The form is the box; the typeahead's own input sits inside it bare. */
 	.search {
 		position: relative;
 		display: flex;
 		align-items: center;
-		flex: 0 1 400px;
+		gap: 8px;
+		flex: 0 1 460px;
 		min-width: 0;
+		height: 38px;
+		padding: 0 8px 0 13px;
+		border-radius: 10px;
+		background: var(--ae-card-solid);
+		border: 1px solid var(--ae-line);
+		transition:
+			border-color var(--ae-dur) var(--ae-ease),
+			box-shadow var(--ae-dur) var(--ae-ease);
+	}
+	.search:focus-within {
+		border-color: rgba(var(--ae-ember-rgb), 0.55);
+		box-shadow: var(--ae-focus);
 	}
 	.search > :global(svg) {
-		position: absolute;
-		left: 13px;
+		flex: none;
 		width: 16px;
 		height: 16px;
 		color: var(--ae-muted-2);
 		pointer-events: none;
-		z-index: 1;
 	}
-	.search input {
-		height: 38px;
-		padding: 0 56px 0 38px;
-		border-radius: 10px;
-		background: var(--ae-card-solid);
-		border-color: var(--ae-line);
-		font-size: 12.5px;
-	}
-	.search input::placeholder {
-		color: var(--ae-muted);
-	}
-	.search input::-webkit-search-cancel-button {
+	/* The leading icon already says "search"; Enter submits. */
+	.search :global(.st > button[type='submit']) {
 		display: none;
 	}
+	.search :global(.st input[type='search']) {
+		padding: 0;
+		height: 36px;
+		box-shadow: none;
+	}
 	.search kbd {
-		position: absolute;
-		right: 9px;
+		flex: none;
 		font-family: var(--ae-font-body);
 		font-size: 10.5px;
 		font-weight: 500;
@@ -767,11 +859,25 @@
 		box-shadow: 0 0 0 3px rgba(var(--ae-verdant-rgb), 0.14);
 	}
 
+	/* The content column always reaches the bottom of the window, and each
+	   page's main panel grows into whatever height is left, so a short page
+	   ends in its own card rather than in a band of empty background. */
 	.content {
-		padding: 0 24px 40px;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		padding: 0 24px 24px;
 		width: 100%;
-		max-width: 1720px;
 		min-width: 0;
+	}
+	.content > :global(*) {
+		flex: none;
+	}
+	.content > :global(.table-card:last-of-type),
+	.content > :global(.dash),
+	.content > :global(.tabpanel.on),
+	.content > :global(.stage) {
+		flex: 1 0 auto;
 	}
 	.shell:not(.signed-in) .content {
 		max-width: none;
@@ -884,8 +990,7 @@
 		/* The drawer is always shown expanded, whatever the desktop preference. */
 		.collapsed .rail .brand-word,
 		.collapsed .rail .nav-label,
-		.collapsed .rail .acct-chev,
-		.collapsed .rail .rail-glow {
+		.collapsed .rail .acct-chev {
 			display: revert;
 		}
 		.collapsed .rail .acct-text {

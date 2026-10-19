@@ -6,6 +6,33 @@ import { randomToken } from '$lib/server/crypto';
 import { audit } from '$lib/server/audit';
 import { getRedis } from '$lib/server/redis';
 import { mayToday } from '$lib/server/access';
+import { BRANDS } from '$lib/shared/brands';
+import { TRACKS } from '$lib/shared/matrix';
+import { POPULATIONS, PRESETS, grantsFromRows, type Grantee, type Population } from '$lib/shared/access';
+
+/** Same reading as Access & org's load, so the "what can they access" panel
+ *  here and the matrix there always agree on a person. */
+function scopeList(raw: unknown, valid: string[]): 'all' | string[] {
+	if (raw === 'all' || raw === undefined || raw === null || !Array.isArray(raw)) return 'all';
+	const kept = raw.filter((v): v is string => typeof v === 'string' && valid.includes(v));
+	return kept.length ? kept : 'all';
+}
+function granteeOf(a: Record<string, unknown>): Grantee {
+	const preset = (a.accessPreset as string) ?? (a.role as string);
+	const checkers: Record<string, boolean> = {};
+	if (Array.isArray(a.checkers)) for (const c of a.checkers) if (typeof c === 'string') checkers[c] = true;
+	return {
+		preset: PRESETS[preset] ? preset : 'hr_admin',
+		role: a.role as string,
+		grants: grantsFromRows(a.grants),
+		checkers,
+		population: (POPULATIONS.some((p) => p.k === a.population) ? a.population : 'entity') as Population,
+		entities: scopeList(a.entities, BRANDS.map((b) => b.slug)),
+		tracks: scopeList(a.tracks, TRACKS as unknown as string[]),
+		status: ((a.status as string) ?? 'active') as 'active' | 'disabled',
+		accessExpiresAt: a.accessExpiresAt ? (a.accessExpiresAt as Date).toISOString().slice(0, 10) : null
+	};
+}
 
 const ROLES = ['hr_admin', 'super_admin', 'finance_team'] as const;
 type Role = (typeof ROLES)[number];
@@ -68,8 +95,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 			role: a.role,
 			status: a.status,
 			createdAt: (a.createdAt as Date).toISOString(),
-			isSelf: String(a._id) === locals.admin!.id
-		}))
+			isSelf: String(a._id) === locals.admin!.id,
+			access: granteeOf(a as unknown as Record<string, unknown>)
+		})),
+		entityNames: Object.fromEntries(BRANDS.map((b) => [b.slug, b.legalName || b.name]))
 	};
 };
 

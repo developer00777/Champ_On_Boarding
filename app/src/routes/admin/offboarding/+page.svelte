@@ -183,31 +183,6 @@
 		/>
 	</div>
 
-	<!-- GET form keeps the search in the URL like the other filters; hidden
-	     inputs carry the active filters so a search doesn't silently drop them. -->
-	<form
-		class="searchbox"
-		method="GET"
-		action="/admin/offboarding"
-		role="search"
-		data-sveltekit-noscroll
-		data-sveltekit-keepfocus
-	>
-		{#if data.range !== 'all' && data.range !== 'custom'}<input type="hidden" name="range" value={data.range} />{/if}
-		{#if data.fromDay}<input type="hidden" name="from" value={data.fromDay} />{/if}
-		{#if data.toDay}<input type="hidden" name="to" value={data.toDay} />{/if}
-		{#if data.status}<input type="hidden" name="status" value={data.status} />{/if}
-		<input
-			name="q"
-			value={data.q ?? ''}
-			placeholder="Search name, employee ID or email"
-			aria-label="Search exits"
-			class="sinput"
-		/>
-		<button class="sbtn" type="submit" aria-label="Search">
-			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.2-4.2" /></svg>
-		</button>
-	</form>
 
 	<span class="count">
 		{#if isFiltered}
@@ -246,6 +221,7 @@
 		</p>
 	{:else}
 		{#each data.exits as e (e.id)}
+			<div class="orow" class:with-del={data.canDelete}>
 			<a class="trow" href="/admin/offboarding/{e.id}">
 				<div>
 					<div style="font-weight:500;font-size:14px;color:var(--ae-text)">{e.fullName}</div>
@@ -310,6 +286,7 @@
 					{/if}
 				</form>
 			{/if}
+			</div>
 		{/each}
 	{/if}
 </section>
@@ -391,50 +368,6 @@
 		font-size: 12.5px;
 		font-weight: 500;
 	}
-	.searchbox {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: var(--ae-input-bg);
-		border: 1px solid var(--ae-line-strong);
-		border-radius: 8px;
-		padding: 0 4px 0 12px;
-		min-width: 250px;
-		transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
-	}
-	.searchbox:hover {
-		background: var(--ae-hover);
-	}
-	.searchbox:focus-within {
-		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
-	}
-	.sinput {
-		border: none;
-		background: none;
-		box-shadow: none;
-		padding: 8px 0;
-		font-size: 13px;
-		flex: 1;
-		min-width: 0;
-	}
-	.sinput:focus {
-		outline: none;
-		box-shadow: none;
-	}
-	.sbtn {
-		background: none;
-		border: none;
-		color: var(--ae-muted);
-		padding: 6px;
-		display: grid;
-		place-items: center;
-		cursor: pointer;
-		box-shadow: none;
-	}
-	.sbtn:hover {
-		color: var(--ae-ember-glow);
-	}
 	.count {
 		margin-left: auto;
 		font-family: var(--ae-font-mono);
@@ -477,20 +410,38 @@
 		}
 	}
 
-	/* Sits in the row's own grid track so the button lines up under the header,
-	   and stays quiet until hovered — destructive, so never the loud control. */
+	/* One separator per row, under the link and its delete control alike. */
+	.orow {
+		position: relative;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.orow:last-child {
+		border-bottom: 0;
+	}
+	.orow > .trow {
+		border-bottom: 0;
+	}
+	/* Room on the right of the row for the delete control, so it sits on the
+	   same line as "Open" instead of adding a second line to every row. */
+	.orow.with-del > .trow {
+		padding-right: 56px;
+	}
+	/* Laid over the row's right edge, outside the <a>, and quiet until hovered —
+	   destructive, so never the loud control. */
 	.delcell {
+		position: absolute;
+		right: 12px;
+		top: 50%;
+		transform: translateY(-50%);
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
 		gap: 6px;
-		padding: 0 14px 10px;
-		margin-top: -8px;
-		border-bottom: 1px solid var(--ae-line-soft);
+		z-index: 1;
 	}
-	/* The delete control belongs to the row above it: one separator, under both. */
-	.trow:has(+ .delcell) {
-		border-bottom: 0;
+	.delcell:has(.confirm) {
+		padding-left: 8px;
+		background: var(--ae-card-solid);
 	}
 	.del {
 		display: inline-flex;

@@ -1445,7 +1445,7 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	fill: var(--ae-muted);
 }
 .aegis svg .kg-pill {
-	fill: var(--ae-sub-bg);
+	fill: var(--ae-card-solid);
 	stroke: var(--ae-line-strong);
 }
 .aegis svg .kg-rate {
@@ -1458,7 +1458,7 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	fill: var(--dq-crit);
 }
 .aegis .kg-below {
-	align-items: start;
+	align-items: stretch;
 }
 .aegis .kg-list {
 	list-style: none;
@@ -1510,9 +1510,9 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	display: grid;
 	grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
 	gap: 12px;
-	/* Side cards keep their natural height: an empty card stretched to match
-	   a tall neighbour reads as wasted space. */
-	align-items: start;
+	/* Both columns run to the same line; the stretch is taken up inside the
+	   cards (see "Fill the tab" below), never as a gap under the shorter one. */
+	align-items: stretch;
 }
 .aegis .an-split.trends {
 	grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
@@ -1703,10 +1703,11 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 	padding: 10px 0 4px;
 }
 /* Knowledge graph: details beside the insights, and the insights in two
-   columns, so neither card trails off into empty space. */
+   columns, so neither card trails off into empty space. Both cards end on
+   the same line. */
 .aegis .kg-below {
 	grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
-	align-items: start;
+	align-items: stretch;
 }
 .aegis .kg-below .insight-list {
 	display: grid;
@@ -1746,4 +1747,210 @@ body:has(.aegis[data-theme='light']) .viz-tooltip .tt-val {
 .aegis .bd-co {
 	max-width: 180px;
 	font-size: 12px;
+}
+
+/* ── Fill the tab ──────────────────────────────────────────────────────────
+   The open tab runs to the bottom of the window (the admin layout grows it),
+   and that height is passed all the way down: the tab's last block grows, its
+   columns stretch, each column's last card grows, and inside a card the chart
+   or empty state takes the slack. So a short tab ends in its cards, not in a
+   band of bare page under them. */
+.aegis .tabpanel.on {
+	display: flex;
+	flex-direction: column;
+}
+.aegis .tabpanel.on > * {
+	flex: none;
+}
+.aegis .tabpanel.on > :last-child {
+	flex: 1 0 auto;
+}
+.aegis .an-stack > :last-child {
+	flex: 1 0 auto;
+}
+.aegis .tabpanel.on .chart-card {
+	display: flex;
+	flex-direction: column;
+}
+.aegis .tabpanel.on .chart-card > :last-child {
+	flex: 1 0 auto;
+}
+/* A footnote under a card's body stays a footnote. */
+.aegis .tabpanel.on .chart-card > .fx-dec-note {
+	flex: none;
+}
+/* Unclassed wrappers that charts.ts renders a chart into pass the height on. */
+.aegis .tabpanel.on .chart-card > div:last-child:not([class]) {
+	display: flex;
+	flex-direction: column;
+}
+/* Funnel: the bands get taller with the card (their clip-path is in
+   percentages, so the cone keeps its shape), up to a height where they would
+   stop reading as bands; past that the funnel sits in the middle. */
+.aegis .tabpanel.on .fnl {
+	flex: 1 0 auto;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 14px;
+}
+.aegis .tabpanel.on .fnl-rows {
+	flex: 1 0 auto;
+	max-height: 520px;
+}
+.aegis .tabpanel.on .fnl-row {
+	flex: 1 1 0;
+	align-items: stretch;
+}
+.aegis .tabpanel.on .fnl-row > :not(.fnl-cone) {
+	align-self: center;
+}
+.aegis .tabpanel.on .fnl-cone {
+	height: auto;
+	min-height: 40px;
+}
+/* Heat grid: the wrapper takes the card's spare height (from a zero basis,
+   so it can shrink again with the window, never below the grid's natural
+   size), and charts.ts shares it out to the rows as --row-h. */
+.aegis .tabpanel.on .bd-scroll {
+	flex: 1 1 0;
+	min-height: calc(var(--rows, 5) * 39px + 80px);
+}
+.aegis .tabpanel.on .bd-heat tbody th,
+.aegis .tabpanel.on .bd-cell {
+	height: var(--row-h, 36px);
+}
+/* Document bars: each row takes an equal share of the card. */
+.aegis .tabpanel.on .dq-slots {
+	flex: 1 0 auto;
+}
+.aegis .tabpanel.on .dq-slot {
+	flex: 1 1 auto;
+	max-height: 72px;
+}
+.aegis .tabpanel.on .dq-more {
+	margin-top: auto;
+}
+/* Gauges: a bigger ring, with its words, in the middle of a tall tile. */
+.aegis .tabpanel.on .bd-gauge {
+	justify-content: center;
+	gap: 8px;
+}
+.aegis .tabpanel.on .bd-ring {
+	width: 140px;
+	height: 140px;
+	transform: none;
+	margin: 0 0 6px;
+}
+.aegis .tabpanel.on .bd-ring svg {
+	width: 100%;
+	height: 100%;
+}
+.aegis .tabpanel.on .bd-ring-v {
+	font-size: 28px;
+}
+.aegis .tabpanel.on .bd-gauge-k {
+	font-size: 15px;
+}
+/* Empty states fill their card and sit in its middle. */
+.aegis .tabpanel.on .dq-empty,
+.aegis .tabpanel.on .fx-dec-empty {
+	display: grid;
+	place-items: center;
+	flex: 1 0 auto;
+}
+/* Trend plots draw at the height they are given (charts.ts reads it), so the
+   svg is taken out of flow: the box is sized by the card, not by last frame's
+   drawing, and can shrink again when the window does. */
+.aegis .tabpanel.on .tr-plot {
+	position: relative;
+	flex: 1 0 250px;
+}
+.aegis .tabpanel.on .tr-plot > svg {
+	position: absolute;
+	inset: 0;
+}
+@media (max-width: 1100px) {
+	.aegis .tabpanel.on > :last-child,
+	.aegis .an-stack > :last-child,
+	.aegis .tabpanel.on .chart-card > :last-child {
+		flex-grow: 0;
+	}
+}
+
+/* ── Breathing room ───────────────────────────────────────────────────────
+   Last in the file so it wins over the density pass above: wider gutters
+   between cards, roomier cards and rows, larger headings. Narrow screens
+   keep the compact sizes. */
+@media (min-width: 701px) {
+	.aegis .chart-card {
+		padding: 22px 24px 20px;
+		border-radius: 16px;
+	}
+	.aegis .chart-card-head {
+		margin-bottom: 6px;
+	}
+	.aegis .chart-title {
+		font-size: 16px;
+	}
+	.aegis .chart-note {
+		font-size: 12.5px;
+		margin-bottom: 18px;
+		line-height: 1.55;
+	}
+	.aegis .an-split,
+	.aegis .chart-grid,
+	.aegis .an-stack {
+		gap: 20px;
+	}
+	.aegis .an-split.trends {
+		margin-top: 20px;
+	}
+	.aegis .kg-below {
+		margin-top: 20px !important;
+	}
+	.aegis .dq-tiles,
+	.aegis .tr-tiles {
+		gap: 18px;
+	}
+	.aegis .dq-tiles {
+		margin-bottom: 20px;
+	}
+	.aegis .dq-tile,
+	.aegis .tr-tile {
+		padding: 18px 20px 18px 22px;
+	}
+	.aegis .dq-tile-v,
+	.aegis .tr-tile-v {
+		font-size: 26px;
+		margin: 6px 0 4px;
+	}
+	.aegis .dq-slot {
+		padding: 10px 8px;
+		gap: 20px;
+	}
+	.aegis .dq-empty,
+	.aegis .tr-empty {
+		padding: 20px 16px;
+	}
+	.aegis .bd-gauges {
+		gap: 16px;
+	}
+	.aegis .bd-gauge {
+		padding: 20px 14px;
+	}
+	.aegis .fnl-leaks {
+		margin-top: 16px;
+		padding-top: 16px;
+	}
+	.aegis .fx-dur {
+		gap: 14px;
+	}
+	.aegis .kg-list li {
+		padding-top: 6px;
+		padding-bottom: 6px;
+	}
+	.aegis .kg-below .insight-list {
+		gap: 18px 24px;
+	}
 }

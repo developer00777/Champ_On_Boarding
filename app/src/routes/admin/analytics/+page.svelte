@@ -66,7 +66,19 @@
 	const trendPrev = $derived(periods[periods.length - 2]);
 	const periodWord = $derived(data.bucket === 'week' ? 'this week' : 'this ' + data.bucket);
 
-	type Kpi = { label: string; value: string | null; hint: string; delta: { text: string; up: boolean } | null; tone: string; icon: string };
+	/** `spark` is the last few periods of a count, drawn as a small line on the
+	 *  right of the tile; `meter` (0–100) is a share drawn as a bar there. */
+	type Kpi = {
+		label: string;
+		value: string | null;
+		hint: string;
+		delta: { text: string; up: boolean } | null;
+		tone: string;
+		icon: string;
+		spark?: number[];
+		meter?: number | null;
+	};
+	const recent = $derived(periods.slice(-8));
 	const kpis = $derived<Kpi[]>([
 		{
 			label: 'Onboarded',
@@ -74,7 +86,8 @@
 			hint: periodWord,
 			delta: trendLast && trendPrev ? fmtDelta(trendLast.approved, trendPrev.approved) : null,
 			tone: 'verdant',
-			icon: 'M20 6 9 17l-5-5'
+			icon: 'M20 6 9 17l-5-5',
+			spark: recent.map((p) => p.approved)
 		},
 		{
 			label: 'Links created',
@@ -82,6 +95,7 @@
 			hint: periodWord,
 			delta: trendLast && trendPrev ? fmtDelta(trendLast.created, trendPrev.created) : null,
 			tone: 'ember',
+			spark: recent.map((p) => p.created),
 			icon: 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7'
 		},
 		{
@@ -89,6 +103,7 @@
 			value: String(Math.max(0, data.funnel.opened - data.funnel.approved - data.funnel.revoked)),
 			hint: 'opened, not yet approved',
 			delta: null,
+			meter: data.funnel.opened ? (Math.max(0, data.funnel.opened - data.funnel.approved - data.funnel.revoked) / data.funnel.opened) * 100 : null,
 			tone: 'azure',
 			icon: 'M4 6h16M4 12h10M4 18h6'
 		},
@@ -113,6 +128,7 @@
 			value: passRate(),
 			hint: 'OCR scored 80 or more',
 			delta: null,
+			meter: passRate() != null ? parseInt(passRate()!, 10) : 0,
 			tone: 'azure',
 			icon: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z'
 		},
@@ -121,6 +137,7 @@
 			value: data.hiringDecision.acceptanceRate != null ? data.hiringDecision.acceptanceRate + '%' : null,
 			hint: 'of decided candidates',
 			delta: null,
+			meter: data.hiringDecision.acceptanceRate ?? 0,
 			tone: 'verdant',
 			icon: 'M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 17.6 20H7'
 		}
@@ -255,7 +272,20 @@
 						<span class="kpi-none">No data yet</span>
 					{/if}
 				</div>
+				<span class="kpi-hint">{k.hint}</span>
 			</div>
+			{#if k.spark && k.spark.length > 1}
+				{@const max = Math.max(1, ...k.spark)}
+				{@const pts = k.spark.map((v, i) => `${((i / (k.spark!.length - 1)) * 100).toFixed(1)},${(28 - (v / max) * 24).toFixed(1)}`)}
+				<svg class="kpi-viz kpi-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+					<polygon points="0,30 {pts.join(' ')} 100,30" />
+					<polyline points={pts.join(' ')} />
+				</svg>
+			{:else if k.meter != null}
+				<span class="kpi-viz kpi-meter" aria-hidden="true">
+					<span style="width:{Math.min(100, Math.max(0, k.meter))}%"></span>
+				</span>
+			{/if}
 		</div>
 	{/each}
 </div>
@@ -294,9 +324,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 10px 16px;
+		gap: 14px 20px;
 		flex-wrap: wrap;
-		margin-bottom: 12px;
+		margin-bottom: 22px;
 	}
 	.an-title {
 		min-width: 0;
@@ -312,13 +342,13 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: var(--ae-verdant);
-		box-shadow: 0 0 0 0 rgba(var(--ae-verdant-rgb), 0.5);
+		background: var(--ae-orange);
+		box-shadow: 0 0 0 0 rgba(var(--ae-orange-rgb), 0.5);
 		animation: an-pulse 2.4s ease-out infinite;
 	}
 	@keyframes an-pulse {
-		70% { box-shadow: 0 0 0 7px rgba(var(--ae-verdant-rgb), 0); }
-		100% { box-shadow: 0 0 0 0 rgba(var(--ae-verdant-rgb), 0); }
+		70% { box-shadow: 0 0 0 7px rgba(var(--ae-orange-rgb), 0); }
+		100% { box-shadow: 0 0 0 0 rgba(var(--ae-orange-rgb), 0); }
 	}
 	.an-sub {
 		margin: 2px 0 0;
@@ -394,23 +424,24 @@
 	.kpi-row {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
-		margin-bottom: 12px;
+		gap: 14px;
+		margin-bottom: 22px;
 	}
-	/* Seven across when there is room, otherwise four then three, otherwise
+	/* Seven across only on very wide screens (narrower, the labels get cut);
+	   otherwise four then three, otherwise
 	   two — set per width, because letting flex choose gives a lopsided 5 + 2. */
 	.kpi-row > .kpi-tile {
-		flex: 1 1 calc((100% - 48px) / 7);
+		flex: 1 1 calc((100% - 84px) / 7);
 		min-width: 0;
 	}
-	@media (max-width: 1450px) {
+	@media (max-width: 2200px) {
 		.kpi-row > .kpi-tile {
-			flex-basis: calc((100% - 24px) / 4);
+			flex-basis: calc((100% - 42px) / 4);
 		}
 	}
 	@media (max-width: 760px) {
 		.kpi-row > .kpi-tile {
-			flex-basis: calc((100% - 8px) / 2);
+			flex-basis: calc((100% - 14px) / 2);
 		}
 	}
 	.kpi-tile {
@@ -421,8 +452,8 @@
 		gap: 10px;
 		background: var(--ae-sub-bg);
 		border: 1px solid var(--ae-line-strong);
-		border-radius: 12px;
-		padding: 9px 11px;
+		border-radius: 14px;
+		padding: 16px 16px;
 		transition: border-color 0.15s ease;
 	}
 	.kpi-tile:hover {
@@ -440,11 +471,12 @@
 	}
 	.kpi-body {
 		min-width: 0;
-		flex: 1;
+		flex: 1 1 auto;
 	}
 	.kpi-label {
 		display: block;
-		font-size: 11px;
+		font-size: 12px;
+		margin-bottom: 2px;
 		font-weight: 500;
 		color: var(--ae-text-2);
 		white-space: nowrap;
@@ -459,11 +491,56 @@
 	}
 	.kpi-value {
 		font-family: var(--ae-font-display);
-		font-size: 20px;
+		font-size: 24px;
 		font-weight: 700;
 		line-height: 1.15;
 		font-variant-numeric: tabular-nums;
 		color: var(--ae-text);
+	}
+	.kpi-hint {
+		display: block;
+		font-size: 10.5px;
+		color: var(--ae-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	/* The right of each tile: a short trend line for counts, a bar for shares. */
+	/* Gives up its width before the words do. */
+	.kpi-viz {
+		flex: 0 100 34%;
+		max-width: 96px;
+		min-width: 32px;
+		align-self: stretch;
+	}
+	.kpi-spark {
+		height: auto;
+		overflow: visible;
+	}
+	.kpi-spark polyline {
+		fill: none;
+		stroke: var(--t);
+		stroke-width: 1.8;
+		stroke-linejoin: round;
+		stroke-linecap: round;
+		vector-effect: non-scaling-stroke;
+	}
+	.kpi-spark polygon {
+		fill: rgba(var(--t-rgb), 0.1);
+		stroke: none;
+	}
+	.kpi-meter {
+		align-self: center;
+		height: 6px;
+		border-radius: 99px;
+		background: rgba(var(--t-rgb), 0.14);
+		overflow: hidden;
+	}
+	.kpi-meter > span {
+		display: block;
+		height: 100%;
+		border-radius: inherit;
+		background: var(--t);
 	}
 	.kpi-none {
 		align-self: center;
@@ -488,9 +565,9 @@
 
 	.tabbar {
 		display: flex;
-		gap: 4px;
-		padding: 4px;
-		margin-bottom: 12px;
+		gap: 6px;
+		padding: 5px;
+		margin-bottom: 22px;
 		border-radius: 13px;
 		border: 1px solid var(--ae-line-strong);
 		background: var(--ae-sub-bg);
@@ -506,9 +583,9 @@
 		border: none;
 		color: var(--ae-muted);
 		font-family: var(--ae-font-body);
-		font-size: 13px;
+		font-size: 13.5px;
 		font-weight: 500;
-		padding: 8px 14px;
+		padding: 9px 16px;
 		border-radius: 9px;
 		cursor: pointer;
 		white-space: nowrap;
@@ -533,8 +610,11 @@
 	.tabpanel {
 		display: none;
 	}
+	/* A column, so its last block can grow to the bottom of the window — see
+	   "Fill the tab" in analytics-kit.css. */
 	.tabpanel.on {
-		display: block;
+		display: flex;
+		flex-direction: column;
 		animation: an-in 0.25s ease-out;
 	}
 	@keyframes an-in {

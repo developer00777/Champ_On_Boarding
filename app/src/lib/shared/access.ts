@@ -45,10 +45,10 @@ export const KIND_LEVELS: Record<Kind, readonly Level[]> = {
 };
 
 export const LEVEL_LABEL: Record<Level, string> = {
-	none: '—',
+	none: 'None',
 	view: 'View',
-	act: 'Act',
-	approve: 'Sign'
+	act: 'Edit',
+	approve: 'Approve'
 };
 
 export interface Capability {
@@ -438,8 +438,8 @@ export const PRESETS: Record<string, Preset> = {
 export const PRESET_KEYS = Object.keys(PRESETS);
 
 export const TONE_HEX: Record<Module['tone'], string> = {
-	ember: '#7568ff', verdant: '#2fbfa8', azure: '#55a6ff',
-	amber: '#e9a23b', crimson: '#f0607a', violet: '#a78bfa'
+	ember: '#6366f1', verdant: '#2fbfa8', azure: '#55a6ff',
+	amber: '#e9a23b', crimson: '#f0607a', violet: '#fb923c'
 };
 
 /** Whose records, as distinct from what may be done to them. */

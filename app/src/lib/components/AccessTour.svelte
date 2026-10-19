@@ -63,7 +63,7 @@
 		{
 			title: 'Every row points at real code',
 			body:
-				'Under each capability is the key and the number of places it governs — hover it to see the actual routes and actions, like <code>::sendOfferLetterEmail</code>. This matters: a permission screen that describes a plausible app rather than <i>this</i> app is worse than none.<br><br>A few rows say <b>not wired</b>. Those are gates the business has asked for that nothing implements yet. They are shown rather than hidden so nobody assigns one and assumes it is holding.',
+				'Under each capability is the key and the number of places it governs — hover it to see the actual routes and actions, like <code>::sendOfferLetterEmail</code>. This matters: a permission screen that describes a plausible app rather than <i>this</i> app is worse than none.<br><br>A few rows say <b>coming soon</b>. Those are gates the business has asked for that nothing implements yet. They are shown rather than hidden so nobody assigns one and assumes it is holding.',
 			view: 'matrix',
 			target: '.mscroll'
 		},

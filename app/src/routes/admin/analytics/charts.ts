@@ -204,17 +204,17 @@ function smoothPath(pts: [number, number][]): string {
 /** Draws at the container's real pixel width and redraws when that changes —
  *  never a fixed viewBox stretched with preserveAspectRatio="none", which
  *  squashes the text along with the plot. */
-function responsive(host: HTMLElement, draw: (width: number) => void): () => void {
-	let last = 0;
+function responsive(host: HTMLElement, draw: (width: number, height: number) => void): () => void {
+	let last = '';
 	const run = () => {
-		const w = Math.round(host.clientWidth);
-		if (w && w !== last) { last = w; draw(w); }
+		const w = Math.round(host.clientWidth), h = Math.round(host.clientHeight);
+		if (w && `${w}x${h}` !== last) { last = `${w}x${h}`; draw(w, h); }
 	};
 	run();
 	if (typeof ResizeObserver !== 'undefined') new ResizeObserver(run).observe(host);
 	// Force a redraw at the same width, for when the data shown changes.
 	return () => {
-		last = 0;
+		last = '';
 		run();
 	};
 }
@@ -345,10 +345,10 @@ function endLabels(f: PlotFrame, x: number, items: { v: number; label: string; c
 }
 
 function activityChart(host: HTMLElement, data: TrendPoint[], xLabel: (i: number) => string, hidden: Set<TrendNumericKey>): () => void {
-	return responsive(host, (width) => {
+	return responsive(host, (width, height) => {
 		const shown = TREND_STAGES.map((s, i) => ({ ...s, color: trendColor(i) })).filter((s) => !hidden.has(s.key));
 		const maxV = Math.max(1, ...shown.flatMap((s) => data.map((d) => d[s.key])));
-		const f = plotFrame(width, 250, data.length, maxV, xLabel, 96);
+		const f = plotFrame(width, Math.max(250, height), data.length, maxV, xLabel, 96);
 		f.svg.setAttribute('aria-label', 'Onboarding activity per period: ' + shown.map((s) => s.label).join(', '));
 		const defs = el('defs');
 		f.svg.appendChild(defs);
@@ -383,10 +383,10 @@ function activityChart(host: HTMLElement, data: TrendPoint[], xLabel: (i: number
 }
 
 function backlogChart(host: HTMLElement, data: TrendPoint[], xLabel: (i: number) => string) {
-	responsive(host, (width) => {
+	responsive(host, (width, height) => {
 		const cIn = trendColor(0), cOut = trendColor(3);
 		const maxV = Math.max(1, ...data.flatMap((d) => [d.created, d.approved]));
-		const f = plotFrame(width, 250, data.length, maxV, xLabel, 96);
+		const f = plotFrame(width, Math.max(250, height), data.length, maxV, xLabel, 96);
 		f.svg.setAttribute('aria-label', 'Links created against candidates approved, per period');
 		const pin = data.map((d, i) => [f.xAt(i), f.yAt(d.created)] as [number, number]);
 		const pout = data.map((d, i) => [f.xAt(i), f.yAt(d.approved)] as [number, number]);
@@ -1030,6 +1030,7 @@ function heatTable(rows: BreakdownRow[]): HTMLElement {
 
 	const wrap = document.createElement('div');
 	wrap.className = 'bd-scroll';
+	wrap.style.setProperty('--rows', String(rows.length));
 	const table = document.createElement('table');
 	table.className = 'bd-heat';
 	table.style.setProperty('--hm', HEAT_HUE[currentTheme()]);
@@ -1056,6 +1057,18 @@ function heatTable(rows: BreakdownRow[]): HTMLElement {
 		'<tfoot><tr><th scope="row" class="bd-co">All companies</th>' +
 		cols.map((c) => `<td data-col="${c.i}">${fmtNum(c.total)}<small>${grand ? Math.round((c.total / grand) * 100) : 0}%</small></td>`).join('') +
 		`<td class="bd-tot"><b>${fmtNum(grand)}</b></td></tr></tfoot>`;
+
+	// The company rows share whatever height the card gives the grid (CSS sizes
+	// the wrapper, not the table), between the 36px floor and a height where a
+	// cell stops reading as a cell. A table hands all of its extra height to
+	// one row on its own, so the share is set here.
+	const fit = () => {
+		const head = table.tHead?.offsetHeight ?? 0, foot = table.tFoot?.offsetHeight ?? 0;
+		const free = wrap.clientHeight - head - foot - 3 * (rows.length + 3);
+		const h = Math.max(36, Math.min(120, Math.floor(free / Math.max(1, rows.length))));
+		table.style.setProperty('--row-h', `${h}px`);
+	};
+	if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fit).observe(wrap);
 
 	// Crosshair: hovering a cell lights its row and its column, and the
 	// tooltip says what share of each that cell is.

@@ -2,7 +2,6 @@
 	import { RANGE_KEYS, RANGE_LABELS } from '$lib/shared/ranges';
 	import DateRange from '$lib/components/DateRange.svelte';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
-	import SearchTypeahead from '$lib/components/SearchTypeahead.svelte';
 
 	let { data } = $props();
 
@@ -48,20 +47,6 @@
 
 	const isFiltered = $derived(data.range !== 'all' || !!data.direction || !!data.mailbox || !!data.q);
 	const totalPages = $derived(Math.max(1, Math.ceil(data.total / data.pageSize)));
-
-	async function fetchInboxSuggestions(q: string) {
-		const res = await fetch(`/admin/inbox/search?q=${encodeURIComponent(q)}`);
-		if (!res.ok) return [];
-		const { results } = await res.json();
-		return results.map(
-			(m: { id: string; direction: string; candidateName: string | null; from: string; to: string; subject: string | null; href: string }) => ({
-				id: m.id,
-				primary: m.subject || '(no subject)',
-				secondary: m.candidateName ?? (m.direction === 'inbound' ? m.from : m.to),
-				href: m.href
-			})
-		);
-	}
 
 	function when(iso: string): string {
 		const d = new Date(iso);
@@ -109,25 +94,6 @@
 		/>
 	</div>
 
-	<!-- GET form keeps the search in the URL like the other filters; hidden
-	     inputs carry the active filters so a search doesn't silently drop them.
-	     page is deliberately omitted — a new search starts on page 1. -->
-	<form class="searchbox" method="GET" action="/admin/inbox" role="search" data-sveltekit-noscroll data-sveltekit-keepfocus>
-		{#if data.range !== 'all' && data.range !== 'custom'}<input type="hidden" name="range" value={data.range} />{/if}
-		{#if data.fromDay}<input type="hidden" name="from" value={data.fromDay} />{/if}
-		{#if data.toDay}<input type="hidden" name="to" value={data.toDay} />{/if}
-		{#if data.direction && data.direction !== 'all'}<input type="hidden" name="direction" value={data.direction} />{/if}
-		{#if data.mailbox}<input type="hidden" name="mailbox" value={data.mailbox} />{/if}
-		<SearchTypeahead
-			name="q"
-			value={data.q ?? ''}
-			placeholder="Search subject, address or candidate"
-			ariaLabel="Search mail by subject, address or candidate"
-			clearHref={href({ q: '' })}
-			fetchSuggestions={fetchInboxSuggestions}
-			onSelect={(s) => s.href ?? href({ q: s.primary })}
-		/>
-	</form>
 
 	<span class="count">
 		{#if isFiltered}
@@ -264,24 +230,6 @@
 		font-weight: 500;
 	}
 	/* Search box matches the GlassSelect trigger chrome. */
-	.searchbox {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: var(--ae-input-bg);
-		border: 1px solid var(--ae-line-strong);
-		border-radius: 8px;
-		padding: 0 4px 0 12px;
-		min-width: 230px;
-		transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
-	}
-	.searchbox:hover {
-		background: var(--ae-hover);
-	}
-	.searchbox:focus-within {
-		border-color: var(--ae-ember);
-		box-shadow: 0 0 0 3px rgba(var(--ae-ember-rgb), 0.25);
-	}
 	.count {
 		margin-left: auto;
 		font-family: var(--ae-font-mono);
@@ -408,10 +356,6 @@
 	@media (max-width: 520px) {
 		.filterbar {
 			gap: 8px;
-		}
-		.searchbox {
-			min-width: 0;
-			flex: 1 1 100%;
 		}
 		.count {
 			margin-left: 0;

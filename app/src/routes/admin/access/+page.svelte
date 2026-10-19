@@ -268,7 +268,6 @@
 	});
 
 	let capQuery = $state('');
-	let shut = $state(new Set<string>());
 	const cq = $derived(capQuery.trim().toLowerCase());
 	const capHit = (c: ViewCap) => !cq || `${c.short} ${c.label} ${c.key}`.toLowerCase().includes(cq);
 	const visibleGroups = $derived(
@@ -279,48 +278,50 @@
 			})
 			.filter((g) => g.caps.length)
 	);
-	const groupOpen = (key: string) => !!cq || !shut.has(key);
-	function toggleGroup(key: string) {
-		const next = new Set(shut);
-		if (next.has(key)) next.delete(key);
-		else next.add(key);
-		shut = next;
-	}
 	const grantedIn = (p: Person, caps: ViewCap[]) => caps.filter((c) => effectiveLevel(p, c.key) !== 'none').length;
 
-	// ── candidate records board ─────────────────────────────────────────────
-	// Candidate records is drawn as cards rather than table rows: one card per
-	// power, saying in plain words what it does, with a direct level switch
-	// for each person instead of a cell you click round and round.
-	const CAND = VIEW_GROUPS.find((g) => g.key === 'candidates')!;
-	const CAND_INFO: Record<string, { d: string; icon: string }> = {
-		'candidate.view': { d: 'See the candidate list and open anyone’s file.', icon: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
-		'candidate.create': { d: 'Create a new hire and email them their onboarding link.', icon: 'M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5' },
-		'candidate.shift': { d: 'Set the working hours shown on the offer and IT mail.', icon: 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z' },
-		'candidate.approve': { d: 'Sign off a submitted form so onboarding moves on.', icon: 'M9 12l2 2 4-4M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z' },
-		'candidate.decision': { d: 'Mark a candidate as accepted or rejected.', icon: 'M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 17.6 20H7' },
-		'candidate.edit': { d: 'Fix mistakes in what the candidate typed in.', icon: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4' },
-		'candidate.link': { d: 'Kill a leaked link, or send the candidate a fresh one.', icon: 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4' },
-		'empid.uan': { d: 'Record the candidate’s Universal Account Number.', icon: 'M4 6h16v12H4zM8 10h3M8 14h6M16 10h.01' },
-		'candidate.delete': { d: 'Remove the whole record for good. Cannot be undone.', icon: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3' },
-		'candidate.entity': { d: 'Move the hire to another company; the offer is re-letterheaded.', icon: 'M4 21V5l8-2v18M12 9h8v12M8 9h.01M8 13h.01M16 13h.01M16 17h.01' },
-		'candidate.track': { d: 'Switch the hiring track; documents and offer are re-ruled.', icon: 'M6 3v12a3 3 0 0 0 3 3h9M15 15l3 3-3 3M6 3l-3 3M6 3l3 3' },
-		'docs.upload': { d: 'File documents for a candidate who cannot use their link.', icon: 'M12 16V4M7 9l5-5 5 5M4 20h16' }
+	// Modules are folded to one summary row each, so the matrix is nine rows
+	// tall until you open the one you want. A search or a single-module filter
+	// opens what it matches, since you asked to see those rows.
+	// Candidate records, the module used most, starts open; the rest fold.
+	let openMods = $state(new Set<string>(['candidates']));
+	const modOpen = (key: string) => !!cq || moduleFilter !== 'all' || openMods.has(key);
+	function toggleMod(key: string) {
+		const next = new Set(openMods);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		openMods = next;
+	}
+	/** How many of a module's powers a person holds at each level, strongest first. */
+	function levelMix(p: Person, caps: ViewCap[]) {
+		const n = { approve: 0, act: 0, view: 0 };
+		for (const c of caps) {
+			const lv = effectiveLevel(p, c.key);
+			if (lv !== 'none') n[lv]++;
+		}
+		return (['approve', 'act', 'view'] as const).filter((l) => n[l]).map((l) => ({ l, n: n[l] }));
+	}
+
+	// One plain-words line per Candidate records power, shown under its name in
+	// the matrix, since those labels alone don't say what the power touches.
+	const CAP_DESC: Record<string, string> = {
+		'candidate.view': 'See the candidate list and open anyone’s file.',
+		'candidate.create': 'Create a new hire and email them their onboarding link.',
+		'candidate.shift': 'Set the working hours shown on the offer and IT mail.',
+		'candidate.approve': 'Sign off a submitted form so onboarding moves on.',
+		'candidate.decision': 'Mark a candidate as accepted or rejected.',
+		'candidate.edit': 'Fix mistakes in what the candidate typed in.',
+		'candidate.link': 'Kill a leaked link, or send the candidate a fresh one.',
+		'empid.uan': 'Record the candidate’s Universal Account Number.',
+		'candidate.delete': 'Remove the whole record for good. Cannot be undone.',
+		'candidate.entity': 'Move the hire to another company; the offer is re-letterheaded.',
+		'candidate.track': 'Switch the hiring track; documents and offer are re-ruled.',
+		'docs.upload': 'File documents for a candidate who cannot use their link.',
 	};
-	const candStats = $derived.by(() => {
-		const active = people.filter((p) => p.status !== 'disabled');
-		const can = (k: string) => active.filter((p) => effectiveLevel(p, k) !== 'none').length;
-		const sensitive = CAND.subs[1]?.caps ?? [];
-		return {
-			people: active.length,
-			open: can('candidate.view'),
-			approve: can('candidate.approve'),
-			del: can('candidate.delete'),
-			handed: active.reduce((a, p) => a + sensitive.filter((c) => effectiveLevel(p, c.key) !== 'none').length, 0)
-		};
-	});
-	const showBoard = $derived(moduleFilter === 'all' || moduleFilter === 'candidates');
-	const boardSubs = $derived(CAND.subs.map((sb) => ({ ...sb, caps: sb.caps.filter(capHit) })).filter((sb) => sb.caps.length));
+	/** Hover text for a power's name: its key and every place in the app that
+	 *  uses it (the table has no column for this, to stay compact). */
+	const whereTitle = (c: ViewCap) =>
+		[c.key, ...(c.surface.length ? c.surface : ['Not wired into the app yet.'])].join('\n');
 	const entityLabel = (p: Person) =>
 		p.entities === 'all' ? `All ${data.entities.length} entities` : `${p.entities.length} entities`;
 </script>
@@ -373,131 +374,72 @@
 						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
 						<input type="search" placeholder="Find a power…" bind:value={capQuery} aria-label="Find a capability" />
 					</label>
-					<button class="pick" onclick={() => (shut = new Set())}>Expand all</button>
-					<button class="pick" onclick={() => (shut = new Set(VIEW_GROUPS.map((g) => g.key)))}>Collapse all</button>
-					<span class="hint">Click a cell to change the level. A dot marks an override on top of the preset.</span>
+					<button class="pick" onclick={() => (openMods = new Set(VIEW_GROUPS.map((g) => g.key)))}>Open all</button>
+					<button class="pick" onclick={() => (openMods = new Set())}>Fold all</button>
+					<span class="hint">Click a module to open its powers, then a cell to change the level.</span>
 				</div>
 			</div>
-			{#if showBoard && boardSubs.length}
-				<section class="crec" aria-label="Candidate records">
-					<header class="crec-h">
-						<span class="crec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6" /></svg></span>
-						<div class="crec-t">
-							<h2>Candidate records</h2>
-							<p>Every power over a candidate’s onboarding file, in one place. Pick a level for each person right on the card.</p>
-						</div>
-						<div class="crec-stats">
-							<span><b>{candStats.open}</b>/{candStats.people} can open records</span>
-							<span><b>{candStats.approve}</b> can approve</span>
-							<span class:warn={candStats.del > 1}><b>{candStats.del}</b> can delete</span>
-							<span><b>{candStats.handed}</b> sensitive grants</span>
-						</div>
-					</header>
-					{#each boardSubs as sb (sb.title)}
-						<div class="crec-band" class:sens={sb.title?.startsWith('Sensitive')}>
-							<div class="crec-band-h">
-								<span>{sb.title}</span>
-								{#if sb.note}<small>{sb.note}</small>{/if}
-							</div>
-							<div class="crec-grid">
-								{#each sb.caps as c (c.key)}
-									{@const info = CAND_INFO[c.key]}
-									<article class="pcard">
-										<div class="pcard-top">
-											<span class="pcard-ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={info?.icon ?? 'M12 3v18M3 12h18'} /></svg></span>
-											<div class="pcard-t">
-												<h3>{c.short}</h3>
-												<p>{info?.d ?? c.label}</p>
-											</div>
-										</div>
-										<div class="pcard-tags">
-											{#if c.enforced}<span class="inforce" title="The app checks this today — a change takes effect on Apply">in force</span>{/if}
-											{#if c.reserved}<span class="reserved">super admin only</span>{/if}
-											{#if c.wired === false}<span class="notwired">not wired</span>{/if}
-											<span class="pcard-k" title={c.surface.join(' · ')}>{c.key}</span>
-										</div>
-										<ul class="pcard-people">
-											{#each people as p (p.id)}
-												{@const lv = effectiveLevel(p, c.key)}
-												{@const locked = isLocked(p, c.key)}
-												<li class:off={p.status === 'disabled'}>
-													<button class="pp" onclick={() => (selectedId = p.id)} title="Open {p.name} in the panel">
-														<span class="avatar tiny" style="background:{toneOf(p)}">{initials(p.name)}</span>
-														<span class="pp-n">{p.name}</span>
-														{#if isOverride(p, c.key)}<span class="od-key" title="Personal override on top of the preset"></span>{/if}
-													</button>
-													<div class="lvseg" role="radiogroup" aria-label="{c.short} for {p.name}">
-														{#each LEVELS.filter((l) => capLevels(c.key).includes(l)) as l (l)}
-															<button
-																role="radio"
-																data-lv={l}
-																aria-checked={lv === l}
-																disabled={locked}
-																title={locked ? 'Super admins hold everything' : `${LEVEL_LABEL[l]} for ${p.name}`}
-																onclick={() => setCap(p, c.key, l)}
-															>{l === 'none' ? 'Off' : LEVEL_LABEL[l]}</button>
-														{/each}
-													</div>
-												</li>
-											{/each}
-										</ul>
-									</article>
-								{/each}
-							</div>
-						</div>
-					{/each}
-				</section>
-			{/if}
-			{#if moduleFilter !== 'candidates'}
 			<div class="mscroll">
 				<table class="matrix">
 					<thead>
 						<tr>
-							<th class="corner">Capability</th>
+							<th class="corner mod-h">Module</th>
+							<th class="corner"><div class="cap-line"><span>Power · what it does</span></div></th>
 							{#each people as p (p.id)}
 								<th>
-									<button class="mh" onclick={() => (selectedId = p.id)} title="Edit {p.name}">
+									<button class="mh" onclick={() => (selectedId = p.id)} title="Edit {p.name} · {PRESETS[p.preset]?.name ?? p.preset}">
 										<span class="avatar" style="background:{toneOf(p)}">{initials(p.name)}</span>
 										<span class="mn">{p.name}</span>
-										<span class="mr">{PRESETS[p.preset]?.name ?? p.preset}</span>
 									</button>
 								</th>
 							{/each}
 						</tr>
 					</thead>
 					<tbody>
-						{#each visibleGroups.filter((x) => x.key !== 'candidates') as g (g.key)}
-							{@const open = groupOpen(g.key)}
-							<tr class="grouprow" style="--g:{TONE_HEX[g.tone as keyof typeof TONE_HEX]}">
-								<th>
-									<button class="gh" aria-expanded={open} onclick={() => toggleGroup(g.key)}>
-										<svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-										<span class="gdot"></span>{g.name}<span class="gcount">{g.caps.length}</span>
-									</button>
-								</th>
-								{#each people as p (p.id)}
-									<td><span class="gbadge" title="{p.name} has {grantedIn(p, g.caps)} of {g.caps.length} in {g.name}">{grantedIn(p, g.caps)}/{g.caps.length}</span></td>
-								{/each}
-							</tr>
-							{#if open}
-							{#each g.subs as sb (sb.title ?? 'all')}
-							{#if sb.title && g.subs.length > 1}
-								<tr class="subrow" style="--g:{TONE_HEX[g.tone as keyof typeof TONE_HEX]}">
-									<th>{sb.title}{#if sb.note}<small>{sb.note}</small>{/if}</th>
-									{#each people as p (p.id)}<td></td>{/each}
+						<!-- One table; each module is one summary row until it is opened. -->
+						{#each visibleGroups as g (g.key)}
+							{#if !modOpen(g.key)}
+								<tr class="modrow" style="--g:{TONE_HEX[g.tone as keyof typeof TONE_HEX]}">
+									<th class="mod" colspan="2">
+										<button class="mod-btn" type="button" aria-expanded="false" onclick={() => toggleMod(g.key)}>
+											<svg class="mod-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+											<span class="gdot"></span><span class="mod-t">{g.name}</span>
+											<span class="mod-c">{g.caps.length} power{g.caps.length === 1 ? '' : 's'}</span>
+											<span class="mod-open">Show</span>
+										</button>
+									</th>
+									{#each people as p (p.id)}
+										{@const mix = levelMix(p, g.caps)}
+										<td>
+											<span class="mix" title="{p.name}: {grantedIn(p, g.caps)} of {g.caps.length} in {g.name}">
+												{#each mix as m (m.l)}<span class="mix-b" data-lv={m.l}>{m.n}</span>{:else}<span class="mix-none">—</span>{/each}
+											</span>
+										</td>
+									{/each}
 								</tr>
-							{/if}
-							{#each sb.caps as c (c.key)}
-								<tr class="caprow-m">
+							{:else}
+							{#each g.caps as c, ci (c.key)}
+								<tr class="caprow-m" class:first={ci === 0}>
+									{#if ci === 0}
+										<!-- The module is named once, in one cell spanning all its powers. -->
+										<th class="mod" rowspan={g.caps.length} style="--g:{TONE_HEX[g.tone as keyof typeof TONE_HEX]}">
+											<button class="mod-btn" type="button" aria-expanded="true" onclick={() => toggleMod(g.key)} disabled={!!cq || moduleFilter !== 'all'}>
+												<svg class="mod-chev open" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+												<span class="gdot"></span><span class="mod-t">{g.name}</span>
+											</button>
+										</th>
+									{/if}
 									<th>
-										<div class="cap-l">
-											{c.short}
-											{#if c.wired === false}<span class="notwired" title="No such control exists in the app yet">not wired</span>{/if}
-										{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}
-										{#if c.reserved}<span class="reserved" title="Kept for super admins: whoever holds it could make themselves a super admin, so it cannot be handed out">super admin only</span>{/if}
+										<!-- One line per power: name and tags, what it does, where it lives. -->
+										<div class="cap-line">
+										<!-- Where the power lives in the app is on hover, not a column. -->
+										<div class="cap-l" title={whereTitle(c)}>
+											<span class="cap-n">{c.short}</span>
+											{#if c.wired === false}<span class="notwired" title="Not built into the app yet, so this setting has no effect">coming soon</span>{/if}
+										{#if c.enforced}<span class="inforce" title="Already working in the app — changes apply as soon as you press Apply">live</span>{/if}
+										{#if c.reserved}<span class="reserved" title="Only super admins can have this">admin only</span>{/if}
 										</div>
-										<div class="cap-k" title={c.surface.length ? c.surface.join('\n') : 'Nothing in the app implements this yet.'}>
-											{c.key}{c.surface.length ? ` · ${c.surface.length} place${c.surface.length === 1 ? '' : 's'}` : ''}
+										<div class="cap-d" title={CAP_DESC[c.key] ?? ''}>{CAP_DESC[c.key] ?? ''}</div>
 										</div>
 									</th>
 									{#each people as p (p.id)}
@@ -524,32 +466,30 @@
 									{/each}
 								</tr>
 							{/each}
-							{/each}
 							{/if}
 						{/each}
-						{#if !visibleGroups.some((x) => x.key !== 'candidates')}
-							<tr><td class="nomatch" colspan={people.length + 1}>No power matches “{capQuery}”.</td></tr>
+						{#if !visibleGroups.length}
+							<tr><td class="nomatch" colspan={people.length + 2}>No power matches “{capQuery}”.</td></tr>
 						{/if}
 					</tbody>
 				</table>
 			</div>
-			{/if}
 			<!-- What the cells mean, in the matrix's own chips so each line sits beside
 			     the thing it explains. Not every capability offers every level: a
 			     read-only one stops at View, a pure gate is — or Sign. -->
 			<section class="legend" aria-label="What the access levels mean">
-				<h3>What the levels mean</h3>
+				<h3>What these mean</h3>
 				<dl>
-					<div><dt><span class="cell" data-lv="none">{LEVEL_LABEL.none}</span></dt><dd><b>No access.</b> Can’t see or use it.</dd></div>
-					<div><dt><span class="cell" data-lv="view">{LEVEL_LABEL.view}</span></dt><dd><b>Read-only.</b> Can look, but not change anything.</dd></div>
-					<div><dt><span class="cell" data-lv="act">{LEVEL_LABEL.act}</span></dt><dd><b>Can do it</b> — edit, save, send.</dd></div>
-					<div><dt><span class="cell" data-lv="approve">{LEVEL_LABEL.approve}</span></dt><dd><b>Can sign it off.</b> Only on rows that need an approval.</dd></div>
-					<div><dt><span class="inforce">in force</span></dt><dd>The app checks this row today; a change takes effect on Apply. It starts from the person’s role, not their preset.</dd></div>
-				<div><dt><span class="reserved">super admin only</span></dt><dd>Stays with super admins. Whoever held it could make themselves one, so it can’t be handed out.</dd></div>
-					<div><dt><span class="notwired">not wired</span></dt><dd>Nothing in the app implements it yet, so a level here does nothing.</dd></div>
-					<div><dt><span class="od-key"></span></dt><dd>A dot is a personal override on top of the person’s preset.</dd></div>
+					<div><dt><span class="cell" data-lv="none">{LEVEL_LABEL.none}</span></dt><dd><b>No access.</b> They can’t see it.</dd></div>
+					<div><dt><span class="cell" data-lv="view">{LEVEL_LABEL.view}</span></dt><dd><b>Look only.</b> They can see it but not change it.</dd></div>
+					<div><dt><span class="cell" data-lv="act">{LEVEL_LABEL.act}</span></dt><dd><b>Make changes.</b> They can edit, save and send.</dd></div>
+					<div><dt><span class="cell" data-lv="approve">{LEVEL_LABEL.approve}</span></dt><dd><b>Give the final OK.</b> Only where something needs approval.</dd></div>
+					<div><dt><span class="inforce">live</span></dt><dd>Already working in the app. Your change applies when you press Apply.</dd></div>
+				<div><dt><span class="reserved">admin only</span></dt><dd>Only super admins can have this. It can’t be given to anyone else.</dd></div>
+					<div><dt><span class="notwired">coming soon</span></dt><dd>Not built into the app yet, so this setting does nothing for now.</dd></div>
+					<div><dt><span class="od-key"></span></dt><dd>A dot means this person’s setting was changed by hand from their role’s default.</dd></div>
 				</dl>
-				<p>Rows with neither tag are recorded here but still decided by the person’s role elsewhere in the app.</p>
+				<p>Rows without a tag are saved here, but for now the app still goes by the person’s role.</p>
 			</section>
 		{:else}
 			<div class="sim">
@@ -727,8 +667,8 @@
 							{#each sb.caps as c (c.key)}
 								<div class="caprow">
 									<div class="cap-id">
-										<div class="cap-l">{c.short}{#if c.enforced}<span class="inforce" title="The app checks this today — a change here takes effect as soon as it is applied">in force</span>{/if}{#if c.reserved}<span class="reserved" title="Kept for super admins — cannot be handed out">super admin only</span>{/if}{#if isOverride(p, c.key)}<span class="ovr"></span>{/if}</div>
-										<div class="cap-k">{c.surface.length ? c.surface[0] : 'not wired yet'}{c.surface.length > 1 ? ` +${c.surface.length - 1}` : ''}{p.checkers[c.key] ? ' · needs sign-off' : ''}</div>
+										<div class="cap-l">{c.short}{#if c.enforced}<span class="inforce" title="Already working in the app — changes apply as soon as you press Apply">live</span>{/if}{#if c.reserved}<span class="reserved" title="Only super admins can have this">admin only</span>{/if}{#if isOverride(p, c.key)}<span class="ovr"></span>{/if}</div>
+										<div class="cap-k">{c.surface.length ? c.surface[0] : 'coming soon'}{c.surface.length > 1 ? ` +${c.surface.length - 1}` : ''}{p.checkers[c.key] ? ' · needs sign-off' : ''}</div>
 									</div>
 									<div class="seg">
 										{#each LEVELS as l (l)}
@@ -778,7 +718,7 @@
 
 <AccessTour bind:open={tourOpen} setView={(v) => (view = v)} />
 
-<footer class="changebar">
+<footer class="changebar" class:dirty={diffs.length > 0}>
 	<span class="cb-dot" class:hot={diffs.length}></span>
 	<span>
 		{#if diffs.length}
@@ -857,9 +797,19 @@
 		transition: outline-color 0.2s ease;
 	}
 	.note { font-size: 11.5px; line-height: 1.55; color: var(--ae-text-2); border: 1px solid rgba(var(--ae-azure-rgb), 0.3); background: rgba(var(--ae-azure-rgb), 0.09); border-radius: 10px; padding: 10px 13px; margin-bottom: 14px; }
-	.stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
-	.main { padding: 0; overflow: hidden; min-height: 460px; }
-	.insp { padding: 16px; max-height: 78vh; display: flex; flex-direction: column; }
+	/* Both columns end on the same line, set by the table card: the person
+	   panel takes no height of its own (contain: size) and scrolls inside,
+	   so neither column leaves bare page under it. */
+	.stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: stretch; }
+	.stage > .insp { align-self: stretch; contain: size; }
+	.main { padding: 0; overflow: hidden; min-height: 460px; display: flex; flex-direction: column; }
+	.main > .legend { margin-top: auto; }
+	.main > .mscroll { margin-bottom: 14px; }
+	/* Each person's column keeps one width whether modules are open or folded. */
+	.matrix thead th:not(.corner) { width: 132px; }
+	/* Pinned beside the table as it scrolls, so the right column is never a
+	   long empty strip under a short panel. */
+	.insp { padding: 16px; position: sticky; top: 16px; max-height: calc(100vh - 110px); display: flex; flex-direction: column; }
 
 	.mbar { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--ae-line); flex-wrap: wrap; }
 	.picks { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -868,30 +818,23 @@
 	.pick.mini { padding: 4px 8px; font-size: 11px; }
 	.hint { font-size: 11px; color: var(--ae-muted); }
 
-	.mscroll { overflow: auto; max-height: 70vh; }
+	/* No height cap: the table grows with the page, so it scrolls with the page
+	   instead of in a box of its own. Sideways scroll stays for when there are
+	   more people than columns fit. */
+	.mscroll { overflow-x: auto; }
 	table.matrix { border-collapse: separate; border-spacing: 0; font-size: 12px; min-width: 100%; }
 	.matrix th, .matrix td { padding: 0; text-align: left; }
-	.matrix thead th { position: sticky; top: 0; z-index: 3; background: var(--ae-modal-base); border-bottom: 1px solid var(--ae-line-strong); padding: 8px 10px; }
-	.matrix thead th.corner { left: 0; z-index: 4; min-width: 260px; font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ae-muted); }
-	.mh { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 104px; background: none; border: 0; cursor: pointer; color: inherit; }
-	.mn { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; }
-	.mr { font-family: var(--ae-font-mono); font-size: 8.5px; text-transform: uppercase; color: var(--ae-muted); }
-	.matrix tbody th { position: sticky; left: 0; z-index: 2; background: var(--ae-modal-base); border-right: 1px solid var(--ae-line-strong); border-bottom: 1px solid var(--ae-line); padding: 7px 12px; font-weight: 400; }
-	.matrix tbody td { border-bottom: 1px solid var(--ae-line); padding: 5px 8px; text-align: center; }
+	.matrix thead th { position: sticky; top: 0; z-index: 3; background: var(--ae-modal-base); border-bottom: 1px solid var(--ae-line-strong); padding: 5px 8px; }
+	.matrix thead th.corner { z-index: 4; min-width: 260px; font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ae-muted); }
+	.mh { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 64px; background: none; border: 0; cursor: pointer; color: inherit; }
+	.mn { font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+	.mh .avatar { width: 20px; height: 20px; border-radius: 6px; font-size: 9px; }
+	.matrix tbody th { position: static; background: var(--ae-modal-base); border-right: 1px solid var(--ae-line-strong); border-bottom: 1px solid var(--ae-line); padding: 2px 8px; font-weight: 400; }
+	.matrix tbody td { border-bottom: 1px solid var(--ae-line); padding: 2px 4px; text-align: center; }
 	/* Section headers: the module's own colour, a count, and how many of its
 	   powers each person holds — collapsible, so a long matrix stays navigable. */
-	tr.grouprow th, tr.grouprow td { background: color-mix(in srgb, var(--g) 9%, var(--ae-modal-base)); border-top: 1px solid color-mix(in srgb, var(--g) 30%, transparent); }
-	tr.grouprow th { padding: 0; }
-	.gh { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ae-text); }
-	.gh .chev { color: var(--ae-muted); transition: transform 0.15s ease; }
-	.gh[aria-expanded='false'] .chev { transform: rotate(-90deg); }
 	.gdot { width: 8px; height: 8px; border-radius: 50%; background: var(--g); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--g) 22%, transparent); }
-	.gcount { margin-left: 2px; font-family: var(--ae-font-mono); font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 999px; color: var(--ae-muted); background: var(--ae-line); }
-	.gbadge { display: inline-block; font-family: var(--ae-font-mono); font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; color: var(--ae-text-2); border: 1px solid color-mix(in srgb, var(--g) 40%, transparent); }
-	tr.subrow th { padding: 7px 12px 5px 30px; font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--g); background: var(--ae-modal-base); border-bottom: 1px solid var(--ae-line); }
-	tr.subrow th small { display: block; margin-top: 2px; font-family: var(--ae-font-body); font-size: 10.5px; letter-spacing: 0; text-transform: none; color: var(--ae-muted); }
-	tr.subrow td { background: var(--ae-modal-base); border-bottom: 1px solid var(--ae-line); }
-	tr.caprow-m th { padding-left: 30px; }
+	tr.caprow-m th { padding-left: 12px; }
 	tr.caprow-m:hover th, tr.caprow-m:hover td { background: color-mix(in srgb, var(--ae-text) 3%, var(--ae-modal-base)); }
 	.nomatch { padding: 22px; text-align: center; color: var(--ae-muted); font-size: 12px; }
 	.mtools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
@@ -901,21 +844,64 @@
 	.pick-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--g); margin-right: 6px; vertical-align: 1px; }
 	.grp summary .gdot { width: 7px; height: 7px; }
 	.grp-sub { padding: 7px 10px 4px; border-top: 1px solid var(--ae-line); font-family: var(--ae-font-mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--g); }
-	.cap-l { font-size: 12px; }
-	.cap-k { font-family: var(--ae-font-mono); font-size: 9px; color: var(--ae-muted); margin-top: 1px; opacity: 0.8; }
+	.cap-line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+	.cap-line > .cap-l { flex: none; max-width: 60%; }
+	.cap-line > .cap-d { flex: 1; }
+	/* Name and tags on one line; a long name is cut, not wrapped. */
+	.matrix .cap-l { flex-wrap: nowrap; min-width: 0; white-space: nowrap; }
+	.matrix .cap-n { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+	.matrix .cap-l > span:not(.cap-n) { flex: none; }
+	.matrix .cap-l { font-size: 12px; line-height: 1.35; }
+	.matrix .cap-d { font-size: 11.5px; line-height: 1.35; }
+	.matrix .inforce, .matrix .reserved, .matrix .notwired { font-size: 8.5px; padding: 0 3px; margin-left: 5px; border-radius: 4px; }
+	.matrix .cell { width: 54px; padding: 2px 0; border-radius: 5px; }
+	/* Module column: one merged cell per module, tinted in its colour, with a
+	   heavier rule where one module ends and the next begins. */
+	.matrix thead th.mod-h { width: 128px; min-width: 128px; }
+	.matrix tbody th.mod { position: static; vertical-align: top; width: 128px; padding: 5px 8px; border-right: 1px solid var(--ae-line-strong); background: color-mix(in srgb, var(--g) 7%, var(--ae-modal-base)); }
+	.mod-n { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--ae-text); }
+	.mod-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.mod-c { margin-left: auto; flex: none; font-family: var(--ae-font-mono); font-size: 9.5px; font-weight: 500; color: var(--ae-muted); }
+	/* Folded module rows */
+	tr.modrow > th, tr.modrow > td { border-top: 1px solid var(--ae-line-strong); background: color-mix(in srgb, var(--g) 6%, var(--ae-modal-base)); }
+	tr.modrow:hover > th, tr.modrow:hover > td { background: color-mix(in srgb, var(--g) 11%, var(--ae-modal-base)); }
+	tr.modrow > th.mod { width: auto; padding: 0; }
+	.mod-btn { display: flex; align-items: center; gap: 7px; width: 100%; padding: 7px 10px; border: 0; background: none; color: var(--ae-text); font: inherit; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
+	.mod-btn:disabled { cursor: default; }
+	.mod-chev { flex: none; color: var(--ae-muted); transition: transform 0.15s ease; }
+	.mod-chev.open { transform: rotate(90deg); }
+	.mod-btn .mod-c { margin-left: 4px; font-family: var(--ae-font-body); font-size: 11px; font-weight: 400; color: var(--ae-muted); }
+	.mod-open { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--ae-orange); opacity: 0; transition: opacity 0.15s ease; }
+	tr.modrow:hover .mod-open { opacity: 1; }
+	.mix { display: inline-flex; gap: 3px; }
+	.mix-b { min-width: 22px; padding: 1px 5px; border-radius: 5px; font-family: var(--ae-font-mono); font-size: 10px; font-weight: 600; text-align: center; }
+	.mix-b[data-lv='view'] { color: var(--ae-azure); background: rgba(var(--ae-azure-rgb), 0.14); }
+	.mix-b[data-lv='act'] { color: var(--ae-ember-glow); background: rgba(var(--ae-ember-rgb), 0.18); }
+	.mix-b[data-lv='approve'] { color: var(--ae-verdant); background: rgba(var(--ae-verdant-rgb), 0.14); }
+	.mix-none { color: var(--ae-muted); }
+	tr.caprow-m.first > th, tr.caprow-m.first > td { border-top: 1px solid var(--ae-line-strong); }
+	.matrix thead th.corner .cap-line { font-family: var(--ae-font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ae-muted); }
+	.cap-l { font-size: 12.5px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; }
+	.cap-d { font-size: 12px; color: var(--ae-muted); line-height: 1.4; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.cap-k { font-family: var(--ae-font-mono); font-size: 9.5px; color: var(--ae-muted); opacity: 0.8; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	@media (max-width: 1100px) {
+		.cap-line { flex-direction: column; align-items: flex-start; gap: 2px; }
+		.cap-line > .cap-l { max-width: 100%; }
+		.cap-d { white-space: normal; }
+	}
 	.reserved { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid rgba(var(--ae-crimson-rgb), 0.45); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-crimson); }
 	.legend dt .reserved { margin-left: 0; }
 	.inforce { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid rgba(var(--ae-verdant-rgb), 0.45); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-verdant); }
 	.notwired { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid var(--ae-line-strong); border-radius: 5px; padding: 1px 4px; margin-left: 6px; color: var(--ae-muted); }
-	.cell { width: 68px; padding: 4px 0; border-radius: 7px; font-family: var(--ae-font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; border: 1px solid transparent; cursor: pointer; }
+	.cell { width: 60px; padding: 3px 0; border-radius: 7px; font-family: var(--ae-font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; border: 1px solid transparent; cursor: pointer; }
 	.cell[data-lv='none'] { background: var(--ae-line); color: var(--ae-muted); }
 	.cell[data-lv='view'] { background: rgba(var(--ae-azure-rgb), 0.18); color: var(--ae-azure); }
 	.cell[data-lv='act'] { background: rgba(var(--ae-ember-rgb), 0.2); color: var(--ae-ember); }
 	.cell[data-lv='approve'] { background: rgba(var(--ae-verdant-rgb), 0.2); color: var(--ae-verdant); }
 	.cell.locked { opacity: 0.5; cursor: not-allowed; }
-	.legend { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--ae-line); border-radius: 12px; max-width: 760px; }
+	.legend { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--ae-line); border-radius: 12px; }
 	.legend h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ae-text-2); }
-	.legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 20px; }
+	.legend dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 20px; }
 	.legend dl > div { display: flex; align-items: center; gap: 10px; }
 	.legend dt { flex: 0 0 76px; display: flex; justify-content: center; }
 	.legend dt .cell { display: inline-block; text-align: center; cursor: default; }
@@ -988,7 +974,13 @@
 	.pillbtn.rev { background: rgba(var(--ae-azure-rgb), 0.14); border-color: rgba(var(--ae-azure-rgb), 0.36); color: var(--ae-azure); }
 	.pillbtn.no { background: var(--ae-line); color: var(--ae-muted); text-decoration: line-through; }
 
-	.changebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 11px 14px; margin-top: 14px; border: 1px solid var(--ae-line-strong); border-radius: 12px; background: var(--ae-card-bg); font-size: 12.5px; }
+	/* Sits at the end of the page. Only while there are unsaved changes does it
+	   float at the bottom of the window, so Apply is in reach without scrolling;
+	   with nothing to save it stays put instead of following you over the
+	   table. Solid, so rows never show through it, and its right end clears
+	   the round Ask Champ button in that corner. */
+	.changebar.dirty { position: sticky; bottom: 12px; z-index: 30; }
+	.changebar { position: relative; display: flex; align-items: center; gap: 12px; padding: 11px 76px 11px 14px; margin-top: 14px; border: 1px solid rgba(var(--ae-orange-rgb), 0.22); border-radius: 12px; background: var(--ae-modal-base); box-shadow: 0 -10px 30px -12px rgba(0, 0, 0, 0.6), 0 12px 30px -16px rgba(0, 0, 0, 0.7); font-size: 12.5px; }
 	.changebar form { display: contents; }
 	.cb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ae-line-strong); }
 	.cb-dot.hot { background: var(--ae-ember); }
@@ -1009,60 +1001,11 @@
 	.empty { color: var(--ae-muted); font-size: 12px; text-align: center; padding: 30px 10px; line-height: 1.6; }
 
 	/* ── Candidate records board ──────────────────────────────────────────── */
-	.crec { padding: 16px; border-bottom: 1px solid var(--ae-line); background:
-		radial-gradient(120% 80% at 0% 0%, rgba(var(--ae-ember-rgb), 0.10), transparent 60%); }
-	.crec-h { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
-	.crec-ic { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; color: #fff; flex: none;
-		background: linear-gradient(135deg, var(--ae-ember), #a78bfa); box-shadow: 0 8px 22px -8px rgba(var(--ae-ember-rgb), 0.7); }
-	.crec-t { flex: 1; min-width: 220px; }
-	.crec-t h2 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
-	.crec-t p { margin: 3px 0 0; font-size: 12px; color: var(--ae-muted); }
-	.crec-stats { display: flex; flex-wrap: wrap; gap: 6px; }
-	.crec-stats span { font-size: 11.5px; color: var(--ae-text-2); padding: 5px 10px; border-radius: 999px; border: 1px solid var(--ae-line-strong); background: var(--ae-modal-base); }
-	.crec-stats b { font-family: var(--ae-font-mono); color: var(--ae-text); margin-right: 2px; }
-	.crec-stats span.warn { border-color: rgba(var(--ae-crimson-rgb), 0.45); color: var(--ae-crimson); }
-	.crec-stats span.warn b { color: var(--ae-crimson); }
-	.crec-band { border-radius: 14px; padding: 12px; border: 1px solid var(--ae-line); background: var(--ae-modal-base); }
-	.crec-band + .crec-band { margin-top: 12px; }
-	.crec-band.sens { border-color: rgba(var(--ae-amber-rgb), 0.35);
-		background: linear-gradient(0deg, rgba(var(--ae-amber-rgb), 0.05), rgba(var(--ae-amber-rgb), 0.05)), var(--ae-modal-base); }
-	.crec-band-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 2px 10px; }
-	.crec-band-h span { font-family: var(--ae-font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ae-ember-glow); }
-	.crec-band.sens .crec-band-h span { color: var(--ae-amber); }
-	.crec-band-h small { font-size: 11px; color: var(--ae-muted); }
-	.crec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
-	.pcard { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid var(--ae-line-strong); background: var(--ae-card-bg);
-		transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
-	.pcard:hover { border-color: rgba(var(--ae-ember-rgb), 0.45); transform: translateY(-1px); box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.6); }
-	.crec-band.sens .pcard:hover { border-color: rgba(var(--ae-amber-rgb), 0.55); }
-	.pcard-top { display: flex; gap: 10px; align-items: flex-start; }
-	.pcard-ic { width: 32px; height: 32px; border-radius: 9px; flex: none; display: grid; place-items: center; color: var(--ae-ember-glow); background: rgba(var(--ae-ember-rgb), 0.14); }
-	.crec-band.sens .pcard-ic { color: var(--ae-amber); background: rgba(var(--ae-amber-rgb), 0.14); }
-	.pcard-t { min-width: 0; }
-	.pcard-t h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ae-text); line-height: 1.3; }
-	.pcard-t p { margin: 2px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--ae-muted); }
-	.pcard-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-	.pcard-tags .inforce, .pcard-tags .reserved, .pcard-tags .notwired { margin-left: 0; }
-	.pcard-k { margin-left: auto; font-family: var(--ae-font-mono); font-size: 9.5px; color: var(--ae-muted); opacity: 0.8; }
-	.pcard-people { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--ae-line); display: flex; flex-direction: column; gap: 6px; }
-	.pcard-people li { display: flex; align-items: center; gap: 8px; }
-	.pcard-people li.off { opacity: 0.45; }
-	.pp { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; padding: 0; border: 0; background: none; cursor: pointer; color: inherit; text-align: left; }
-	.pp-n { font-size: 12px; color: var(--ae-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.pp:hover .pp-n { color: var(--ae-text); }
 	.avatar.tiny { width: 24px; height: 24px; border-radius: 7px; font-size: 9.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); flex: none; }
-	.lvseg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--ae-line); flex: none; }
-	.lvseg button { padding: 4px 8px; border-radius: 7px; border: 0; background: none; cursor: pointer; font-family: var(--ae-font-mono); font-size: 9.5px; font-weight: 600; text-transform: uppercase; color: var(--ae-muted); transition: background 0.12s ease, color 0.12s ease; }
-	.lvseg button:hover:not(:disabled) { color: var(--ae-text); }
-	.lvseg button:disabled { cursor: not-allowed; }
-	.lvseg button[aria-checked='true'][data-lv='none'] { background: var(--ae-card-bg); color: var(--ae-text-2); }
-	.lvseg button[aria-checked='true'][data-lv='view'] { background: rgba(var(--ae-azure-rgb), 0.22); color: var(--ae-azure); }
-	.lvseg button[aria-checked='true'][data-lv='act'] { background: rgba(var(--ae-ember-rgb), 0.24); color: var(--ae-ember-glow); }
-	.lvseg button[aria-checked='true'][data-lv='approve'] { background: rgba(var(--ae-verdant-rgb), 0.22); color: var(--ae-verdant); }
-	.lvseg button:disabled[aria-checked='false'] { opacity: 0.35; }
 	@media (max-width: 1100px) {
 		.stage { grid-template-columns: minmax(0, 1fr); }
-		.insp { max-height: none; }
+		.insp { position: static; max-height: none; }
+		.stage > .insp { contain: none; }
 		.simgrid { grid-template-columns: minmax(0, 1fr); }
 	}
 </style>

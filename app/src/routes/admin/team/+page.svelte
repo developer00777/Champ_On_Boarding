@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
+	import { MODULES, LEVEL_LABEL, POPULATIONS, TONE_HEX, ALL_CAP_KEYS, effectiveLevel } from '$lib/shared/access';
 
 	let { data, form } = $props();
 
@@ -9,6 +10,82 @@
 		super_admin: 'Super admin',
 		finance_team: 'Finance team'
 	};
+
+	// ── "What can they access" panel ─────────────────────────────────────────
+	// Clicking a member opens a read-only list of every power they hold, worked
+	// out with the same rules Access & org uses, so the two always agree.
+	let accessFor = $state<string | null>(null);
+	// The card opens beside the email that was clicked: below it when there is
+	// room, above it otherwise, and always kept inside the window.
+	const POP_W = 360;
+	const POP_MAX_H = 440;
+	let popStyle = $state('');
+	// Pointing at an email shows the card; clicking pins it open until you
+	// click away. A short grace period lets the pointer travel into the card.
+	let pinned = $state(false);
+	let closeTimer: ReturnType<typeof setTimeout> | undefined;
+	function closeAccess() {
+		clearTimeout(closeTimer);
+		accessFor = null;
+		pinned = false;
+	}
+	function softClose() {
+		if (pinned) return;
+		clearTimeout(closeTimer);
+		closeTimer = setTimeout(() => {
+			if (!pinned) accessFor = null;
+		}, 180);
+	}
+	function keepOpen() {
+		clearTimeout(closeTimer);
+	}
+	function hoverAccess(id: string, e: MouseEvent) {
+		if (pinned) return;
+		keepOpen();
+		placeCard(e.currentTarget as HTMLElement);
+		accessFor = id;
+	}
+	function clickAccess(id: string, e: MouseEvent) {
+		if (pinned && accessFor === id) return closeAccess();
+		keepOpen();
+		placeCard(e.currentTarget as HTMLElement);
+		accessFor = id;
+		pinned = true;
+	}
+	function placeCard(el: HTMLElement) {
+		const r = el.getBoundingClientRect();
+		const gap = 8, margin = 12;
+		const left = Math.max(margin, Math.min(r.left, window.innerWidth - POP_W - margin));
+		const below = window.innerHeight - r.bottom - gap - margin;
+		const above = r.top - gap - margin;
+		popStyle =
+			below >= 260 || below >= above
+				? `left:${left}px; top:${r.bottom + gap}px; max-height:${Math.min(below, POP_MAX_H)}px`
+				: `left:${left}px; bottom:${window.innerHeight - r.top + gap}px; max-height:${Math.min(above, POP_MAX_H)}px`;
+	}
+	const accessPerson = $derived(data.admins.find((a) => a.id === accessFor) ?? null);
+	const accessGroups = $derived.by(() => {
+		const p = accessPerson;
+		if (!p) return [];
+		return MODULES.map((m) => ({
+			name: m.name,
+			color: TONE_HEX[m.tone],
+			rows: m.caps
+				.map((c) => ({ key: c.key, label: c.label, lv: effectiveLevel(p.access, c.key) }))
+				.filter((r) => r.lv !== 'none')
+		})).filter((g) => g.rows.length);
+	});
+	const accessCount = $derived(accessGroups.reduce((n, g) => n + g.rows.length, 0));
+	const reachText = $derived(POPULATIONS.find((x) => x.k === accessPerson?.access.population)?.t ?? '');
+	const entityText = $derived.by(() => {
+		const e = accessPerson?.access.entities;
+		if (!e || e === 'all') return 'All entities';
+		return e.map((slug) => data.entityNames[slug] ?? slug).join(', ');
+	});
+	const trackText = $derived.by(() => {
+		const t = accessPerson?.access.tracks;
+		return !t || t === 'all' ? 'All tracks' : t.join(', ');
+	});
 
 	// GlassSelect is controlled; seed to the first option like the native select.
 	let newRole = $state('hr_admin');
@@ -198,10 +275,18 @@
 	</div>
 	{#each data.admins as a}
 		<div class="trow">
-			<div>
-				<div style="font-weight:700;font-size:14px;color:var(--ink)">{a.email}</div>
-				{#if a.isSelf}<div style="font-size:12px;color:var(--smoke)">You</div>{/if}
-			</div>
+			<button
+				class="who-btn"
+				type="button"
+				onmouseenter={(e) => hoverAccess(a.id, e)}
+				onmouseleave={softClose}
+				onfocus={(e) => hoverAccess(a.id, e as unknown as MouseEvent)}
+				onclick={(e) => clickAccess(a.id, e)}
+				aria-expanded={accessFor === a.id}
+			>
+				<span class="who-email">{a.email}</span>
+				<span class="who-sub">{a.isSelf ? 'You · ' : ''}Point or click to see access</span>
+			</button>
 			<div class="tcell">{roleLabel[a.role] ?? a.role}</div>
 			<div>
 				<span class="pill {a.status === 'active' ? 'teal' : 'red'}">
@@ -356,7 +441,83 @@
 	{/each}
 </section>
 
+<svelte:window onkeydown={(e) => e.key === 'Escape' && closeAccess()} onresize={closeAccess} />
+
+{#if accessPerson}
+	{#if pinned}
+		<button class="acc-scrim" type="button" aria-label="Close" onclick={closeAccess}></button>
+	{/if}
+	<div class="acc-panel" style={popStyle} role="dialog" aria-label="What {accessPerson.email} can access" tabindex="-1" onmouseenter={keepOpen} onmouseleave={softClose}>
+		<header class="acc-head">
+			<div>
+				<div class="acc-email">{accessPerson.email}</div>
+				<div class="acc-role">{roleLabel[accessPerson.role] ?? accessPerson.role} · {accessPerson.status === 'active' ? 'Active' : 'Disabled'}</div>
+			</div>
+			<button class="acc-x" type="button" aria-label="Close" onclick={closeAccess}>✕</button>
+		</header>
+
+		<div class="acc-sum">
+			<div><b>{accessCount}</b><span>of {ALL_CAP_KEYS.length} powers</span></div>
+			<div><b>{reachText}</b><span>whose records</span></div>
+		</div>
+		<dl class="acc-scope">
+			<div><dt>Entities</dt><dd>{entityText}</dd></div>
+			<div><dt>Hiring tracks</dt><dd>{trackText}</dd></div>
+			{#if accessPerson.access.accessExpiresAt}<div><dt>Access ends</dt><dd>{accessPerson.access.accessExpiresAt}</dd></div>{/if}
+		</dl>
+
+		<div class="acc-list">
+			{#each accessGroups as g (g.name)}
+				<div class="acc-mod" style="--g:{g.color}"><span class="acc-dot"></span>{g.name}<span class="acc-n">{g.rows.length}</span></div>
+				{#each g.rows as r (r.key)}
+					<div class="acc-row"><span>{r.label}</span><span class="acc-lv" data-lv={r.lv}>{LEVEL_LABEL[r.lv]}</span></div>
+				{/each}
+			{:else}
+				<p class="acc-empty">This person has no access to anything yet.</p>
+			{/each}
+		</div>
+
+		{#if data.canManage}
+			<a class="btn small acc-edit" href="/admin/access">Change their access in Access &amp; org</a>
+		{/if}
+	</div>
+{/if}
+
 <style>
+	/* ── member → access panel ── */
+	.who-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; color: inherit; font: inherit; min-width: 0; }
+	.who-email { font-weight: 700; font-size: 14px; color: var(--ae-text); overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+	.who-sub { font-size: 12px; color: var(--ae-muted); }
+	.who-btn:hover .who-email { color: var(--ae-ember-glow); text-decoration: underline; text-underline-offset: 3px; }
+	.who-btn:hover .who-sub { color: var(--ae-orange); }
+	/* Clicking anywhere outside the card closes it; the page stays visible. */
+	.acc-scrim { position: fixed; inset: 0; z-index: 9998; border: 0; background: transparent; cursor: default; }
+	.acc-panel { position: fixed; z-index: 9999; width: min(360px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; border-radius: 14px; background: var(--ae-modal-base); border: 1px solid rgba(var(--ae-orange-rgb), 0.28); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 24px 60px -18px rgba(0, 0, 0, 0.75), 0 10px 40px -20px rgba(var(--ae-orange-rgb), 0.35); animation: acc-in 0.14s ease-out; }
+	@keyframes acc-in { from { transform: translateY(-4px) scale(0.98); opacity: 0; } }
+	.acc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+	.acc-email { font-size: 16px; font-weight: 600; color: var(--ae-text); word-break: break-all; }
+	.acc-role { font-size: 12.5px; color: var(--ae-muted); margin-top: 3px; }
+	.acc-x { flex: none; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--ae-line-strong); background: var(--ae-input-bg); color: var(--ae-text-2); cursor: pointer; }
+	.acc-sum { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+	.acc-sum > div { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--ae-line-strong); background: var(--ae-sub-bg); }
+	.acc-sum b { font-size: 15px; color: var(--ae-text); }
+	.acc-sum span { font-size: 11.5px; color: var(--ae-muted); }
+	.acc-scope { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+	.acc-scope > div { display: grid; grid-template-columns: 100px 1fr; gap: 10px; }
+	.acc-scope dt { color: var(--ae-muted); }
+	.acc-scope dd { margin: 0; color: var(--ae-text-2); }
+	.acc-list { flex: 1; min-height: 0; overflow-y: auto; border-top: 1px solid var(--ae-line); padding-top: 6px; }
+	.acc-mod { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--g); }
+	.acc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--g); }
+	.acc-n { margin-left: auto; font-family: var(--ae-font-mono); color: var(--ae-muted); }
+	.acc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--ae-line-soft); font-size: 12.5px; color: var(--ae-text-2); }
+	.acc-lv { flex: none; min-width: 62px; text-align: center; padding: 2px 8px; border-radius: 6px; font-family: var(--ae-font-mono); font-size: 9.5px; font-weight: 600; text-transform: uppercase; }
+	.acc-lv[data-lv='view'] { color: var(--ae-azure); background: rgba(var(--ae-azure-rgb), 0.14); }
+	.acc-lv[data-lv='act'] { color: var(--ae-ember-glow); background: rgba(var(--ae-ember-rgb), 0.18); }
+	.acc-lv[data-lv='approve'] { color: var(--ae-verdant); background: rgba(var(--ae-verdant-rgb), 0.14); }
+	.acc-empty { color: var(--ae-muted); font-size: 13px; }
+	.acc-edit { align-self: flex-start; text-decoration: none; }
+
 	.page-title {
 		font-family: var(--ae-font-display);
 		font-size: 34px;

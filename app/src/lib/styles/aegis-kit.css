@@ -57,6 +57,61 @@
 	box-shadow: var(--ae-card-shadow);
 	color: var(--ae-text);
 }
+/* Frosted glass on the surfaces that never hold a full-screen pop-up: a
+   backdrop-filter makes an element the containing block for position:fixed
+   children, so the generic .card (detail pages put modals inside it) keeps
+   the translucent orange surface without the blur. */
+.aegis .table-card,
+.aegis .panel,
+.aegis .chart-card,
+.aegis .kpi-tile,
+.aegis .metric,
+.aegis .tr-tile,
+.aegis .dq-tile,
+.aegis .tabbar,
+.aegis .seg {
+	backdrop-filter: var(--ae-card-blur);
+	-webkit-backdrop-filter: var(--ae-card-blur);
+}
+/* The glass catches the light when you point at it: the edge warms, the
+   halo grows, and cards you can act on lift a pixel. */
+.aegis .card,
+.aegis .table-card,
+.aegis .panel,
+.aegis .chart-card,
+.aegis .kpi-tile,
+.aegis .metric,
+.aegis .tr-tile,
+.aegis .dq-tile {
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.25s ease,
+		transform 0.2s ease;
+}
+.aegis .panel:hover,
+.aegis .chart-card:hover,
+.aegis .kpi-tile:hover,
+.aegis .metric:hover,
+.aegis .tr-tile:hover,
+.aegis .dq-tile:hover,
+.aegis .table-card:hover {
+	border-color: var(--ae-card-border-hover);
+	box-shadow: var(--ae-card-shadow-hover);
+}
+.aegis .metric:hover,
+.aegis .kpi-tile:hover,
+.aegis .tr-tile:hover,
+.aegis .dq-tile:hover {
+	transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+	.aegis .metric:hover,
+	.aegis .kpi-tile:hover,
+	.aegis .tr-tile:hover,
+	.aegis .dq-tile:hover {
+		transform: none;
+	}
+}
 
 /* ---------- type ---------- */
 .aegis .eyebrow {
@@ -183,9 +238,11 @@
 	border-color: rgba(var(--ae-ember-rgb), 0.5);
 }
 
-/* ---------- buttons ---------- */
+/* ---------- buttons ----------
+   The main call to action is orange; indigo is kept for links, active
+   states and focus, so the two theme colours never compete. */
 .aegis .btn {
-	background: linear-gradient(180deg, #9a91ff 0%, #8378fa 100%);
+	background: linear-gradient(180deg, #fdab6b 0%, var(--ae-orange-deep) 100%);
 	color: var(--ae-on-accent);
 	border: 1px solid rgba(255, 255, 255, 0.1);
 	border-radius: 8px;
@@ -196,7 +253,7 @@
 	padding: 9px 16px;
 	box-shadow:
 		0 1px 0 rgba(255, 255, 255, 0.22) inset,
-		0 6px 16px -10px rgba(var(--ae-ember-rgb), 0.8);
+		0 6px 16px -10px rgba(var(--ae-orange-rgb), 0.85);
 	text-transform: none;
 	transition:
 		transform var(--ae-dur) var(--ae-ease),
@@ -207,7 +264,7 @@
 	filter: brightness(1.06);
 	box-shadow:
 		0 1px 0 rgba(255, 255, 255, 0.24) inset,
-		0 8px 20px -10px rgba(var(--ae-ember-rgb), 0.9);
+		0 8px 20px -10px rgba(var(--ae-orange-rgb), 0.95);
 }
 .aegis .btn:active:not(:disabled) {
 	transform: translateY(0);
@@ -359,4 +416,109 @@
 /* Light mode: the lavender pill text is tuned for navy; deepen it on white. */
 .aegis[data-theme='light'] .pill.purple {
 	color: var(--ae-ember);
+}
+
+/* =========================================================
+   Orange accents — small, deliberate touches of the brand
+   colour on top of the indigo UI: a mark beside headings,
+   orange action links, the row you are pointing at, and
+   the selected tab or filter. Glow stays subtle; these do
+   the colour work.
+   ========================================================= */
+
+/* Headings: a short orange bar before each card title. */
+.aegis .panel-head h2::before,
+.aegis .newhire-head h2::before,
+.aegis .chart-title::before {
+	content: '';
+	display: inline-block;
+	width: 3px;
+	height: 0.9em;
+	margin-right: 9px;
+	vertical-align: -0.1em;
+	border-radius: 2px;
+	background: linear-gradient(180deg, #fdba74, var(--ae-orange-deep));
+}
+/* Page titles on the list pages: a short orange underline. */
+.aegis .content > h1.page-title::after {
+	content: '';
+	display: block;
+	width: 34px;
+	height: 3px;
+	margin-top: 7px;
+	border-radius: 2px;
+	background: linear-gradient(90deg, var(--ae-orange-deep), rgba(var(--ae-orange-rgb), 0.25));
+}
+
+/* Action links read orange. */
+.aegis .panel-link,
+.aegis .content .review-cta {
+	color: var(--ae-orange);
+}
+.aegis .panel-link:hover,
+.aegis .content .trow:hover .review-cta {
+	color: #fdba74;
+}
+
+/* The row under the pointer gets an orange marker on its left edge. */
+.aegis .content .trow:hover {
+	box-shadow: inset 2px 0 0 var(--ae-orange);
+}
+
+/* The selected filter and tab: orange text and underline on the indigo chip. */
+.aegis .seg .seg-b.on,
+.aegis .tabbar .tabbtn.on {
+	color: #fdba74;
+	box-shadow:
+		inset 0 0 0 1px rgba(var(--ae-orange-rgb), 0.35),
+		inset 0 -2px 0 var(--ae-orange);
+}
+.aegis .tabbar .tabbtn.on svg {
+	color: var(--ae-orange);
+}
+.aegis[data-theme='light'] .seg .seg-b.on,
+.aegis[data-theme='light'] .tabbar .tabbtn.on {
+	color: var(--ae-orange-deep);
+}
+
+/* Inputs: an orange edge while you type. */
+.aegis .content input:focus,
+.aegis .content select:focus,
+.aegis .content textarea:focus,
+.aegis .search:focus-within {
+	border-color: rgba(var(--ae-orange-rgb), 0.55);
+}
+
+/* Small things: selected text and the scrollbar thumb. */
+.aegis ::selection {
+	background: rgba(var(--ae-orange-rgb), 0.35);
+}
+.aegis * {
+	scrollbar-color: rgba(var(--ae-orange-rgb), 0.35) transparent;
+}
+
+/* =========================================================
+   Light mode: plain grey table headers, a quiet row hover,
+   near-black page titles.
+   ========================================================= */
+.aegis[data-theme='light'] .content .thead {
+	background: #f9fafb;
+	color: #6b7280;
+	font-weight: 500;
+}
+.aegis[data-theme='light'] .content .trow:hover {
+	background: #fafafa;
+}
+.aegis[data-theme='light'] .page-title {
+	color: #111827;
+}
+/* The main button: solid orange, no gradient. */
+.aegis[data-theme='light'] .btn:not(.ghost):not(.teal):not(:disabled) {
+	background: #ea580c;
+	border-color: #ea580c;
+	box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+.aegis[data-theme='light'] .btn:not(.ghost):not(.teal):not(:disabled):hover {
+	background: #c2410c;
+	filter: none;
 }
