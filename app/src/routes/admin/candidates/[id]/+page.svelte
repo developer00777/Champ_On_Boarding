@@ -881,6 +881,50 @@
 	]);
 
 	const docCount = $derived(data.checklist.reduce((a, s) => a + s.docs.length, 0));
+
+	// The page's four tabs. The open one is remembered per candidate for this
+	// browser tab, so a form that posts without JS and reloads the page comes
+	// back to the tab it was sent from rather than to Documents.
+	type CandTab = 'docs' | 'details' | 'offer' | 'joining';
+	const CAND_TABS: { key: CandTab; label: string }[] = [
+		{ key: 'docs', label: 'Documents' },
+		{ key: 'details', label: 'Details' },
+		{ key: 'offer', label: 'Offer letter' },
+		{ key: 'joining', label: 'Joining day' }
+	];
+	let tab: CandTab = $state('docs');
+	const tabKey = $derived(`cand-tab:${c.id}`);
+	$effect(() => {
+		const key = tabKey;
+		untrack(() => {
+			try {
+				const saved = sessionStorage.getItem(key);
+				if (saved && CAND_TABS.some((t) => t.key === saved)) tab = saved as CandTab;
+				else tab = 'docs';
+			} catch {
+				tab = 'docs';
+			}
+		});
+	});
+	$effect(() => {
+		const key = tabKey, value = tab;
+		try {
+			sessionStorage.setItem(key, value);
+		} catch {
+			// Storage blocked: the tab just is not remembered.
+		}
+	});
+	// What is waiting in each tab, so nothing hides behind one unnoticed.
+	const tabBadge = $derived.by(() => {
+		const missing = data.checklist.filter((s) => s.mandatory && s.docs.length === 0).length;
+		const pending = data.physical.filter((i) => !i.received).length;
+		return {
+			docs: missing ? { text: `${missing} missing`, warn: true } : null,
+			details: null,
+			offer: { text: ol.status === 'sent' ? 'Sent' : 'Draft', warn: false },
+			joining: pending ? { text: `${pending} pending`, warn: false } : null
+		} as Record<CandTab, { text: string; warn: boolean } | null>;
+	});
 	const initial = $derived((c.fullName || c.email)[0].toUpperCase());
 
 	// Journey steps for the left status widget
@@ -1715,14 +1759,16 @@
 				</form>
 			</div>
 		{:else}
-			<div style="font-size:13px;color:var(--ae-text-2);margin-bottom:9px">
-				No active onboarding link for this candidate.
+			<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+				<div style="font-size:13px;color:var(--ae-text-2)">
+					No active onboarding link for this candidate.
+				</div>
+				<form method="POST" action="?/regenerateLink" use:enhance>
+					<fieldset class="rbac" disabled={!data.can.link}>
+						<button type="submit" class="teal-pill-btn">Generate link</button>
+					</fieldset>
+				</form>
 			</div>
-			<form method="POST" action="?/regenerateLink" use:enhance>
-				<fieldset class="rbac" disabled={!data.can.link}>
-					<button type="submit" class="teal-pill-btn">Generate link</button>
-				</fieldset>
-			</form>
 		{/if}
 		{#if form?.linkRegenerated}
 			<p class="saved-chip" style="margin-top:8px">Link regenerated ✓ — the previous link no longer works.</p>
@@ -1960,220 +2006,37 @@
 			{/if}
 		</section>
 
-		<!-- Shift timing + IT/VPN setup mail -->
-		<section class="card emp-card">
-			<div class="eyebrow" style="margin-bottom:10px">Shift timing</div>
-			{#if shiftTiming}
-				<div class="shift-display">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-					{shiftTiming}
-				</div>
-			{:else}
-				<p class="muted" style="font-size:11.5px;margin:0 0 10px">
-					Not set — goes to the Master Tracker and the IT setup mail.
-				</p>
-			{/if}
-			<form method="POST" action="?/setShiftTiming" use:enhance class="emp-form">
-				<fieldset class="rbac" disabled={!data.isApprover}>
-					<GlassSelect
-						name="shiftTiming"
-						ariaLabel="Shift timing"
-						placeholder="Select shift…"
-						bind:value={shiftChoice}
-						options={shiftOptions}
-						disabled={!data.isApprover}
-					/>
-					<button class="btn small teal">{shiftTiming ? 'Update' : 'Save'}</button>
-				</fieldset>
-			</form>
-			{#if form?.shiftTimingSaved}
-				<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
-			{/if}
-
-			<!-- The remaining IT-mail columns. Team Name and Payroll Entity are
-			     pre-filled from the offer letter / entity and stay editable; the
-			     placeholder shows what the mail would carry if left blank. -->
-			<div class="it-fields">
-				<div class="eyebrow" style="margin-bottom:10px">IT mail details</div>
-				<form method="POST" action="?/setItMailFields" use:enhance={() => async ({ update }) => update({ reset: false })}>
-					<fieldset class="rbac" disabled={!data.isApprover}>
-						<label class="it-label" for="it-team">Team name</label>
-						<input
-							id="it-team"
-							name="teamName"
-							value={teamName}
-							oninput={(e) => onTeamNameInput(e.currentTarget.value)}
-							placeholder="e.g. Inside Sales"
-							class="emp-input"
-							maxlength="120"
-						/>
-						<p class="it-link-note">Shared with the offer letter's Department.</p>
-						<label class="it-label" for="it-wfh">WFH/WFO</label>
-						<input
-							id="it-wfh"
-							name="workLocationMode"
-							value={itFields.workLocationMode}
-							placeholder="e.g. WFO"
-							class="emp-input"
-							list="wfh-options"
-							maxlength="120"
-						/>
-						<datalist id="wfh-options">
-							<option value="WFO"></option>
-							<option value="WFH"></option>
-							<option value="Hybrid"></option>
-						</datalist>
-						<label class="it-label" for="it-entity">Payroll entity</label>
-						<input
-							id="it-entity"
-							name="payrollEntity"
-							value={itFields.payrollEntity}
-							placeholder={data.companyName || 'Payroll entity'}
-							class="emp-input"
-							maxlength="120"
-						/>
-						<label class="it-label" for="it-mode">Mode</label>
-						<GlassSelect
-							id="it-mode"
-							name="joiningMode"
-							ariaLabel="Mode"
-							bind:value={joiningMode}
-							placeholder={TRACK_MODE[c.track] ?? 'Select…'}
-							options={modeOptions}
-						/>
-						<label class="it-label" for="it-reqid">IT helpdesk request ID</label>
-						<input
-							id="it-reqid"
-							name="itRequestId"
-							value={itFields.itRequestId}
-							placeholder="e.g. RE-22464"
-							class="emp-input"
-							maxlength="60"
-						/>
-						<p class="it-link-note">
-							From the helpdesk's reply to the IT setup mail. The employee code mail replies into
-							that thread; leave blank and it goes out without the request-ID prefix.
-						</p>
-						<button class="btn small teal" style="width:100%;margin-top:9px">Save IT mail details</button>
-					</fieldset>
-				</form>
-				{#if form?.itMailFieldsSaved}
-					<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
-				{/if}
-			</div>
-
-			<div class="it-mail">
-				<!-- The send lives in the preview modal; this only opens it. The form
-				     stays a real POST so the modal's Send keeps the action's audit
-				     log and its no-JS fallback. -->
-				<form
-					method="POST"
-					action="?/sendItSetupMail"
-					use:enhance={() => {
-						itSending = true;
-						return async ({ update }) => {
-							await update();
-							itSending = false;
-						};
-					}}
-					bind:this={sendForms.it}
-				>
-					<fieldset class="rbac" disabled={!data.isApprover}>
-						<button
-							class="btn small ghost"
-							style="width:100%"
-							type="button"
-							onclick={() => openItPreview('it')}
-							disabled={itPreviewLoading}
-						>
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
-							{#if itPreviewLoading}
-								Building preview…
-							{:else}
-								{c.itSetupMailSentAt ? 'Review & resend IT mail' : 'Review & send IT mail'}
-							{/if}
-						</button>
-					</fieldset>
-				</form>
-				{#if itPreviewError}
-					<p class="it-preview-err">{itPreviewError}</p>
-				{/if}
-				{#if c.itSetupMailSentAt}
-					{@render sentNote(
-						'IT setup mail',
-						c.itSetupMailSentAt,
-						data.mailSends.it?.to ?? [],
-						data.mailSends.it?.by ?? null,
-						!!form?.itSetupMailSent,
-						'Sending again mails the helpdesk a fresh copy.'
-					)}
-				{/if}
-				<!-- The employee code mail. Same confirm-then-send flow, its own
-				     builder and recipients. Gated on the code existing: a mail
-				     announcing a code that has not been assigned is worse than none. -->
-				<form
-					method="POST"
-					action="?/sendEmployeeCodeMail"
-					use:enhance={() => {
-						itSending = true;
-						return async ({ update }) => {
-							await update();
-							itSending = false;
-						};
-					}}
-					bind:this={sendForms.code}
-					style="margin-top:9px"
-				>
-					<fieldset class="rbac" disabled={!data.isApprover}>
-						<button
-							class="btn small ghost"
-							style="width:100%"
-							type="button"
-							onclick={() => openItPreview('code')}
-							disabled={itPreviewLoading || !c.employeeId}
-							title={c.employeeId ? '' : 'Assign the employee code first'}
-						>
-							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
-							{#if itPreviewLoading}
-								Building preview…
-							{:else}
-								{c.employeeCodeMailSentAt
-									? 'Review & resend employee code'
-									: 'Review & send employee code'}
-							{/if}
-						</button>
-					</fieldset>
-				</form>
-				{#if !c.employeeId}
-					<p class="emp-hint" style="margin-top:4px">
-						Assign the employee code above to enable this.
-					</p>
-				{/if}
-				{#if c.employeeCodeMailSentAt}
-					{@render sentNote(
-						'Employee code mail',
-						c.employeeCodeMailSentAt,
-						data.mailSends.code?.to ?? [],
-						data.mailSends.code?.by ?? null,
-						!!form?.employeeCodeMailSent,
-						'Sending again mails a fresh copy with the current code.'
-					)}
-				{/if}
-
-				<div class="emp-hint">
-					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-					Sent manually when you're ready · recipients in
-					<a href="/admin/settings" style="color:inherit;text-decoration:underline">settings</a>
-				</div>
-			</div>
-		</section>
 	</aside>
 
+	<!-- The candidate's work in four tabs beside the journey, each sized to
+	     fit the window, so nothing on this page needs scrolling to reach. -->
+	<div class="cand-main">
+	<div class="ctabs" role="tablist" aria-label="Candidate sections">
+		{#each CAND_TABS as t (t.key)}
+			<button
+				type="button"
+				role="tab"
+				class="ctab"
+				class:on={tab === t.key}
+				aria-selected={tab === t.key}
+				aria-controls="pane-{t.key}"
+				onclick={() => (tab = t.key)}
+			>
+				{t.label}
+				{#if tabBadge[t.key]}<span class="ctab-n" class:warn={tabBadge[t.key]?.warn}>{tabBadge[t.key]?.text}</span>{/if}
+			</button>
+		{/each}
+	</div>
+
+	<!-- Every pane stays mounted and is only hidden, so a half-filled offer
+	     letter or IT form keeps its values when you switch tabs. -->
+	<div class="tabpane pane-docs" id="pane-docs" role="tabpanel" hidden={tab !== 'docs'}>
 	<!-- documents -->
 	<section class="card">
 		<div class="eyebrow" style="margin-bottom:16px">Documents · {docCount}</div>
-		<div>
+		<div class="doc-list">
 			{#each data.checklist as slot}
+			<div class="docslot">
 				{#if slot.docs.length === 0}
 					<div class="docrow">
 						<span class="doc-ico empty">
@@ -2285,27 +2148,13 @@
 						{/if}
 					{/if}
 				{/if}
+			</div>
 			{/each}
 		</div>
 		{#if hrUploadDone}<p class="saved-chip" style="margin-top:10px">{hrUploadDone}</p>{/if}
 	</section>
 
-	{#snippet hrUploadForm(docType: string, label: string, replaceDocId?: string)}
-		<div class="reupload hr-upload">
-			<input bind:this={hrUploadInput} type="file" accept="image/jpeg,image/png,application/pdf" />
-			<button class="btn small" type="button" disabled={hrUploading} onclick={() => uploadForCandidate(docType, label, replaceDocId)}>
-				{hrUploading ? 'Uploading…' : replaceDocId ? 'Replace file' : 'Upload'}
-			</button>
-			<small class="muted">
-				{replaceDocId ? 'The current file is deleted once the new one is stored.' : 'Filed for the candidate — read and checked like their own upload.'}
-				JPG, PNG or PDF · max 150 MB
-			</small>
-			{#if hrUploadError}<p class="error" style="margin:0;flex-basis:100%">{hrUploadError}</p>{/if}
-		</div>
-	{/snippet}
-
-	<!-- details -->
-	<div style="display:flex;flex-direction:column;gap:18px">
+	<div class="pane-2">
 		<!-- verification -->
 		<section class="card">
 			<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
@@ -2358,6 +2207,75 @@
 			{/if}
 		</section>
 
+		<!-- HR's own reference uploads. Deliberately not part of the document
+		     matrix above: nothing here is required, nothing is OCR'd, and the
+		     candidate never sees it. -->
+		<section class="card">
+			<div class="eyebrow" style="margin-bottom:6px">Other documents</div>
+			<p class="muted" style="font-size:11.5px;margin:0 0 14px">
+				Optional. Anything HR wants kept against this candidate for reference — an interview
+				note, a signed scan, a background report. Not requested from the candidate and not
+				shown to them.
+			</p>
+
+			{#if data.referenceFiles.length}
+				<div class="ref-list">
+					{#each data.referenceFiles as f (f.id)}
+						<div class="ref-row">
+							<a class="ref-name" href="/admin/candidates/{c.id}/other-docs/{f.id}" target="_blank" rel="noopener">
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+								<span>{f.label}</span>
+							</a>
+							<span class="ref-meta">
+								{prettySize(f.sizeBytes)} ·
+								{new Date(f.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+							</span>
+							<form method="POST" action="?/removeReferenceFile" use:enhance={() => async ({ update }) => update({ reset: false })}>
+								<fieldset class="rbac" disabled={!data.isApprover}>
+									<input type="hidden" name="fileId" value={f.id} />
+									<button class="ref-del" aria-label={`Remove ${f.label}`} title="Remove">×</button>
+								</fieldset>
+							</form>
+							{#if f.note}<p class="ref-note">{f.note}</p>{/if}
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="muted" style="font-size:12.5px;margin:0 0 14px">Nothing uploaded yet.</p>
+			{/if}
+
+			<fieldset class="rbac ref-add" disabled={!data.isApprover}>
+				<input class="emp-input" bind:value={refLabel} placeholder="Name it (optional — defaults to the filename)" maxlength="120" />
+				<input class="emp-input" bind:value={refNote} placeholder="Note (optional)" maxlength="300" />
+				<input bind:this={refFileInput} type="file" accept="image/jpeg,image/png,application/pdf" />
+				<button class="btn small" type="button" onclick={uploadReferenceFile} disabled={refUploading}>
+					{refUploading ? 'Uploading…' : 'Upload document'}
+				</button>
+				<small class="muted" style="font-size:10.5px">JPG, PNG or PDF · max 150 MB</small>
+			</fieldset>
+			{#if refError}<p class="error" style="margin-top:8px">{refError}</p>{/if}
+			{#if form?.referenceFileRemoved}
+				<p class="saved-chip" style="margin-top:8px">Document removed ✓</p>
+			{/if}
+		</section>
+	</div>
+	</div>
+
+	{#snippet hrUploadForm(docType: string, label: string, replaceDocId?: string)}
+		<div class="reupload hr-upload">
+			<input bind:this={hrUploadInput} type="file" accept="image/jpeg,image/png,application/pdf" />
+			<button class="btn small" type="button" disabled={hrUploading} onclick={() => uploadForCandidate(docType, label, replaceDocId)}>
+				{hrUploading ? 'Uploading…' : replaceDocId ? 'Replace file' : 'Upload'}
+			</button>
+			<small class="muted">
+				{replaceDocId ? 'The current file is deleted once the new one is stored.' : 'Filed for the candidate — read and checked like their own upload.'}
+				JPG, PNG or PDF · max 150 MB
+			</small>
+			{#if hrUploadError}<p class="error" style="margin:0;flex-basis:100%">{hrUploadError}</p>{/if}
+		</div>
+	{/snippet}
+
+	<div class="tabpane" id="pane-details" role="tabpanel" hidden={tab !== 'details'}>
 		<section class="card">
 			<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
 				<div class="eyebrow">Extracted details</div>
@@ -2373,6 +2291,7 @@
 			</div>
 			{#if (form as { profileEditError?: true; message?: string } | undefined)?.profileEditError}<p class="error">{(form as { message: string }).message}</p>{/if}
 			{#if form?.profileSaved}<p class="saved-chip" style="margin-bottom:8px">Saved ✓</p>{/if}
+			<div class="fgroups">
 			<form
 				id="edit-profile-form"
 				method="POST"
@@ -2380,7 +2299,9 @@
 				use:enhance={() => async ({ update }) => update({ reset: false })}
 			>
 				{#each detailGroups as group}
+					<div class="fgroup">
 					<div class="group-title">{group.title}</div>
+					<div class="fgrid">
 					{#each group.rows as [label, value, field]}
 						<div class="frow">
 							<span class="flabel">{label}</span>
@@ -2393,11 +2314,15 @@
 							{/if}
 						</div>
 					{/each}
+					</div>
+					</div>
 				{/each}
 				<datalist id="mother-tongues">
 					{#each MOTHER_TONGUES as t}<option value={t}></option>{/each}
 				</datalist>
-				<div class="group-title">Religion</div>
+				<div class="fgroup">
+				<div class="group-title">Religion &amp; marital status</div>
+				<div class="fgrid">
 				<div class="frow">
 					<span class="flabel">Religion</span>
 					{#if editingProfile}
@@ -2428,7 +2353,6 @@
 						<span class="fvalue">{c.religion || '—'}</span>
 					{/if}
 				</div>
-				<div class="group-title">Marital status</div>
 				<div class="frow">
 					<span class="flabel">Marital status</span>
 					{#if editingProfile}
@@ -2448,8 +2372,12 @@
 						<span class="fvalue">{c.maritalStatus || '—'}</span>
 					{/if}
 				</div>
+				</div>
+				</div>
 			</form>
-			<div class="group-title">UAN</div>
+			<div class="fgroup">
+			<div class="group-title">UAN &amp; Aadhaar</div>
+			<div class="fgrid">
 			<div class="frow">
 				<span class="flabel">UAN number</span>
 				{#if EXP_LIKE_TRACKS.includes(c.track as Track)}
@@ -2464,8 +2392,7 @@
 					{#if form?.uanSaved}<span class="saved-chip">Saved ✓</span>{/if}
 				{/if}
 			</div>
-			<div class="group-title">Aadhaar</div>
-			<div class="frow" style="border-bottom:none">
+			<div class="frow">
 				<span class="flabel">Aadhaar number</span>
 				<span class="fvalue mono">{form?.aadhaar ?? c.aadhaarMasked}</span>
 				{#if !form?.aadhaar && c.aadhaarMasked !== '—'}
@@ -2474,12 +2401,17 @@
 					</form>
 				{/if}
 			</div>
+			</div>
+			</div>
+			</div>
 			<div class="lock-hint">
 				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
 				Encrypted at rest. Every reveal is audit-logged.
 			</div>
 		</section>
+	</div>
 
+	<div class="tabpane" id="pane-offer" role="tabpanel" hidden={tab !== 'offer'}>
 		<section class="card">
 			<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
 				<div class="eyebrow">Offer letter</div>
@@ -2992,7 +2924,7 @@
 					{/each}
 				{/if}
 
-				<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
+				<div style="grid-column:1 / -1;display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">
 					<button class="btn small">Save</button>
 					<button
 						type="button"
@@ -3092,57 +3024,225 @@
 				</p>
 			{/if}
 		</section>
+	</div>
 
-		<!-- HR's own reference uploads. Deliberately not part of the document
-		     matrix above: nothing here is required, nothing is OCR'd, and the
-		     candidate never sees it. -->
-		<section class="card">
-			<div class="eyebrow" style="margin-bottom:6px">Other documents</div>
-			<p class="muted" style="font-size:11.5px;margin:0 0 14px">
-				Optional. Anything HR wants kept against this candidate for reference — an interview
-				note, a signed scan, a background report. Not requested from the candidate and not
-				shown to them.
-			</p>
-
-			{#if data.referenceFiles.length}
-				<div class="ref-list">
-					{#each data.referenceFiles as f (f.id)}
-						<div class="ref-row">
-							<a class="ref-name" href="/admin/candidates/{c.id}/other-docs/{f.id}" target="_blank" rel="noopener">
-								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-								<span>{f.label}</span>
-							</a>
-							<span class="ref-meta">
-								{prettySize(f.sizeBytes)} ·
-								{new Date(f.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-							</span>
-							<form method="POST" action="?/removeReferenceFile" use:enhance={() => async ({ update }) => update({ reset: false })}>
-								<fieldset class="rbac" disabled={!data.isApprover}>
-									<input type="hidden" name="fileId" value={f.id} />
-									<button class="ref-del" aria-label={`Remove ${f.label}`} title="Remove">×</button>
-								</fieldset>
-							</form>
-							{#if f.note}<p class="ref-note">{f.note}</p>{/if}
-						</div>
-					{/each}
+	<div class="tabpane pane-2" id="pane-joining" role="tabpanel" hidden={tab !== 'joining'}>
+		<!-- Shift timing + IT/VPN setup mail -->
+		<section class="card emp-card">
+			<div class="eyebrow" style="margin-bottom:10px">Shift timing</div>
+			{#if shiftTiming}
+				<div class="shift-display">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+					{shiftTiming}
 				</div>
 			{:else}
-				<p class="muted" style="font-size:12.5px;margin:0 0 14px">Nothing uploaded yet.</p>
+				<p class="muted" style="font-size:11.5px;margin:0 0 10px">
+					Not set — goes to the Master Tracker and the IT setup mail.
+				</p>
+			{/if}
+			<form method="POST" action="?/setShiftTiming" use:enhance class="emp-form">
+				<fieldset class="rbac" disabled={!data.isApprover}>
+					<GlassSelect
+						name="shiftTiming"
+						ariaLabel="Shift timing"
+						placeholder="Select shift…"
+						bind:value={shiftChoice}
+						options={shiftOptions}
+						disabled={!data.isApprover}
+					/>
+					<button class="btn small teal">{shiftTiming ? 'Update' : 'Save'}</button>
+				</fieldset>
+			</form>
+			{#if form?.shiftTimingSaved}
+				<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
 			{/if}
 
-			<fieldset class="rbac ref-add" disabled={!data.isApprover}>
-				<input class="emp-input" bind:value={refLabel} placeholder="Name it (optional — defaults to the filename)" maxlength="120" />
-				<input class="emp-input" bind:value={refNote} placeholder="Note (optional)" maxlength="300" />
-				<input bind:this={refFileInput} type="file" accept="image/jpeg,image/png,application/pdf" />
-				<button class="btn small" type="button" onclick={uploadReferenceFile} disabled={refUploading}>
-					{refUploading ? 'Uploading…' : 'Upload document'}
-				</button>
-				<small class="muted" style="font-size:10.5px">JPG, PNG or PDF · max 150 MB</small>
-			</fieldset>
-			{#if refError}<p class="error" style="margin-top:8px">{refError}</p>{/if}
-			{#if form?.referenceFileRemoved}
-				<p class="saved-chip" style="margin-top:8px">Document removed ✓</p>
-			{/if}
+			<!-- The remaining IT-mail columns. Team Name and Payroll Entity are
+			     pre-filled from the offer letter / entity and stay editable; the
+			     placeholder shows what the mail would carry if left blank. -->
+			<div class="it-fields">
+				<div class="eyebrow" style="margin-bottom:10px">IT mail details</div>
+				<form method="POST" action="?/setItMailFields" use:enhance={() => async ({ update }) => update({ reset: false })}>
+					<fieldset class="rbac it-grid" disabled={!data.isApprover}>
+						<div class="it-pair">
+							<label class="it-label" for="it-team">Team name</label>
+							<input
+								id="it-team"
+								name="teamName"
+								value={teamName}
+								oninput={(e) => onTeamNameInput(e.currentTarget.value)}
+								placeholder="e.g. Inside Sales"
+								class="emp-input"
+								maxlength="120"
+							/>
+							<p class="it-link-note">Shared with the offer letter's Department.</p>
+						</div>
+						<div class="it-pair">
+							<label class="it-label" for="it-wfh">WFH/WFO</label>
+							<input
+								id="it-wfh"
+								name="workLocationMode"
+								value={itFields.workLocationMode}
+								placeholder="e.g. WFO"
+								class="emp-input"
+								list="wfh-options"
+								maxlength="120"
+							/>
+							<datalist id="wfh-options">
+								<option value="WFO"></option>
+								<option value="WFH"></option>
+								<option value="Hybrid"></option>
+							</datalist>
+						</div>
+						<div class="it-pair">
+							<label class="it-label" for="it-entity">Payroll entity</label>
+							<input
+								id="it-entity"
+								name="payrollEntity"
+								value={itFields.payrollEntity}
+								placeholder={data.companyName || 'Payroll entity'}
+								class="emp-input"
+								maxlength="120"
+							/>
+						</div>
+						<div class="it-pair">
+							<label class="it-label" for="it-mode">Mode</label>
+							<GlassSelect
+								id="it-mode"
+								name="joiningMode"
+								ariaLabel="Mode"
+								bind:value={joiningMode}
+								placeholder={TRACK_MODE[c.track] ?? 'Select…'}
+								options={modeOptions}
+							/>
+						</div>
+						<div class="it-pair">
+							<label class="it-label" for="it-reqid">IT helpdesk request ID</label>
+							<input
+								id="it-reqid"
+								name="itRequestId"
+								value={itFields.itRequestId}
+								placeholder="e.g. RE-22464"
+								class="emp-input"
+								maxlength="60"
+							/>
+							<p class="it-link-note">
+								From the helpdesk's reply to the IT setup mail. The employee code mail replies into
+								that thread; leave blank and it goes out without the request-ID prefix.
+							</p>
+						</div>
+						<button class="btn small teal" style="width:100%;margin-top:9px">Save IT mail details</button>
+					</fieldset>
+				</form>
+				{#if form?.itMailFieldsSaved}
+					<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
+				{/if}
+			</div>
+
+			<div class="it-mail">
+				<!-- The send lives in the preview modal; this only opens it. The form
+				     stays a real POST so the modal's Send keeps the action's audit
+				     log and its no-JS fallback. -->
+				<form
+					method="POST"
+					action="?/sendItSetupMail"
+					use:enhance={() => {
+						itSending = true;
+						return async ({ update }) => {
+							await update();
+							itSending = false;
+						};
+					}}
+					bind:this={sendForms.it}
+				>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<button
+							class="btn small ghost"
+							style="width:100%"
+							type="button"
+							onclick={() => openItPreview('it')}
+							disabled={itPreviewLoading}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+							{#if itPreviewLoading}
+								Building preview…
+							{:else}
+								{c.itSetupMailSentAt ? 'Review & resend IT mail' : 'Review & send IT mail'}
+							{/if}
+						</button>
+					</fieldset>
+				</form>
+				{#if itPreviewError}
+					<p class="it-preview-err">{itPreviewError}</p>
+				{/if}
+				{#if c.itSetupMailSentAt}
+					{@render sentNote(
+						'IT setup mail',
+						c.itSetupMailSentAt,
+						data.mailSends.it?.to ?? [],
+						data.mailSends.it?.by ?? null,
+						!!form?.itSetupMailSent,
+						'Sending again mails the helpdesk a fresh copy.'
+					)}
+				{/if}
+				<!-- The employee code mail. Same confirm-then-send flow, its own
+				     builder and recipients. Gated on the code existing: a mail
+				     announcing a code that has not been assigned is worse than none. -->
+				<form
+					method="POST"
+					action="?/sendEmployeeCodeMail"
+					use:enhance={() => {
+						itSending = true;
+						return async ({ update }) => {
+							await update();
+							itSending = false;
+						};
+					}}
+					bind:this={sendForms.code}
+					style="margin-top:9px"
+				>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<button
+							class="btn small ghost"
+							style="width:100%"
+							type="button"
+							onclick={() => openItPreview('code')}
+							disabled={itPreviewLoading || !c.employeeId}
+							title={c.employeeId ? '' : 'Assign the employee code first'}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+							{#if itPreviewLoading}
+								Building preview…
+							{:else}
+								{c.employeeCodeMailSentAt
+									? 'Review & resend employee code'
+									: 'Review & send employee code'}
+							{/if}
+						</button>
+					</fieldset>
+				</form>
+				{#if !c.employeeId}
+					<p class="emp-hint" style="margin-top:4px">
+						Assign the employee code above to enable this.
+					</p>
+				{/if}
+				{#if c.employeeCodeMailSentAt}
+					{@render sentNote(
+						'Employee code mail',
+						c.employeeCodeMailSentAt,
+						data.mailSends.code?.to ?? [],
+						data.mailSends.code?.by ?? null,
+						!!form?.employeeCodeMailSent,
+						'Sending again mails a fresh copy with the current code.'
+					)}
+				{/if}
+
+				<div class="emp-hint">
+					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+					Sent manually when you're ready · recipients in
+					<a href="/admin/settings" style="color:inherit;text-decoration:underline">settings</a>
+				</div>
+			</div>
 		</section>
 
 		<section class="card">
@@ -3215,6 +3315,7 @@
 				and never sends the record back a stage.
 			</p>
 		</section>
+	</div>
 	</div>
 </div>
 
@@ -3300,22 +3401,142 @@
 		font-size: 13px;
 		color: var(--ae-text-2);
 	}
+	/* The open tab runs at least as far down as the journey beside it, so
+	   neither column ends early over bare page. */
 	.cols {
 		display: grid;
-		grid-template-columns: 220px 1.1fr 0.9fr;
+		grid-template-columns: 220px minmax(0, 1fr);
 		gap: 18px;
-		align-items: start;
+		align-items: stretch;
+	}
+	.cols > .status-sidebar {
+		align-self: start;
+	}
+	/* ── Tabs beside the journey ──────────────────────────────────────────
+	   One section at a time, each laid out wide so it fits the window. */
+	.cand-main {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		min-width: 0;
+	}
+	.ctabs {
+		display: flex;
+		gap: 4px;
+		padding: 4px;
+		border-radius: 14px;
+		border: 1px solid var(--ae-line);
+		background: var(--ae-sub-bg);
+		align-self: flex-start;
+		max-width: 100%;
+		overflow-x: auto;
+	}
+	.ctab {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 16px;
+		border: 1px solid transparent;
+		border-radius: 10px;
+		background: transparent;
+		color: var(--ae-text-2);
+		font: inherit;
+		font-size: 13px;
+		font-weight: 600;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.ctab:hover {
+		color: var(--ae-text);
+	}
+	.ctab.on {
+		color: var(--ae-ember-glow);
+		border-color: rgba(var(--ae-ember-rgb), 0.55);
+		background: rgba(var(--ae-ember-rgb), 0.1);
+	}
+	.ctab-n {
+		font-size: 10.5px;
+		font-weight: 700;
+		padding: 1px 7px;
+		border-radius: 999px;
+		color: var(--ae-muted);
+		background: var(--ae-line);
+	}
+	.ctab-n.warn {
+		color: var(--ae-crimson);
+		background: rgba(var(--ae-crimson-rgb), 0.14);
+	}
+	.tabpane {
+		flex: 1 0 auto;
+	}
+	#pane-details,
+	#pane-offer {
+		display: flex;
+		flex-direction: column;
+	}
+	#pane-details > .card,
+	#pane-offer > .card,
+	.pane-docs > :last-child {
+		flex: 1 0 auto;
+	}
+	.tabpane[hidden] {
+		display: none !important;
+	}
+	/* Two cards side by side that end on the same line. */
+	.pane-2 {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 18px;
+		align-items: stretch;
+	}
+	/* Documents: the list two-up across the full width, each slot (with any
+	   upload form it has open) kept whole in one column; the cross-check and
+	   HR's own uploads side by side under it. */
+	.pane-docs {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+	.doc-list {
+		columns: 2 360px;
+		column-gap: 32px;
+	}
+	.docslot {
+		break-inside: avoid;
+	}
+	/* Wide panes: details three-up, offer letter fields up to six across. */
+	/* Details: whole groups flow into columns, one value per line inside
+	   each, so no group leaves half a row empty. */
+	#pane-details .fgroups {
+		columns: 4 230px;
+		column-gap: 32px;
+	}
+	#pane-details .fgroup {
+		break-inside: avoid;
+	}
+	#pane-details .fgrid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	#pane-details .group-title {
+		margin-top: 0;
+		padding-top: 12px;
+	}
+	#pane-details .frow {
+		padding: 6px 0;
+	}
+	#pane-offer .offer-form {
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 	}
 	.status-sidebar {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: 12px;
 		position: sticky;
 		top: 20px;
 	}
 
 	/* Journey tracker */
-	.journey-card { padding: 18px 16px; }
+	.journey-card { padding: 14px 16px; }
 	.journey { display: flex; flex-direction: column; gap: 0; }
 	.journey-step {
 		display: grid;
@@ -3366,7 +3587,7 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 6px;
-		padding: 1px 0 14px;
+		padding: 1px 0 10px;
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--ae-muted);
@@ -3376,7 +3597,7 @@
 	.j-icon { font-size: 13px; line-height: 1.3; flex-shrink: 0; }
 
 	/* Employee code widget */
-	.emp-card { padding: 16px; }
+	.emp-card { padding: 14px 16px; }
 	.emp-id-display {
 		display: flex;
 		align-items: center;
@@ -4065,6 +4286,16 @@
 		width: 100%;
 		margin-bottom: 8px;
 	}
+	/* IT mail fields two-up; the save button runs the full width. */
+	fieldset.it-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+		column-gap: 14px;
+		align-items: start;
+	}
+	fieldset.it-grid > button {
+		grid-column: 1 / -1;
+	}
 	.it-link-note,
 	.field-hint {
 		margin: 3px 0 8px;
@@ -4127,7 +4358,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 11px 0;
+		padding: 7px 0;
 		border-bottom: 1px solid var(--ae-line-soft);
 	}
 	.doc-ico {
@@ -4186,6 +4417,17 @@
 		text-transform: none;
 		color: var(--ae-faint);
 		margin: 14px 0 4px;
+	}
+	/* Extracted details two-up, so the card is half as tall. */
+	.fgrid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		column-gap: 28px;
+	}
+	@media (max-width: 700px) {
+		.fgrid {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 	.frow {
 		display: flex;
@@ -4247,8 +4489,14 @@
 	}
 	.offer-form {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
 		gap: 10px 12px;
+	}
+	/* The read-only gate's fieldset wraps every field: it spans the form and
+	   carries the form's columns, or the fields all stack in its first cell. */
+	.offer-form > fieldset.rbac {
+		grid-column: 1 / -1;
+		grid-template-columns: inherit;
 	}
 	.mark-sent {
 		margin-top: 10px;
@@ -4573,11 +4821,11 @@
 		color: var(--ae-verdant);
 	}
 	.linkbox {
-		margin: 0 0 16px;
+		margin: 0 0 14px;
 		background: rgba(var(--ae-verdant-rgb), 0.06);
 		border: 1px solid rgba(var(--ae-verdant-rgb), 0.2);
 		border-radius: 10px;
-		padding: 15px 16px;
+		padding: 10px 14px;
 	}
 	.linkcode {
 		font-family: var(--ae-font-mono);
@@ -4702,34 +4950,25 @@
 	.phys-status.got {
 		color: var(--ae-verdant);
 	}
-	/* On laptop widths three columns squeeze the documents list until each
-	   name wraps over several lines. Two columns instead: the journey on the
-	   left, documents across the rest, and the side cards under them two-up. */
 	@media (max-width: 1500px) {
-		.cols {
-			grid-template-columns: 200px minmax(0, 1fr);
+		.cols,
+		.pane-2 {
 			gap: 16px;
 		}
-		/* Two flowing columns rather than a grid: the side cards differ a lot
-		   in height, and grid rows would leave a gap under every shorter one. */
-		.cols > :nth-child(3) {
-			grid-column: 2;
-			display: block !important;
-			columns: 2 300px;
-			column-gap: 16px;
+		.cols {
+			grid-template-columns: 200px minmax(0, 1fr);
 		}
-		.cols > :nth-child(3) > :global(*) {
-			break-inside: avoid;
-			margin-bottom: 16px;
+	}
+	/* Below this two cards side by side would squeeze the documents list
+	   until each name wraps over several lines, so they stack. */
+	@media (max-width: 1100px) {
+		.pane-2 {
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 	@media (max-width: 800px) {
 		.cols {
 			grid-template-columns: 1fr;
-		}
-		.cols > :nth-child(3) {
-			grid-column: auto;
-			columns: 1;
 		}
 		.status-sidebar {
 			position: static;
