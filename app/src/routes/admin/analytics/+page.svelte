@@ -611,7 +611,7 @@
 		display: none;
 	}
 	/* A column, so its last block can grow to the bottom of the window — see
-	   "Fill the tab" in analytics-kit.css. */
+	   "Fill the tab, charts stay compact" in analytics-kit.css. */
 	.tabpanel.on {
 		display: flex;
 		flex-direction: column;

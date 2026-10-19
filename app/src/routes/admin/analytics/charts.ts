@@ -348,7 +348,7 @@ function activityChart(host: HTMLElement, data: TrendPoint[], xLabel: (i: number
 	return responsive(host, (width, height) => {
 		const shown = TREND_STAGES.map((s, i) => ({ ...s, color: trendColor(i) })).filter((s) => !hidden.has(s.key));
 		const maxV = Math.max(1, ...shown.flatMap((s) => data.map((d) => d[s.key])));
-		const f = plotFrame(width, Math.max(250, height), data.length, maxV, xLabel, 96);
+		const f = plotFrame(width, Math.max(120, height), data.length, maxV, xLabel, 96);
 		f.svg.setAttribute('aria-label', 'Onboarding activity per period: ' + shown.map((s) => s.label).join(', '));
 		const defs = el('defs');
 		f.svg.appendChild(defs);
@@ -386,7 +386,7 @@ function backlogChart(host: HTMLElement, data: TrendPoint[], xLabel: (i: number)
 	responsive(host, (width, height) => {
 		const cIn = trendColor(0), cOut = trendColor(3);
 		const maxV = Math.max(1, ...data.flatMap((d) => [d.created, d.approved]));
-		const f = plotFrame(width, Math.max(250, height), data.length, maxV, xLabel, 96);
+		const f = plotFrame(width, Math.max(120, height), data.length, maxV, xLabel, 96);
 		f.svg.setAttribute('aria-label', 'Links created against candidates approved, per period');
 		const pin = data.map((d, i) => [f.xAt(i), f.yAt(d.created)] as [number, number]);
 		const pout = data.map((d, i) => [f.xAt(i), f.yAt(d.approved)] as [number, number]);
@@ -444,6 +444,49 @@ function singlePeriodBars(row: TrendPoint, label: string): string {
 	);
 }
 
+/** The numbers behind both trend charts, one row per period, newest first.
+ *  Scrolls inside its card so a long range never makes the card taller than
+ *  the charts beside it. */
+function periodTable(data: TrendPoint[], xLabel: (i: number) => string): string {
+	const rows = data.map((d, i) => ({ d, i })).reverse();
+	return (
+		'<div class="tr-table-box"><div class="tr-table-scroll"><table class="tr-table">' +
+		'<thead><tr><th scope="col">Period</th>' +
+		TREND_STAGES.map((s, i) => `<th scope="col" style="--c:${trendColor(i)}"><span class="tr-dot"></span>${s.key === 'created' ? 'Links' : s.label}</th>`).join('') +
+		'<th scope="col">Net</th></tr></thead><tbody>' +
+		rows
+			.map(({ d, i }) => {
+				const net = d.created - d.approved;
+				return (
+					`<tr><th scope="row">${xLabel(i)}</th>` +
+					TREND_STAGES.map((s) => `<td class="${d[s.key] ? '' : 'zero'}">${fmtNum(d[s.key])}</td>`).join('') +
+					`<td class="tr-table-net ${net > 0 ? 'up' : net < 0 ? 'down' : 'zero'}">${net > 0 ? '+' : ''}${fmtNum(net)}</td></tr>`
+				);
+			})
+			.join('') +
+		'</tbody></table></div></div>'
+	);
+}
+
+/** How far the links created in range got, as a share of them. */
+function rangeConversion(totals: number[]): string {
+	const base = totals[0];
+	return (
+		'<div class="tr-conv"><div class="kg-list-k">Of links created in range</div>' +
+		TREND_STAGES.slice(1)
+			.map((s, k) => {
+				const pct = base ? Math.min(100, Math.round((totals[k + 1] / base) * 100)) : 0;
+				return (
+					`<div class="tr-single-row" style="--c:${trendColor(k + 1)}"><span class="tr-single-k"><span class="tr-dot"></span>${s.label}</span>` +
+					`<span class="tr-single-track"><span class="tr-single-bar" style="width:${pct ? Math.max(2, pct) : 0}%"></span></span>` +
+					`<b>${base ? pct + '%' : '—'}</b></div>`
+				);
+			})
+			.join('') +
+		'</div>'
+	);
+}
+
 export function renderTrendsTab(container: HTMLElement, rawTrend: TrendPoint[], bucket: string) {
 	// A redraw (theme flip, revisit) replaces the plot under the cursor without
 	// a mouseleave, so drop any tooltip the old one left open.
@@ -465,6 +508,7 @@ export function renderTrendsTab(container: HTMLElement, rawTrend: TrendPoint[], 
 	container.innerHTML =
 		'<div class="tr-tiles" id="trTiles"></div>' +
 		'<div class="an-split trends">' +
+		'<div class="an-stack">' +
 		'<div class="chart-card">' +
 		'<div class="chart-card-head"><span class="chart-title">Onboarding activity</span><span class="legend tr-toggles" id="trToggles"></span></div>' +
 		(single
@@ -483,6 +527,13 @@ export function renderTrendsTab(container: HTMLElement, rawTrend: TrendPoint[], 
 				`<div style="--c:${trendColor(3)}"><span class="tr-dot"></span><b>${fmtNum(trend[0].approved)}</b><small>approved</small></div></div>`
 			: `<div class="chart-note">Links created against candidates approved, per ${bucket}. The hatched gap is the work still in flight — wider means the queue is growing.</div>` +
 				'<div class="tr-plot" id="trBacklog"></div>') +
+		'</div>' +
+		'</div>' +
+		'<div class="chart-card">' +
+		'<div class="chart-card-head"><span class="chart-title">Period by period</span></div>' +
+		`<div class="chart-note">Every ${bucket} in range, newest first. Net is links created less candidates approved.</div>` +
+		rangeConversion(totals) +
+		periodTable(trend, xLabel) +
 		'</div>' +
 		'</div>';
 
@@ -689,6 +740,34 @@ function funnelChart(stages: FunnelStage[]): HTMLElement {
 	return root;
 }
 
+/** The funnel read the other way: how many are parked at each stage now.
+ *  Under its numbers each tile has a column, the busiest stage's full, so a
+ *  taller card reads as a column chart rather than as empty tiles. */
+function stageNowTiles(stages: FunnelStage[]): string {
+	const top = stages[0]?.value ?? 0;
+	const waits = ['Have not opened the link', 'Opened, not submitted', 'Waiting for HR review', 'Approved, not complete', 'Complete'];
+	const parked = stages.map((s, i) => (i < stages.length - 1 ? Math.max(0, s.value - stages[i + 1].value) : s.value));
+	const most = Math.max(1, ...parked);
+	return (
+		'<div class="fx-now">' +
+		stages
+			.map((s, i) => {
+				const n = parked[i];
+				const pct = top ? Math.round((n / top) * 100) : 0;
+				return (
+					`<div class="fx-now-tile" style="--c:${rampAt(i / Math.max(1, stages.length - 1))}">` +
+					`<div class="fx-now-k">${waits[i]}</div>` +
+					`<div class="fx-now-v">${fmtNum(n)}</div>` +
+					`<div class="fx-now-sub">${top ? pct + '% of started' : 'Nobody started yet'}</div>` +
+					`<span class="fx-now-col"><span class="fx-now-fill" style="height:${Math.round((n / most) * 100)}%"></span></span>` +
+					'</div>'
+				);
+			})
+			.join('') +
+		'</div>'
+	);
+}
+
 export interface HiringDecisionData {
 	accepted: number;
 	rejected: number;
@@ -756,10 +835,17 @@ export function renderFunnelTab(
 	// it instead of each claiming a full-width row of their own.
 	container.innerHTML =
 		'<div class="an-split">' +
+		'<div class="an-stack">' +
 		'<div class="chart-card">' +
 		'<div class="chart-card-head"><span class="chart-title">Funnel snapshot</span>' + funnelHeadline(stages) + '</div>' +
 		'<div class="chart-note">Every candidate in the selected filters, by the furthest stage they reached. Each band narrows to the next stage, so the shape is the drop-off.</div>' +
 		'<div id="funnelChart"></div>' +
+		'</div>' +
+		'<div class="chart-card">' +
+		'<div class="chart-card-head"><span class="chart-title">Where candidates are now</span></div>' +
+		'<div class="chart-note">Everyone who started, by the stage they are sitting at today, as a share of those who started.</div>' +
+		stageNowTiles(stages) +
+		'</div>' +
 		'</div>' +
 		'<div class="an-stack">' +
 		'<div class="chart-card">' +
@@ -1030,7 +1116,6 @@ function heatTable(rows: BreakdownRow[]): HTMLElement {
 
 	const wrap = document.createElement('div');
 	wrap.className = 'bd-scroll';
-	wrap.style.setProperty('--rows', String(rows.length));
 	const table = document.createElement('table');
 	table.className = 'bd-heat';
 	table.style.setProperty('--hm', HEAT_HUE[currentTheme()]);
@@ -1057,18 +1142,6 @@ function heatTable(rows: BreakdownRow[]): HTMLElement {
 		'<tfoot><tr><th scope="row" class="bd-co">All companies</th>' +
 		cols.map((c) => `<td data-col="${c.i}">${fmtNum(c.total)}<small>${grand ? Math.round((c.total / grand) * 100) : 0}%</small></td>`).join('') +
 		`<td class="bd-tot"><b>${fmtNum(grand)}</b></td></tr></tfoot>`;
-
-	// The company rows share whatever height the card gives the grid (CSS sizes
-	// the wrapper, not the table), between the 36px floor and a height where a
-	// cell stops reading as a cell. A table hands all of its extra height to
-	// one row on its own, so the share is set here.
-	const fit = () => {
-		const head = table.tHead?.offsetHeight ?? 0, foot = table.tFoot?.offsetHeight ?? 0;
-		const free = wrap.clientHeight - head - foot - 3 * (rows.length + 3);
-		const h = Math.max(36, Math.min(120, Math.floor(free / Math.max(1, rows.length))));
-		table.style.setProperty('--row-h', `${h}px`);
-	};
-	if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fit).observe(wrap);
 
 	// Crosshair: hovering a cell lights its row and its column, and the
 	// tooltip says what share of each that cell is.
@@ -1154,6 +1227,30 @@ function workloadList(rows: AdminWorkloadRow[]): HTMLElement {
 	return wrap;
 }
 
+/** Two ranked bar lists, by track and by company, from the heat grid's rows. */
+function shareBars(rows: BreakdownRow[]): string {
+	const grand = rows.reduce((a, r) => a + r.total, 0);
+	const byTrack = (rows[0]?.tracks ?? [])
+		.map((t, i) => ({ label: t.label, n: rows.reduce((a, r) => a + r.tracks[i].n, 0) }))
+		.filter((t) => t.n > 0);
+	const byCo = rows.map((r) => ({ label: r.company, n: r.total }));
+	const col = (title: string, items: { label: string; n: number }[], color: string) =>
+		`<div class="bd-share-col" style="--c:${color}"><div class="kg-list-k">${title}</div>` +
+		[...items]
+			.sort((a, b) => b.n - a.n)
+			.map((x) => {
+				const pct = grand ? Math.round((x.n / grand) * 100) : 0;
+				return (
+					`<div class="bd-share-row"><span class="bd-share-k" title="${esc(x.label)}">${esc(x.label)}</span>` +
+					`<span class="bd-share-track"><span style="width:${pct}%"></span></span>` +
+					`<b>${fmtNum(x.n)}</b><small>${pct}%</small></div>`
+				);
+			})
+			.join('') +
+		'</div>';
+	return '<div class="bd-share">' + col('By track', byTrack, SERIES[2]) + col('By company', byCo, SERIES[0]) + '</div>';
+}
+
 export function renderBreakdownTab(container: HTMLElement, breakdown: BreakdownRow[], adminWorkload: AdminWorkloadRow[], conversion: ConversionRates) {
 	hideTooltip();
 	container.style.setProperty('--dq-good', ST.good);
@@ -1164,6 +1261,7 @@ export function renderBreakdownTab(container: HTMLElement, breakdown: BreakdownR
 
 	container.innerHTML =
 		'<div class="an-split">' +
+		'<div class="an-stack">' +
 		'<div class="chart-card">' +
 		'<div class="chart-card-head"><span class="chart-title">Volume by company and track</span>' +
 		(top ? `<span class="dq-hero"><b>${fmtNum(grand)}</b> candidates · ${esc(top.company)} leads with ${grand ? Math.round((top.total / grand) * 100) : 0}%</span>` : '') +
@@ -1171,12 +1269,15 @@ export function renderBreakdownTab(container: HTMLElement, breakdown: BreakdownR
 		'<div class="chart-note">Candidates in the selected period. Deeper colour is more volume; hover a cell to see its share of the company and of the track.</div>' +
 		(breakdown.length ? '<div id="bdHeat"></div>' : '<div class="dq-empty">No candidates in this range.</div>') +
 		'</div>' +
-		'<div class="an-stack">' +
-		'<div class="chart-card">' +
-		'<div class="chart-card-head"><span class="chart-title">Who is carrying the review queue</span></div>' +
-		'<div class="chart-note">Approvals per admin in this period, and how long each takes on average from submission to decision.</div>' +
-		(adminWorkload.length ? '<div id="bdTeam"></div>' : '<div class="dq-empty">No reviews recorded in this range.</div>') +
+		(breakdown.length
+			? '<div class="chart-card">' +
+				'<div class="chart-card-head"><span class="chart-title">Share of candidates</span></div>' +
+				'<div class="chart-note">The same candidates split by track and by company, largest first.</div>' +
+				shareBars(breakdown) +
+				'</div>'
+			: '') +
 		'</div>' +
+		'<div class="an-stack">' +
 		'<div class="chart-card">' +
 		'<div class="chart-card-head"><span class="chart-title">Conversion rates</span></div>' +
 		'<div class="chart-note">How much of each hand-off has actually gone out or come back.</div>' +
@@ -1184,6 +1285,11 @@ export function renderBreakdownTab(container: HTMLElement, breakdown: BreakdownR
 		ringGauge('Offer letters sent', conversion.offerLetterConversion, 'of drafted offer letters') +
 		ringGauge('Physical items received', conversion.physicalItemConversion, 'of handover items asked for') +
 		'</div>' +
+		'</div>' +
+		'<div class="chart-card">' +
+		'<div class="chart-card-head"><span class="chart-title">Who is carrying the review queue</span></div>' +
+		'<div class="chart-note">Approvals per admin in this period, and how long each takes on average from submission to decision.</div>' +
+		(adminWorkload.length ? '<div id="bdTeam"></div>' : '<div class="dq-empty">No reviews recorded in this range.</div>') +
 		'</div>' +
 		'</div>' +
 		'</div>';
@@ -1242,7 +1348,7 @@ function findingsListHTML(findings: Finding[]): string {
 // health is named, never colour alone).
 type KgNode = GraphNodeData & { x: number; y: number; total: number };
 
-const KG_ROW = 30;
+const KG_ROW = 26;
 const KG_TOP = 44;
 const KG_BOTTOM = 16;
 
@@ -1405,7 +1511,7 @@ export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNode
 					d: `M${l.x},${l.y} C${mx},${l.y} ${mx},${r.y} ${r.x},${r.y}`,
 					fill: 'none',
 					stroke: color,
-					'stroke-width': e.n ? (2 + 10 * (e.n / maxN)).toFixed(1) : 1.4,
+					'stroke-width': e.n ? (1.5 + 7 * (e.n / maxN)).toFixed(1) : 1.2,
 					class: 'kg-link' + (toSlot ? '' : ' flow'),
 					'data-a': e.a,
 					'data-b': e.b
@@ -1420,7 +1526,7 @@ export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNode
 			const g = el('g', { 'data-node': n.id, class: `kg-node ${n.kind}`, tabindex: 0, role: 'button' });
 			const h = n.kind === 'slot' ? kgHealth(n.rate) : null;
 			const color = n.kind === 'company' ? SERIES[0] : n.kind === 'track' ? SERIES[2] : ST[h!];
-			const r = n.kind === 'slot' ? 6 : 7 + 5 * Math.sqrt(n.total / maxT);
+			const r = n.kind === 'slot' ? 5 : 6 + 4 * Math.sqrt(n.total / maxT);
 			g.appendChild(el('circle', { cx: n.x, cy: n.y, r: r + 7, class: 'kg-halo', fill: color }));
 			g.appendChild(el('circle', { cx: n.x, cy: n.y, r, fill: color, stroke: SURFACE(), 'stroke-width': 2.5, class: 'kg-dot' }));
 			if (n.kind === 'company') {
@@ -1486,18 +1592,28 @@ export function renderGraphTab(container: HTMLElement, graph: { nodes: GraphNode
 }
 
 function explainKg(box: HTMLElement, n: KgNode | null, byId: Map<string, KgNode>, nbrs: Map<string, Set<string>>) {
-	if (!n) {
-		box.innerHTML =
-			'<div class="explain-empty">Click a company, a track or a document in the map to pin it here. Hovering traces its path without pinning.</div>';
-		return;
-	}
-	const linked = (kind: GraphNodeData['kind']) => [...nbrs.get(n.id)!].map((id) => byId.get(id)!).filter((x) => x.kind === kind);
 	const list = (items: KgNode[], fmt: (x: KgNode) => string) =>
 		items.length ? '<ul class="kg-list">' + items.map((x) => `<li>${fmt(x)}</li>`).join('') + '</ul>' : '<p class="kg-none">None in this filter.</p>';
 	const rateLi = (x: KgNode) => {
 		const h = kgHealth(x.rate);
 		return `<span>${esc(x.label)}</span><span class="dq-chip ${h}">${HEALTH_ICON[h]}${x.rate ?? '—'}%</span>`;
 	};
+	// Nothing pinned: the map at a glance, so the card is never just a hint.
+	if (!n) {
+		const all = [...byId.values()];
+		const busiest = (kind: GraphNodeData['kind']) => all.filter((x) => x.kind === kind).sort((a, b) => b.total - a.total).slice(0, 3);
+		const worst = all.filter((x) => x.kind === 'slot').sort((a, b) => (a.rate ?? 100) - (b.rate ?? 100)).slice(0, 3);
+		box.innerHTML =
+			'<div class="kg-list-k">Busiest companies</div>' +
+			list(busiest('company'), (c) => `<span>${esc(c.label)}</span><b>${fmtNum(c.total)}</b>`) +
+			'<div class="kg-list-k">Busiest tracks</div>' +
+			list(busiest('track'), (t) => `<span>${esc(t.label)}</span><b>${fmtNum(t.total)}</b>`) +
+			'<div class="kg-list-k">Documents most in need</div>' +
+			list(worst, rateLi) +
+			'<div class="explain-empty">Click a company, a track or a document in the map to pin it here. Hovering traces its path without pinning.</div>';
+		return;
+	}
+	const linked = (kind: GraphNodeData['kind']) => [...nbrs.get(n.id)!].map((id) => byId.get(id)!).filter((x) => x.kind === kind);
 	let html = '';
 	if (n.kind === 'company') {
 		const tracks = linked('track');
