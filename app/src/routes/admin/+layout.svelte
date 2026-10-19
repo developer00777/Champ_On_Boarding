@@ -249,20 +249,8 @@
 		{/if}
 		<nav class="rail" class:open={navOpen} aria-label="Admin sections">
 			<div class="rail-top">
-				<a href="/admin" class="brand" aria-label="ChampHR home">
-					<span class="brand-mark" aria-hidden="true">
-						<svg viewBox="0 0 32 32">
-							<defs>
-								<linearGradient id="bm" x1="0" y1="0" x2="1" y2="1">
-									<stop offset="0" stop-color="#818cf8" />
-									<stop offset="1" stop-color="#4f46e5" />
-								</linearGradient>
-							</defs>
-							<path d="M16 3a13 13 0 1 0 13 13h-6.5A6.5 6.5 0 1 1 16 9.5Z" fill="url(#bm)" />
-							<circle cx="23.5" cy="8.5" r="4" fill="#fb923c" />
-						</svg>
-					</span>
-					<span class="brand-word">ChampHR</span>
+				<a href="/admin" class="brand" aria-label="Champions Group home">
+					<img class="brand-logo" src="/championsgroup.png" alt="Champions Group" />
 				</a>
 				<button
 					class="collapse-btn"
@@ -516,21 +504,14 @@
 		text-decoration: none;
 		min-width: 0;
 	}
-	.brand-mark {
-		width: 28px;
-		height: 28px;
-		flex: none;
+	.brand-logo {
+		display: block;
+		height: 64px;
+		width: auto;
+		object-fit: contain;
 	}
-	.brand-mark svg {
-		width: 100%;
-		height: 100%;
-	}
-	.brand-word {
-		font-size: 18px;
-		font-weight: 600;
-		letter-spacing: -0.02em;
-		color: var(--ae-text);
-		white-space: nowrap;
+	.collapsed .brand-logo {
+		height: 34px;
 	}
 	.collapse-btn {
 		width: 28px;
@@ -745,7 +726,6 @@
 		padding: 24px 0 18px;
 		gap: 14px;
 	}
-	.collapsed .brand-word,
 	.collapsed .nav-label,
 	.collapsed .acct-text,
 	.collapsed .acct-chev {
@@ -988,13 +968,15 @@
 			transform: none;
 		}
 		/* The drawer is always shown expanded, whatever the desktop preference. */
-		.collapsed .rail .brand-word,
 		.collapsed .rail .nav-label,
 		.collapsed .rail .acct-chev {
 			display: revert;
 		}
 		.collapsed .rail .acct-text {
 			display: flex;
+		}
+		.collapsed .rail .brand-logo {
+			height: 64px;
 		}
 		.collapsed .rail .navitem {
 			justify-content: flex-start;
