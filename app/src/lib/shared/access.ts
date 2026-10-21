@@ -92,7 +92,12 @@ export const MODULES: Module[] = [
 			{ key: 'candidate.approve', label: 'Approve a submitted form', kind: 'full',
 				surface: ['/admin/candidates/[id]::approve'] },
 			{ key: 'candidate.decision', label: 'Record the hiring decision', kind: 'full',
-				surface: ['/admin/candidates/[id]::setHiringDecision'] }
+				surface: ['/admin/candidates/[id]::setHiringDecision'] },
+			// The joiner's official mailbox and the welcome mail to it, with the
+			// org-wide Core Values / Holiday Calendar attachments it encloses.
+			{ key: 'candidate.welcome', label: 'Set the official email and send the welcome mail', kind: 'write',
+				surface: ['/admin/candidates/[id]::setWelcomeFields', '/admin/candidates/[id]::sendWelcomeMail',
+					'GET /admin/candidates/[id]/welcome-mail-preview', 'POST|DELETE /admin/welcome-attachments/[slot]'] }
 			// Correcting a profile, the link and deleting a record were super-admin
 			// powers; they are in Access & org now, where they are handed out.
 		]
@@ -310,12 +315,14 @@ export const MODULES: Module[] = [
 			{ key: 'settings.exitMail', label: 'Settings: offboarding mail', kind: 'write', enforced: true,
 				surface: ['/admin/settings::saveExitMail', '/admin/settings::resetExitMail'] },
 			{ key: 'settings.lists', label: 'Settings: dropdown options', kind: 'write', enforced: true,
-				surface: ['/admin/settings::saveFixedLists'] }
+				surface: ['/admin/settings::saveFixedLists'] },
+			{ key: 'settings.welcomeMail', label: 'Settings: welcome mail', kind: 'write', enforced: true,
+				surface: ['/admin/settings::saveWelcomeMail', '/admin/settings::resetWelcomeMail'] }
 		]
 	}
 ];
 
-export const SETTINGS_CAPS = ['settings.itMail', 'settings.empCodeMail', 'settings.exitMail', 'settings.lists'] as const;
+export const SETTINGS_CAPS = ['settings.itMail', 'settings.empCodeMail', 'settings.exitMail', 'settings.lists', 'settings.welcomeMail'] as const;
 export type SettingsCap = (typeof SETTINGS_CAPS)[number];
 
 /** Every preset reads every Settings section and none edits one — the page was

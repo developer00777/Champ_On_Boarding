@@ -105,6 +105,7 @@ export const REPORT_FIELDS: ReportField[] = [
 	{ key: 'status', label: 'Onboarding status', from: 'candidate', path: 'status' },
 	{ key: 'entity', label: 'Entity / company', from: 'company', path: 'name' },
 	{ key: 'employeeId', label: 'Employee code', from: 'candidate', path: 'employeeId' },
+	{ key: 'officialEmail', label: 'Official email', from: 'candidate', path: 'officialEmail' },
 	{ key: 'department', label: 'Department', from: 'offer', path: 'department' },
 	{ key: 'designation', label: 'Designation / job title', from: 'offer', path: 'jobTitle' },
 	{ key: 'reportingManager', label: 'Reporting manager', from: 'offer', path: 'reportingManager' },

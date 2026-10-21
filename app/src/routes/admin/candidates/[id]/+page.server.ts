@@ -54,6 +54,8 @@ import { createLinkToken, ensureLiveLinkToken } from '$lib/server/tokens';
 import { isShiftTiming } from '$lib/shared/shifts';
 import { RELIGIONS } from '$lib/shared/demographics';
 import { sendItSetupMail } from '$lib/server/it-setup-mail';
+import { getWelcomeAttachments, sendWelcomeMail } from '$lib/server/welcome-mail';
+import { WELCOME_ATTACHMENT_SLOTS } from '$lib/shared/welcome-mail';
 import { env } from '$env/dynamic/private';
 import { baseUrl } from '$lib/server/base-url';
 import { moveCandidate, moveImpact, resolveMove } from '$lib/server/entity-move';
@@ -212,7 +214,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		referenceFiles,
 		entities,
 		lastMove,
-		lastTrackChange
+		lastTrackChange,
+		welcomeAttachments
 	] = await Promise.all([
 		checklistFor(String(candidate._id), candidate.track as Track, company?.brandSlug),
 		PhysicalItem.find({ candidateId: candidate._id }).lean(),
@@ -229,7 +232,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		// Where the candidate can be moved to: every live entity but their own.
 		Company.find({ active: { $ne: false }, _id: { $ne: candidate.companyId } }, 'name').sort({ name: 1 }).lean(),
 		AuditLog.findOne({ candidateId: candidate._id, action: 'entity_changed' }).sort({ createdAt: -1 }).lean(),
-		AuditLog.findOne({ candidateId: candidate._id, action: 'track_changed' }).sort({ createdAt: -1 }).lean()
+		AuditLog.findOne({ candidateId: candidate._id, action: 'track_changed' }).sort({ createdAt: -1 }).lean(),
+		getWelcomeAttachments()
 	]);
 
 	// The decision is stored against an Admin id; the page needs the email. A
@@ -246,7 +250,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// has to say where it went, not where it would go now.
 	const lastSends = await AuditLog.find({
 		candidateId: candidate._id,
-		action: { $in: ['it_setup_mail_sent', 'employee_code_mail_sent'] }
+		action: { $in: ['it_setup_mail_sent', 'employee_code_mail_sent', 'welcome_mail_sent'] }
 	})
 		.sort({ createdAt: -1 })
 		.limit(20)
@@ -263,7 +267,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	};
 	const mailSends = {
 		it: lastSend('it_setup_mail_sent'),
-		code: lastSend('employee_code_mail_sent')
+		code: lastSend('employee_code_mail_sent'),
+		welcome: lastSend('welcome_mail_sent')
 	};
 
 	// Candidates created before an item type existed have no row for it, and the
@@ -340,6 +345,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			ifsc: candidate.ifsc ?? null,
 			branch: candidate.branch ?? null,
 			employeeId: candidate.employeeId ?? null,
+			officialEmail: candidate.officialEmail ?? null,
+			reportingManagerEmail: candidate.reportingManagerEmail ?? null,
+			welcomeMailSentAt: candidate.welcomeMailSentAt?.toISOString() ?? null,
 			bgvEligible: isBgvEligible(candidate.track, row.company?.brandSlug),
 			prevCompanyName: candidate.prevCompanyName ?? null,
 			prevEmployeeId: candidate.prevEmployeeId ?? null,
@@ -496,6 +504,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			sizeBytes: f.sizeBytes,
 			uploadedAt: (f as unknown as { createdAt: Date }).createdAt.toISOString()
 		})),
+		/** The two org-wide documents every welcome mail encloses, in slot order,
+		 *  with what is stored in each (null = not uploaded yet). */
+		welcomeAttachments: WELCOME_ATTACHMENT_SLOTS.map((s) => {
+			const a = welcomeAttachments[s.key];
+			return {
+				slot: s.key,
+				label: s.label,
+				file: a
+					? { filename: a.filename, sizeBytes: a.sizeBytes, uploadedBy: a.uploadedBy, uploadedAt: a.uploadedAt }
+					: null
+			};
+		}),
 		/** Admin-editable option lists (settings → Dropdown options). */
 		officeLocations: fixedLists.officeLocations ?? [],
 		noticePeriods: fixedLists.noticePeriods ?? [],
@@ -780,6 +800,92 @@ export const actions: Actions = {
 		} catch (e) {
 			console.error(`[employee-code-mail] send failed for candidate=${params.id}:`, e);
 			return fail(502, { message: 'Could not send the employee code mail. Please try again.' });
+		}
+	},
+
+	/** The joiner's official mailbox (once IT has created it) and their
+	 *  manager's address, saved together — both feed the welcome mail, and the
+	 *  official one also lands in the Master Tracker and the export. */
+	setWelcomeFields: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		const officialEmail = String(form.get('officialEmail') ?? '').trim().toLowerCase() || null;
+		const reportingManagerEmail =
+			String(form.get('reportingManagerEmail') ?? '').trim().toLowerCase() || null;
+
+		const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+		if (officialEmail && !isEmail(officialEmail))
+			return fail(400, { welcomeFieldsError: true, message: 'The official email is not a valid address.' });
+		if (reportingManagerEmail && !isEmail(reportingManagerEmail))
+			return fail(400, { welcomeFieldsError: true, message: "The manager's email is not a valid address." });
+		// The personal address in this box is the usual slip — and the welcome
+		// mail would then land in the inbox the official one is meant to replace.
+		if (officialEmail && officialEmail === row.candidate.email.toLowerCase())
+			return fail(400, {
+				welcomeFieldsError: true,
+				message: 'That is the personal email the onboarding link went to. Enter the company mailbox IT created.'
+			});
+		// One mailbox, one person: a second record claiming it is a typo or a
+		// duplicate, and either way the Master Tracker would carry it twice.
+		if (officialEmail) {
+			const clash = await Candidate.findOne({ _id: { $ne: params.id }, officialEmail }, 'fullName email').lean();
+			if (clash)
+				return fail(409, {
+					welcomeFieldsError: true,
+					message: `${officialEmail} is already the official email of ${clash.fullName || clash.email}.`
+				});
+		}
+
+		await Candidate.findByIdAndUpdate(params.id, { officialEmail, reportingManagerEmail });
+		for (const [field, newValue] of [
+			['officialEmail', officialEmail],
+			['reportingManagerEmail', reportingManagerEmail]
+		] as const) {
+			const oldValue = (row.candidate[field] as string | null | undefined) ?? null;
+			if (oldValue === newValue) continue;
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: field === 'officialEmail' ? 'official_email_set' : 'manager_email_set',
+				field,
+				oldValue,
+				newValue,
+				ip: getClientAddress()
+			});
+		}
+		return {
+			welcomeFieldsSaved: true,
+			officialEmail: officialEmail ?? '',
+			reportingManagerEmail: reportingManagerEmail ?? ''
+		};
+	},
+
+	/** The welcome mail to the joiner's official mailbox, with the Core Values
+	 *  and Holiday Calendar attached. Manual only, sent from inside the
+	 *  preview, like the two IT mails. */
+	sendWelcomeMail: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (!row.candidate.officialEmail)
+			return fail(409, { message: 'Set the official email before sending the welcome mail.' });
+		try {
+			const { to, cc } = await sendWelcomeMail(params.id);
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'welcome_mail_sent',
+				newValue: `manual → ${[...to, ...cc].join(', ')}`,
+				ip: getClientAddress()
+			});
+			return { welcomeMailSent: true };
+		} catch (e) {
+			console.error(`[welcome-mail] send failed for candidate=${params.id}:`, e);
+			return fail(502, { message: 'Could not send the welcome mail. Please try again.' });
 		}
 	},
 

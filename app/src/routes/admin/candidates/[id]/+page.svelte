@@ -951,6 +951,13 @@
 
 	// Employee ID: prefer server-echoed value after save, else candidate field
 	const empId = $derived(form?.employeeIdSaved ? form.employeeId : (c.employeeId ?? ''));
+	// Same server-echo preference for the welcome mail's two addresses.
+	const officialEmail = $derived(
+		form?.welcomeFieldsSaved ? (form.officialEmail ?? '') : (c.officialEmail ?? '')
+	);
+	const managerEmail = $derived(
+		form?.welcomeFieldsSaved ? (form.reportingManagerEmail ?? '') : (c.reportingManagerEmail ?? '')
+	);
 	const shiftTiming = $derived(form?.shiftTimingSaved ? form.shiftTiming : (c.shiftTiming ?? ''));
 
 	// GlassSelect is controlled, so mirror the stored shift into local state the
@@ -1103,8 +1110,12 @@
 		cc: string[];
 		subject: string;
 		html: string;
-		fields: { label: string; value: string }[];
+		fields?: { label: string; value: string }[];
 		missing: string[];
+		/** Welcome mail only: what it encloses, and why it cannot go yet. */
+		attachments?: { slot: string; label: string; filename: string; sizeBytes: number }[];
+		blocker?: string | null;
+		hasPhoto?: boolean;
 	};
 	/** The two mails that go out through the confirm modal. Both are built by
 	 *  their own server-side builder and rendered by the same modal below —
@@ -1123,6 +1134,13 @@
 			action: '?/sendEmployeeCodeMail',
 			send: 'Send to helpdesk',
 			resend: 'Resend to helpdesk'
+		},
+		welcome: {
+			title: 'Welcome mail preview',
+			endpoint: 'welcome-mail-preview',
+			action: '?/sendWelcomeMail',
+			send: 'Send welcome mail',
+			resend: 'Resend welcome mail'
 		}
 	} as const;
 	type MailKind = keyof typeof MAIL_KINDS;
@@ -1133,12 +1151,74 @@
 	let itPreviewError: string | null = $state(null);
 	let itSending = $state(false);
 	const previewSentAt = $derived(
-		previewKind === 'it' ? c.itSetupMailSentAt : c.employeeCodeMailSentAt
+		previewKind === 'it'
+			? c.itSetupMailSentAt
+			: previewKind === 'code'
+				? c.employeeCodeMailSentAt
+				: c.welcomeMailSentAt
 	);
 	/** The hidden form the modal's Send button submits — keeps the real
 	 *  `use:enhance` POST (and its progressive-enhancement fallback) rather
 	 *  than hand-rolling a fetch that would bypass the action's audit log. */
-	let sendForms: Record<MailKind, HTMLFormElement | null> = $state({ it: null, code: null });
+	let sendForms: Record<MailKind, HTMLFormElement | null> = $state({ it: null, code: null, welcome: null });
+
+	// ── Welcome mail attachments ─────────────────────────────────────────────
+	// Org-wide, not this candidate's: uploading here replaces the document for
+	// every welcome mail from now on, which the card says in so many words.
+	let welcomeBusy: string | null = $state(null);
+	let welcomeAttachError: string | null = $state(null);
+
+	/** SvelteKit answers a failed endpoint with {"message": …}; show the
+	 *  message, not the JSON. */
+	async function failureText(res: Response, fallback: string) {
+		const raw = await res.text();
+		try {
+			return (JSON.parse(raw) as { message?: string }).message || fallback;
+		} catch {
+			return raw || fallback;
+		}
+	}
+
+	async function uploadWelcomeAttachment(slot: string, input: HTMLInputElement) {
+		const file = input.files?.[0];
+		if (!file || welcomeBusy) return;
+		welcomeBusy = slot;
+		welcomeAttachError = null;
+		try {
+			const body = new FormData();
+			body.set('file', file);
+			const res = await fetch(`/admin/welcome-attachments/${slot}`, { method: 'POST', body });
+			if (!res.ok) {
+				welcomeAttachError = await failureText(res, 'Upload failed.');
+				return;
+			}
+			await invalidateAll();
+		} catch {
+			welcomeAttachError = 'Upload failed — check your connection and try again.';
+		} finally {
+			welcomeBusy = null;
+			input.value = '';
+		}
+	}
+
+	async function removeWelcomeAttachment(slot: string, label: string) {
+		if (welcomeBusy) return;
+		if (!confirm(`Remove the ${label}? Welcome mails will go without it until a new one is uploaded.`)) return;
+		welcomeBusy = slot;
+		welcomeAttachError = null;
+		try {
+			const res = await fetch(`/admin/welcome-attachments/${slot}`, { method: 'DELETE' });
+			if (!res.ok) {
+				welcomeAttachError = await failureText(res, 'Could not remove it.');
+				return;
+			}
+			await invalidateAll();
+		} catch {
+			welcomeAttachError = 'Could not remove it — check your connection and try again.';
+		} finally {
+			welcomeBusy = null;
+		}
+	}
 
 	async function openItPreview(kind: MailKind = 'it') {
 		previewKind = kind;
@@ -1166,7 +1246,7 @@
 	// Close the modal once the send round-trips, so the "sent ✓" chip on the
 	// page is what HR sees next rather than a stale preview.
 	$effect(() => {
-		if (form?.itSetupMailSent || form?.employeeCodeMailSent) {
+		if (form?.itSetupMailSent || form?.employeeCodeMailSent || form?.welcomeMailSent) {
 			itPreview = null;
 			itSending = false;
 		}
@@ -1558,29 +1638,64 @@
 					<div class="it-meta-row"><span class="it-meta-k">Cc</span><span class="it-meta-v">{itPreview.cc.join(', ')}</span></div>
 				{/if}
 				<div class="it-meta-row"><span class="it-meta-k">Subject</span><span class="it-meta-v">{itPreview.subject}</span></div>
+				{#if itPreview.attachments}
+					<div class="it-meta-row">
+						<span class="it-meta-k">Attached</span>
+						<span class="it-meta-v">
+							{#if itPreview.attachments.length}
+								{#each itPreview.attachments as a, i}{a.filename} <span class="muted">({prettySize(a.sizeBytes)})</span>{i < itPreview.attachments.length - 1 ? ', ' : ''}{/each}
+							{:else}
+								<span class="muted">Nothing</span>
+							{/if}
+						</span>
+					</div>
+					<div class="it-meta-row">
+						<span class="it-meta-k">Photo</span>
+						<span class="it-meta-v">
+							{itPreview.hasPhoto
+								? 'Their passport photo from the onboarding form, shown as uploaded'
+								: 'None usable — the mail shows their initials'}
+						</span>
+					</div>
+				{/if}
 			</div>
+
+			{#if itPreview.blocker}
+				<div class="it-modal-warn">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg>
+					<span><strong>{itPreview.blocker}</strong></span>
+				</div>
+			{/if}
 
 			{#if itPreview.missing.length}
 				<div class="it-modal-warn">
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0Z"/></svg>
-					<span>
-						{itPreview.missing.length === 1 ? 'This column is blank' : 'These columns are blank'}:
-						<strong>{itPreview.missing.join(', ')}</strong>. The desk will have to chase it — fill it in
-						above and reopen this preview, or send as-is.
-					</span>
+					{#if previewKind === 'welcome'}
+						<span>
+							{itPreview.missing.length === 1 ? 'This is missing' : 'These are missing'}:
+							<strong>{itPreview.missing.join(', ')}</strong>. The joiner will see a blank where a value
+							goes — fill it in on this page and reopen the preview, or send as-is.
+						</span>
+					{:else}
+						<span>
+							{itPreview.missing.length === 1 ? 'This column is blank' : 'These columns are blank'}:
+							<strong>{itPreview.missing.join(', ')}</strong>. The desk will have to chase it — fill it in
+							above and reopen this preview, or send as-is.
+						</span>
+					{/if}
 				</div>
 			{/if}
 
 			<!-- srcdoc, sandboxed: the mail body is rendered markup, so showing it
 			     inline would let its styles leak into the admin page. -->
-			<iframe class="it-modal-frame" title="IT setup mail body" sandbox="" srcdoc={itPreview.html}></iframe>
+			<iframe class="it-modal-frame" title="{MAIL_KINDS[previewKind].title} body" sandbox="" srcdoc={itPreview.html}></iframe>
 
 			<div class="it-modal-actions">
 				<button class="btn small ghost" type="button" onclick={closeItPreview} disabled={itSending}>Cancel</button>
 				<button
 					class="btn small teal"
 					type="button"
-					disabled={itSending || !data.isApprover}
+					disabled={itSending || !data.isApprover || !!itPreview.blocker}
 					onclick={() => sendForms[previewKind]?.requestSubmit()}
 				>
 					{itSending
@@ -3245,76 +3360,228 @@
 			</div>
 		</section>
 
-		<section class="card">
-			<div class="eyebrow red-eyebrow" style="margin-bottom:14px">Physical items · joining day</div>
-			{#each data.physical as item}
-				<form method="POST" action="?/physical" use:enhance class="physrow">
-					<fieldset class="rbac" disabled={!data.isApprover}>
-						<input type="hidden" name="itemId" value={item.id} />
-						<input type="hidden" name="received" value={item.received ? 'false' : 'true'} />
-						<button class="phys-check" class:on={item.received} aria-label="Toggle received">
-							{#if item.received}
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5" /></svg>
+		<!-- Physical items and the welcome mail share the second column, so the
+		     two-up grid keeps two columns of even height. -->
+		<div class="pane-col">
+			<section class="card">
+				<div class="eyebrow red-eyebrow" style="margin-bottom:14px">Physical items · joining day</div>
+				{#each data.physical as item}
+					<form method="POST" action="?/physical" use:enhance class="physrow">
+						<fieldset class="rbac" disabled={!data.isApprover}>
+							<input type="hidden" name="itemId" value={item.id} />
+							<input type="hidden" name="received" value={item.received ? 'false' : 'true'} />
+							<button class="phys-check" class:on={item.received} aria-label="Toggle received">
+								{#if item.received}
+									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5" /></svg>
+								{/if}
+							</button>
+							<span style="flex:1;font-size:13.5px;font-weight:600;color:var(--ae-text-2)">{item.label}</span>
+							<span class="phys-status" class:got={item.received}>
+								{item.received
+									? `Received${item.receivedAt ? ' · ' + new Date(item.receivedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}`
+									: 'Pending'}
+							</span>
+						</fieldset>
+					</form>
+					<!-- Confirmation items read back a detail rather than take an object,
+					     so they show the value being confirmed and can ask the candidate
+					     to check it. Independent of approval: this form is outside the
+					     rbac fieldset's status logic and never moves the record. -->
+					{#if item.confirms}
+						<div class="confirm-detail">
+							<div class="cd-value" class:cd-empty={!item.currentValue}>
+								{item.currentValue || 'Nothing on record yet'}
+							</div>
+							{#if item.candidateConfirmedAt}
+								<p class="cd-note cd-ok">
+									Candidate confirmed on {new Date(item.candidateConfirmedAt).toLocaleDateString('en-IN', {
+										day: 'numeric',
+										month: 'short'
+									})}{item.candidateConfirmedValue && item.candidateConfirmedValue !== item.currentValue
+										? ` as "${item.candidateConfirmedValue}"`
+										: ''}
+								</p>
+							{:else if item.requestedAt}
+								<p class="cd-note cd-wait">
+									{item.requestCount > 1 ? `Asked ${item.requestCount}×, last on` : 'Asked the candidate on'}
+									{new Date(item.requestedAt).toLocaleDateString('en-IN', {
+										day: 'numeric',
+										month: 'short'
+									})} — waiting for their reply{item.requestNote ? ` · "${item.requestNote}"` : ''}
+								</p>
 							{/if}
-						</button>
-						<span style="flex:1;font-size:13.5px;font-weight:600;color:var(--ae-text-2)">{item.label}</span>
-						<span class="phys-status" class:got={item.received}>
-							{item.received
-								? `Received${item.receivedAt ? ' · ' + new Date(item.receivedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}`
-								: 'Pending'}
-						</span>
+							<form method="POST" action="?/requestConfirmation" use:enhance class="cd-form">
+								<fieldset class="rbac" disabled={!data.isApprover}>
+									<input type="hidden" name="field" value={item.confirms} />
+									<input name="note" placeholder="Optional note to the candidate" />
+									<button class="btn ghost small">
+										{item.requestedAt ? 'Ask again' : 'Ask candidate to confirm'}
+									</button>
+								</fieldset>
+							</form>
+						</div>
+					{/if}
+				{/each}
+				{#if form?.confirmationRequested}
+					<p class="saved-chip" style="margin-top:8px">
+						Asked the candidate to confirm their {form.confirmationRequested} ✓
+					</p>
+				{/if}
+				<p class="muted" style="font-size:11.5px;margin:10px 0 0">
+					Record reaches <em>complete</em> only when approved and all items are received.
+					Asking the candidate to confirm a detail is independent — it needs no approval
+					and never sends the record back a stage.
+				</p>
+			</section>
+
+			<!-- Welcome mail to the joiner's official mailbox. The official email is
+			     set here once IT has created it — from then on it is also what the
+			     Master Tracker and the export carry. -->
+			<section class="card emp-card">
+				<div class="eyebrow" style="margin-bottom:10px">Welcome mail</div>
+				<form
+					method="POST"
+					action="?/setWelcomeFields"
+					use:enhance={() => async ({ update }) => update({ reset: false })}
+					class="it-fields-flat"
+				>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<label class="it-label" for="wm-official">Official email</label>
+						<input
+							id="wm-official"
+							name="officialEmail"
+							type="email"
+							value={officialEmail}
+							placeholder="e.g. firstname.l@championsmail.com"
+							class="emp-input"
+							maxlength="160"
+						/>
+						<p class="it-link-note">
+							The mailbox IT created. Also fills the Master Tracker's Official E Mail column and the
+							export.
+						</p>
+						<label class="it-label" for="wm-manager">Reporting manager's email</label>
+						<input
+							id="wm-manager"
+							name="reportingManagerEmail"
+							type="email"
+							value={managerEmail}
+							placeholder="optional — copied on the mail"
+							class="emp-input"
+							maxlength="160"
+						/>
+						<p class="it-link-note">
+							Copied on the welcome mail{#if data.offerLetter.reportingManager}{' '}— the offer letter names
+								<strong>{data.offerLetter.reportingManager}</strong>{/if}.
+						</p>
+						<button class="btn small teal" style="width:100%;margin-top:4px">Save</button>
 					</fieldset>
 				</form>
-				<!-- Confirmation items read back a detail rather than take an object,
-				     so they show the value being confirmed and can ask the candidate
-				     to check it. Independent of approval: this form is outside the
-				     rbac fieldset's status logic and never moves the record. -->
-				{#if item.confirms}
-					<div class="confirm-detail">
-						<div class="cd-value" class:cd-empty={!item.currentValue}>
-							{item.currentValue || 'Nothing on record yet'}
-						</div>
-						{#if item.candidateConfirmedAt}
-							<p class="cd-note cd-ok">
-								Candidate confirmed on {new Date(item.candidateConfirmedAt).toLocaleDateString('en-IN', {
-									day: 'numeric',
-									month: 'short'
-								})}{item.candidateConfirmedValue && item.candidateConfirmedValue !== item.currentValue
-									? ` as "${item.candidateConfirmedValue}"`
-									: ''}
-							</p>
-						{:else if item.requestedAt}
-							<p class="cd-note cd-wait">
-								{item.requestCount > 1 ? `Asked ${item.requestCount}×, last on` : 'Asked the candidate on'}
-								{new Date(item.requestedAt).toLocaleDateString('en-IN', {
-									day: 'numeric',
-									month: 'short'
-								})} — waiting for their reply{item.requestNote ? ` · "${item.requestNote}"` : ''}
-							</p>
-						{/if}
-						<form method="POST" action="?/requestConfirmation" use:enhance class="cd-form">
-							<fieldset class="rbac" disabled={!data.isApprover}>
-								<input type="hidden" name="field" value={item.confirms} />
-								<input name="note" placeholder="Optional note to the candidate" />
-								<button class="btn ghost small">
-									{item.requestedAt ? 'Ask again' : 'Ask candidate to confirm'}
-								</button>
-							</fieldset>
-						</form>
-					</div>
+				{#if form?.welcomeFieldsSaved}
+					<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
+				{:else if (form as { welcomeFieldsError?: true; message?: string } | undefined)?.welcomeFieldsError}
+					<p class="it-preview-err">{(form as { message: string }).message}</p>
 				{/if}
-			{/each}
-			{#if form?.confirmationRequested}
-				<p class="saved-chip" style="margin-top:8px">
-					Asked the candidate to confirm their {form.confirmationRequested} ✓
-				</p>
-			{/if}
-			<p class="muted" style="font-size:11.5px;margin:10px 0 0">
-				Record reaches <em>complete</em> only when approved and all items are received.
-				Asking the candidate to confirm a detail is independent — it needs no approval
-				and never sends the record back a stage.
-			</p>
-		</section>
+
+				<div class="it-mail">
+					<div class="it-label">Attachments</div>
+					<p class="it-link-note" style="margin-top:0">
+						Shared by every welcome mail — replacing one here replaces it for all joiners from now on.
+					</p>
+					{#each data.welcomeAttachments as a (a.slot)}
+						<div class="wa-row">
+							<div class="wa-main">
+								<span class="wa-label">{a.label}</span>
+								{#if a.file}
+									<a class="wa-file" href="/admin/welcome-attachments/{a.slot}" target="_blank" rel="noopener" title={a.file.filename}>
+										{a.file.filename}
+									</a>
+									<span class="ref-meta">
+										{prettySize(a.file.sizeBytes)} ·
+										{new Date(a.file.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+									</span>
+								{:else}
+									<span class="wa-none">Not uploaded</span>
+								{/if}
+							</div>
+							<fieldset class="rbac wa-actions" disabled={!data.isApprover || welcomeBusy !== null}>
+								<label class="btn small ghost wa-pick">
+									{welcomeBusy === a.slot ? 'Uploading…' : a.file ? 'Replace' : 'Upload'}
+									<input
+										type="file"
+										accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
+										onchange={(e) => uploadWelcomeAttachment(a.slot, e.currentTarget)}
+										hidden
+									/>
+								</label>
+								{#if a.file}
+									<button
+										class="ref-del"
+										type="button"
+										aria-label={`Remove ${a.label}`}
+										title="Remove"
+										onclick={() => removeWelcomeAttachment(a.slot, a.label)}>×</button
+									>
+								{/if}
+							</fieldset>
+						</div>
+					{/each}
+					<small class="muted" style="font-size:10.5px">PDF, Word, Excel, PowerPoint, JPG or PNG · max 10 MB</small>
+					{#if welcomeAttachError}<p class="it-preview-err">{welcomeAttachError}</p>{/if}
+				</div>
+
+				<div class="it-mail">
+					<form
+						method="POST"
+						action="?/sendWelcomeMail"
+						use:enhance={() => {
+							itSending = true;
+							return async ({ update }) => {
+								await update();
+								itSending = false;
+							};
+						}}
+						bind:this={sendForms.welcome}
+					>
+						<fieldset class="rbac" disabled={!data.isApprover}>
+							<button
+								class="btn small ghost"
+								style="width:100%"
+								type="button"
+								onclick={() => openItPreview('welcome')}
+								disabled={itPreviewLoading || !officialEmail}
+								title={officialEmail ? '' : 'Save the official email first'}
+							>
+								<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+								{#if itPreviewLoading}
+									Building preview…
+								{:else}
+									{c.welcomeMailSentAt ? 'Review & resend welcome mail' : 'Review & send welcome mail'}
+								{/if}
+							</button>
+						</fieldset>
+					</form>
+					{#if !officialEmail}
+						<p class="emp-hint" style="margin-top:4px">Save the official email above to enable this.</p>
+					{/if}
+					{#if c.welcomeMailSentAt}
+						{@render sentNote(
+							'Welcome mail',
+							c.welcomeMailSentAt,
+							data.mailSends.welcome?.to ?? [],
+							data.mailSends.welcome?.by ?? null,
+							!!form?.welcomeMailSent,
+							'Sending again mails the joiner a fresh copy.'
+						)}
+					{/if}
+					<div class="emp-hint">
+						<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+						Wording, Cc and sign-off in
+						<a href="/admin/settings#welcome-mail" style="color:inherit;text-decoration:underline">settings</a>
+					</div>
+				</div>
+			</section>
+		</div>
 	</div>
 	</div>
 </div>
@@ -3481,6 +3748,13 @@
 	}
 	.tabpane[hidden] {
 		display: none !important;
+	}
+	/* A grid cell holding more than one card, stacked. */
+	.pane-col {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+		min-width: 0;
 	}
 	/* Two cards side by side that end on the same line. */
 	.pane-2 {
@@ -4282,7 +4556,8 @@
 		padding-top: 12px;
 		border-top: 1px solid var(--ae-line-soft);
 	}
-	.it-fields .emp-input {
+	.it-fields .emp-input,
+	.it-fields-flat .emp-input {
 		width: 100%;
 		margin-bottom: 8px;
 	}
@@ -4295,6 +4570,48 @@
 	}
 	fieldset.it-grid > button {
 		grid-column: 1 / -1;
+	}
+
+	/* Welcome mail attachments: the slot's name over what is stored in it, with
+	   the upload/replace control and remove beside. */
+	.wa-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px 0;
+		border-bottom: 1px solid var(--ae-line-soft);
+	}
+	.wa-main {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+	.wa-label {
+		font-size: 12.5px;
+		font-weight: 600;
+	}
+	.wa-file {
+		font-size: 11.5px;
+		color: inherit;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.wa-none {
+		font-size: 11.5px;
+		color: var(--ae-amber);
+	}
+	/* fieldset.rbac's `display: inherit` would otherwise win on specificity. */
+	fieldset.rbac.wa-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.wa-pick {
+		cursor: pointer;
+		white-space: nowrap;
 	}
 	.it-link-note,
 	.field-hint {

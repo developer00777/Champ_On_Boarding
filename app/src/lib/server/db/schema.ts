@@ -145,6 +145,14 @@ const candidateSchema = new Schema(
 		ifsc: String,
 		branch: String,
 		employeeId: { type: String, default: null, index: true },
+		/** The company mailbox IT creates for the joiner. Distinct from `email`,
+		 *  which is the personal address the onboarding link went to and stays
+		 *  the record's identity key. Feeds the welcome mail's To, the Master
+		 *  Tracker's "Official E Mail" column and the CSV export. */
+		officialEmail: { type: String, default: null, index: true },
+		/** Copied on the welcome mail, so the manager hears about their joiner in
+		 *  the same thread. The offer letter carries only the manager's name. */
+		reportingManagerEmail: { type: String, default: null },
 		// One of the three shifts the roster actually runs (see SHIFT_TIMINGS in
 		// shared/shifts.ts). Flows to the Master Tracker CSV and the IT/VPN setup
 		// mail (see it-setup-mail.ts). Legacy rows may still hold free text from
@@ -233,7 +241,9 @@ const candidateSchema = new Schema(
 		itSetupMailSentAt: { type: Date, default: null },
 		/** Same idea for the employee-code mail: a record of when the helpdesk
 		 *  was last told, driving the button's Send/Resend label. */
-		employeeCodeMailSentAt: { type: Date, default: null }
+		employeeCodeMailSentAt: { type: Date, default: null },
+		/** And for the welcome mail to the joiner's official mailbox. */
+		welcomeMailSentAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
 );

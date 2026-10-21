@@ -17,8 +17,13 @@ import {
 	EMPLOYEE_CODE_MAIL_DEFAULTS,
 	EMPLOYEE_CODE_SUBJECT_TOKENS,
 	getEmployeeCodeMailSettings,
-	saveEmployeeCodeMailSettings
+	saveEmployeeCodeMailSettings,
+	getWelcomeMailSettings,
+	saveWelcomeMailSettings
 } from '$lib/server/settings';
+import { WELCOME_MAIL_DEFAULTS, WELCOME_TOKENS } from '$lib/shared/welcome-mail';
+import { brandBySlug, BRANDS } from '$lib/shared/brands';
+import { getWelcomeAttachments } from '$lib/server/welcome-mail';
 import {
 	EXIT_MAIL_DEFAULTS,
 	getExitMailSettings,
@@ -34,7 +39,8 @@ const LABEL: Record<SettingsCap, string> = {
 	'settings.itMail': 'the IT & VPN setup mail',
 	'settings.empCodeMail': 'the employee code mail',
 	'settings.exitMail': 'the offboarding mail',
-	'settings.lists': 'the dropdown options'
+	'settings.lists': 'the dropdown options',
+	'settings.welcomeMail': 'the welcome mail'
 };
 
 /** The refusal for a save this login may not make, or null when it may. */
@@ -49,11 +55,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.admin) redirect(303, '/admin/login');
 	const level = await levelsToday(locals.admin, SETTINGS_CAPS);
 	const see = (c: SettingsCap) => level[c] !== 'none';
-	const [itSetupMail, exitMail, fixedLists, employeeCodeMail] = await Promise.all([
+	const [itSetupMail, exitMail, fixedLists, employeeCodeMail, welcomeMail, welcomeAttachments] = await Promise.all([
 		see('settings.itMail') ? getItSetupMailSettings() : null,
 		see('settings.exitMail') ? getExitMailSettings() : null,
 		see('settings.lists') ? getFixedLists() : null,
-		see('settings.empCodeMail') ? getEmployeeCodeMailSettings() : null
+		see('settings.empCodeMail') ? getEmployeeCodeMailSettings() : null,
+		see('settings.welcomeMail') ? getWelcomeMailSettings() : null,
+		see('settings.welcomeMail') ? getWelcomeAttachments() : null
 	]);
 	return {
 		// A hidden section's settings are not sent at all: hiding it in the page
@@ -70,11 +78,24 @@ export const load: PageServerLoad = async ({ locals }) => {
 		employeeCodeTokens: EMPLOYEE_CODE_SUBJECT_TOKENS,
 		exitMail,
 		exitDefaults: EXIT_MAIL_DEFAULTS,
+		welcomeMail,
+		welcomeDefaults: WELCOME_MAIL_DEFAULTS,
+		welcomeTokens: WELCOME_TOKENS,
+		/** Which documents are on file, so the section can say what the mail
+		 *  encloses without anyone opening a candidate first. */
+		welcomeAttachmentNames: welcomeAttachments
+			? Object.fromEntries(Object.entries(welcomeAttachments).map(([k, v]) => [k, v?.filename ?? null]))
+			: {},
+		/** The entities the live preview can be shown under — the same brand
+		 *  themes the real mail picks from, so the preview looks like the mail. */
+		previewBrands: BRANDS.map((b) => ({ slug: b.slug, name: b.name })),
+		defaultPreviewBrand: brandBySlug('champion-infometrics').slug,
 		canEdit: {
 			itMail: level['settings.itMail'] === 'act',
 			empCodeMail: level['settings.empCodeMail'] === 'act',
 			exitMail: level['settings.exitMail'] === 'act',
-			lists: level['settings.lists'] === 'act'
+			lists: level['settings.lists'] === 'act',
+			welcomeMail: level['settings.welcomeMail'] === 'act'
 		},
 		capLabel: Object.fromEntries(SETTINGS_CAPS.map((c) => [c, CAPS[c].label])) as Record<SettingsCap, string>
 	};
@@ -229,6 +250,51 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { exitSaved: true };
+	},
+
+	// The welcome mail to a joiner's official mailbox. Always addressed to the
+	// joiner, so there is no To to edit — only who is copied, the wording and
+	// the sign-off.
+	saveWelcomeMail: async ({ request, locals, getClientAddress }) => {
+		const denied = await deny(locals.admin, 'settings.welcomeMail');
+		if (denied) return denied;
+
+		const form = await request.formData();
+		const cc = parseRecipients(String(form.get('wmCc') ?? ''));
+		const subject = String(form.get('wmSubject') ?? '')
+			.replace(/[\r\n]+/g, ' ')
+			.trim()
+			.slice(0, 200);
+		const body = String(form.get('wmBody') ?? '').replace(/\r\n?/g, '\n').slice(0, 20_000);
+		const signoffName = String(form.get('wmSignoffName') ?? '').trim().slice(0, 80);
+		const signoffDesignation = String(form.get('wmSignoffDesignation') ?? '').trim().slice(0, 80);
+
+		if (!body.trim())
+			return fail(400, { error: 'The welcome mail body cannot be empty — use Reset to defaults to start over.' });
+
+		await saveWelcomeMailSettings({ cc, subject, body, signoffName, signoffDesignation }, locals.admin!.id);
+		await audit({
+			actor: locals.admin!.email,
+			action: 'settings_updated',
+			field: 'welcome_mail',
+			newValue: `cc: ${cc.join(', ') || '—'} | subject: ${subject || '(default)'} | signoff: ${signoffName || '(default)'} | body: ${body.length} chars`,
+			ip: getClientAddress()
+		});
+		return { welcomeMailSaved: true };
+	},
+
+	resetWelcomeMail: async ({ locals, getClientAddress }) => {
+		const denied = await deny(locals.admin, 'settings.welcomeMail');
+		if (denied) return denied;
+		await saveWelcomeMailSettings(WELCOME_MAIL_DEFAULTS, locals.admin!.id);
+		await audit({
+			actor: locals.admin!.email,
+			action: 'settings_updated',
+			field: 'welcome_mail',
+			newValue: 'reset to defaults',
+			ip: getClientAddress()
+		});
+		return { welcomeMailReset: true };
 	},
 
 	resetExitMail: async ({ locals, getClientAddress }) => {

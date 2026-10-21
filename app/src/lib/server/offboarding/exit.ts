@@ -162,14 +162,18 @@ export function gratuityApplicable(
 /** Finds the onboarding record for someone HR is offboarding, so an exit can
  *  prefill DOJ, designation, manager and bank details rather than asking HR to
  *  retype what the app already knows. Matched on employee code first (the
- *  identifier HR actually works from), then on email as a fallback. Returns
- *  null for anyone hired before this app existed — the common case today. */
+ *  identifier HR actually works from), then on email as a fallback — the
+ *  personal one the onboarding link went to, or the official one if that is
+ *  what HR has to hand. Returns null for anyone hired before this app
+ *  existed — the common case today. */
 export async function findOnboardingMatch(employeeId: string, email: string) {
 	const byCode = employeeId.trim()
 		? await Candidate.findOne({ employeeId: employeeId.trim() }).lean()
 		: null;
+	const address = email.trim().toLowerCase();
 	const candidate =
-		byCode ?? (email.trim() ? await Candidate.findOne({ email: email.trim().toLowerCase() }).lean() : null);
+		byCode ??
+		(address ? await Candidate.findOne({ $or: [{ email: address }, { officialEmail: address }] }).lean() : null);
 	if (!candidate) return null;
 	const offer = await OfferLetter.findOne({ candidateId: candidate._id }).lean();
 	return { candidate, offer };

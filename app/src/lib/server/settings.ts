@@ -3,6 +3,7 @@
 // collection) behaves exactly as configured here until HR changes it in
 // /admin/settings — "keep it as a default unless changed".
 import { AppSetting } from './db/schema';
+import { WELCOME_MAIL_DEFAULTS, type WelcomeMailSettings } from '$lib/shared/welcome-mail';
 
 export interface ItSetupMailSettings {
 	/** Primary recipients of the "enable the system & configure the VPN" mail. */
@@ -152,6 +153,35 @@ export async function saveEmployeeCodeMailSettings(
 	await AppSetting.findOneAndUpdate(
 		{ key: EMPLOYEE_CODE_MAIL_KEY },
 		{ key: EMPLOYEE_CODE_MAIL_KEY, value, updatedBy: adminId },
+		{ upsert: true }
+	);
+}
+
+// ── Welcome mail ─────────────────────────────────────────────────────────────
+// The template and its renderer live in shared/welcome-mail.ts, so the
+// Settings page can preview a draft as HR types it.
+
+export const WELCOME_MAIL_KEY = 'welcome_mail';
+
+export async function getWelcomeMailSettings(): Promise<WelcomeMailSettings> {
+	const row = await AppSetting.findOne({ key: WELCOME_MAIL_KEY }).lean();
+	const v = (row?.value ?? {}) as Partial<WelcomeMailSettings>;
+	return {
+		// No To here: the mail always goes to the joiner's official address.
+		cc: Array.isArray(v.cc) ? v.cc : WELCOME_MAIL_DEFAULTS.cc,
+		subject: v.subject?.trim() || WELCOME_MAIL_DEFAULTS.subject,
+		// A cleared body would send an empty welcome, so it falls back like the
+		// subject does.
+		body: v.body?.trim() ? v.body : WELCOME_MAIL_DEFAULTS.body,
+		signoffName: v.signoffName?.trim() || WELCOME_MAIL_DEFAULTS.signoffName,
+		signoffDesignation: v.signoffDesignation?.trim() ?? WELCOME_MAIL_DEFAULTS.signoffDesignation
+	};
+}
+
+export async function saveWelcomeMailSettings(value: WelcomeMailSettings, adminId: string) {
+	await AppSetting.findOneAndUpdate(
+		{ key: WELCOME_MAIL_KEY },
+		{ key: WELCOME_MAIL_KEY, value, updatedBy: adminId },
 		{ upsert: true }
 	);
 }

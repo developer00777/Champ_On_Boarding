@@ -27,9 +27,10 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (/^[a-f\d]{24}$/i.test(entity)) where.companyId = entity;
 	if (q) {
 		// Literal substring match (regex metacharacters escaped), case-insensitive,
-		// against the candidate's name or their employee code once generated.
+		// against the candidate's name, or their employee code and official email
+		// once those exist.
 		const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-		where.$or = [{ fullName: rx }, { employeeId: rx }];
+		where.$or = [{ fullName: rx }, { employeeId: rx }, { officialEmail: rx }];
 	}
 
 	// Every company that actually has candidates, so the dropdown offers the

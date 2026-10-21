@@ -29,13 +29,13 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const prefix = q.slice(0, Math.max(2, Math.ceil(q.length / 2)));
 	const loose = new RegExp(prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 	const pool = await Candidate.find(
-		{ $or: [{ fullName: loose }, { employeeId: loose }, { email: loose }] },
-		'fullName email employeeId track'
+		{ $or: [{ fullName: loose }, { employeeId: loose }, { email: loose }, { officialEmail: loose }] },
+		'fullName email officialEmail employeeId track'
 	)
 		.limit(POOL_LIMIT)
 		.lean();
 
-	const results = rankByFuzzyMatch(pool, q, (c) => [c.fullName, c.employeeId, c.email], LIMIT);
+	const results = rankByFuzzyMatch(pool, q, (c) => [c.fullName, c.employeeId, c.email, c.officialEmail], LIMIT);
 
 	return json({
 		results: results.map((c) => ({

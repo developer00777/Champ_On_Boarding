@@ -1,5 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { brandBySlug } from '$lib/shared/brands';
+	import {
+		WELCOME_ATTACHMENT_SLOTS,
+		renderWelcomeHtml,
+		renderWelcomeSubject,
+		type WelcomeValues
+	} from '$lib/shared/welcome-mail';
 
 	let { data, form } = $props();
 
@@ -43,8 +50,81 @@
 	// svelte-ignore state_referenced_locally
 	let ecCc = $state(data.employeeCodeMail?.cc.join('\n') ?? '');
 
+	// ── Welcome mail ─────────────────────────────────────────────────────────
+	// Every field is bound so the preview beside the editor re-renders as HR
+	// types — with the same renderer the send uses (shared/welcome-mail.ts), so
+	// the preview is the mail, not an approximation of it.
+	// svelte-ignore state_referenced_locally
+	let wmCc = $state(data.welcomeMail?.cc.join('\n') ?? '');
+	// svelte-ignore state_referenced_locally
+	let wmSubject = $state(data.welcomeMail?.subject ?? '');
+	// svelte-ignore state_referenced_locally
+	let wmBody = $state(data.welcomeMail?.body ?? '');
+	// svelte-ignore state_referenced_locally
+	let wmSignoffName = $state(data.welcomeMail?.signoffName ?? '');
+	// svelte-ignore state_referenced_locally
+	let wmSignoffDesignation = $state(data.welcomeMail?.signoffDesignation ?? '');
+	// svelte-ignore state_referenced_locally
+	let wmPreviewBrand = $state(data.defaultPreviewBrand);
+
+	// Reset rewrites the stored settings; pull the defaults back into the boxes
+	// too, or the editor would keep showing what was just thrown away.
+	$effect(() => {
+		if (form?.welcomeMailReset) {
+			wmCc = data.welcomeDefaults.cc.join('\n');
+			wmSubject = data.welcomeDefaults.subject;
+			wmBody = data.welcomeDefaults.body;
+			wmSignoffName = data.welcomeDefaults.signoffName;
+			wmSignoffDesignation = data.welcomeDefaults.signoffDesignation;
+		}
+	});
+
+	const welcomeIsDefault = $derived(
+		wmCc.trim() === data.welcomeDefaults.cc.join('\n') &&
+			wmSubject.trim() === data.welcomeDefaults.subject &&
+			wmBody === data.welcomeDefaults.body &&
+			wmSignoffName.trim() === data.welcomeDefaults.signoffName &&
+			wmSignoffDesignation.trim() === data.welcomeDefaults.signoffDesignation
+	);
+
+	/** A made-up joiner, so every token in the preview shows something. */
+	const sampleBrand = $derived(brandBySlug(wmPreviewBrand));
+	const sampleValues: WelcomeValues = $derived({
+		name: 'K Sukumar',
+		employeeId: 'CIPL3038',
+		company: sampleBrand.name,
+		reportingManager: 'Pushpa',
+		designation: 'Associate',
+		joiningDate: '20-Oct-2026',
+		officialEmail: 'sukumar.k@championsmail.com'
+	});
+	/** Stands in for the joiner's passport photo: a 3:4 silhouette, so the frame
+	 *  is previewed at the proportions a real one has. */
+	const SAMPLE_PHOTO =
+		'data:image/svg+xml;utf8,' +
+		encodeURIComponent(
+			'<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">' +
+				'<rect width="300" height="400" fill="#dfe6ee"/>' +
+				'<circle cx="150" cy="150" r="70" fill="#9aa8b8"/>' +
+				'<path d="M30 400c0-90 54-150 120-150s120 60 120 150z" fill="#9aa8b8"/></svg>'
+		);
+	const welcomePreviewHtml = $derived(
+		renderWelcomeHtml({
+			settings: { body: wmBody, signoffName: wmSignoffName, signoffDesignation: wmSignoffDesignation },
+			values: sampleValues,
+			brand: sampleBrand,
+			logoUrl: sampleBrand.logo.src,
+			photoSrc: SAMPLE_PHOTO
+		})
+	);
+	const welcomePreviewSubject = $derived(renderWelcomeSubject(wmSubject, sampleValues));
+
 	const nothingVisible = $derived(
-		!data.itSetupMail && !data.exitMail && !data.fixedLists && !data.employeeCodeMail
+		!data.itSetupMail &&
+			!data.exitMail &&
+			!data.fixedLists &&
+			!data.employeeCodeMail &&
+			!data.welcomeMail
 	);
 
 	const exitIsDefault = $derived(
@@ -307,6 +387,104 @@
 </section>
 {/if}
 
+<!-- Welcome mail. The editor on the left, the mail as a joiner would see it on
+     the right, re-rendered on every keystroke. -->
+{#if data.welcomeMail}
+<section class="card" id="welcome-mail" style="margin-top:18px">
+	<h2 class="card-title">Welcome mail</h2>
+	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
+		Sent by hand from the candidate page to the joiner's <strong>official email</strong>, once IT has
+		created it, with the Core Values and Holiday Calendar attached. Always addressed to the joiner;
+		their reporting manager is copied when the candidate page has the manager's email.
+	</p>
+
+	<div class="wm-grid">
+		<form method="POST" action="?/saveWelcomeMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
+			<fieldset class="rbac" disabled={!data.canEdit.welcomeMail}>
+				<label class="field">
+					<span>Cc</span>
+					<textarea name="wmCc" bind:value={wmCc} rows="2" placeholder="one address per line"></textarea>
+					<small>Copied on every welcome mail. Leave empty to copy no one.</small>
+				</label>
+				<label class="field" style="margin-top:12px">
+					<span>Subject line</span>
+					<input name="wmSubject" bind:value={wmSubject} maxlength="200" placeholder={data.welcomeDefaults.subject} />
+				</label>
+				<label class="field" style="margin-top:12px">
+					<span>Body</span>
+					<textarea name="wmBody" bind:value={wmBody} rows="24" class="wm-body"></textarea>
+					<small>
+						{#each data.welcomeTokens as t, i}<code>{t.token}</code> becomes {t.means}{i < data.welcomeTokens.length - 1
+								? ', '
+								: '. '}{/each}
+						<code>**text**</code> is bold, a line of <code>===</code> is a divider, and a line starting
+						<code>* </code> is a bullet. A blank line starts a new paragraph.
+					</small>
+				</label>
+				<div class="grid" style="margin-top:12px">
+					<label class="field">
+						<span>Sign-off name</span>
+						<input name="wmSignoffName" bind:value={wmSignoffName} maxlength="80" />
+					</label>
+					<label class="field">
+						<span>Sign-off designation</span>
+						<input name="wmSignoffDesignation" bind:value={wmSignoffDesignation} maxlength="80" placeholder="optional" />
+					</label>
+				</div>
+				<div class="actions">
+					<button class="btn teal">Save welcome mail</button>
+					{#if !welcomeIsDefault}
+						<button class="btn ghost small" formaction="?/resetWelcomeMail">Reset to defaults</button>
+					{/if}
+					{#if form?.welcomeMailSaved}<span class="saved">Saved ✓</span>{/if}
+					{#if form?.welcomeMailReset}<span class="saved">Reset to defaults ✓</span>{/if}
+				</div>
+			</fieldset>
+		</form>
+
+		<div class="wm-preview">
+			<div class="wm-preview-head">
+				<span class="wm-preview-k">Preview</span>
+				<label class="wm-brand">
+					as
+					<select bind:value={wmPreviewBrand} aria-label="Preview as entity">
+						{#each data.previewBrands as b (b.slug)}
+							<option value={b.slug}>{b.name}</option>
+						{/each}
+					</select>
+				</label>
+			</div>
+			<div class="wm-meta"><span>Subject</span>{welcomePreviewSubject}</div>
+			<div class="wm-meta">
+				<span>Attached</span>
+				{#each WELCOME_ATTACHMENT_SLOTS as s, i}
+					{#if data.welcomeAttachmentNames[s.key]}
+						{data.welcomeAttachmentNames[s.key]}
+					{:else}
+						<em class="wm-missing">{s.label} — not uploaded</em>
+					{/if}{i < WELCOME_ATTACHMENT_SLOTS.length - 1 ? ' · ' : ''}
+				{/each}
+			</div>
+			<!-- Sandboxed like the candidate page's preview: the body is rendered
+			     markup and must not style the settings page. -->
+			<iframe class="wm-frame" title="Welcome mail preview" sandbox="" srcdoc={welcomePreviewHtml}></iframe>
+			<small class="muted" style="font-size:11.5px">
+				Shown with a sample joiner. The real mail opens with the joiner's own passport photo from
+				their onboarding form, exactly as they uploaded it (their initials if there is none). The two
+				attachments are uploaded and replaced from any candidate's Welcome mail card.
+			</small>
+		</div>
+	</div>
+
+	{#if !data.canEdit.welcomeMail}
+		<p class="muted" style="font-size:12px;margin:12px 0 0">
+			View-only — to change this you need Act on “{data.capLabel['settings.welcomeMail']}” in Access &amp; org. A super admin can
+			give it to you there, or ask Champ to request it.
+		</p>
+	{/if}
+</section>
+{/if}
+
 <style>
 	.card-title {
 		font-family: var(--ae-font-display);
@@ -370,6 +548,74 @@
 		background: rgba(var(--ae-verdant-rgb), 0.08);
 		border: 1px solid rgba(var(--ae-verdant-rgb), 0.25);
 		color: var(--ae-verdant);
+	}
+	.wm-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		gap: 20px;
+		align-items: start;
+	}
+	.wm-body {
+		min-height: 420px;
+	}
+	.wm-preview {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		position: sticky;
+		top: 16px;
+	}
+	.wm-preview-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	.wm-preview-k {
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--ae-text-2);
+	}
+	.wm-brand {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		color: var(--ae-muted);
+	}
+	.wm-brand select {
+		font-size: 12px;
+		padding: 4px 6px;
+	}
+	.wm-meta {
+		font-size: 12px;
+		color: var(--ae-text);
+		word-break: break-word;
+	}
+	.wm-meta > span {
+		display: inline-block;
+		min-width: 64px;
+		color: var(--ae-muted);
+	}
+	.wm-missing {
+		color: var(--ae-amber);
+	}
+	.wm-frame {
+		width: 100%;
+		height: 640px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 10px;
+		/* The mail paints its own light background; keep it so the preview
+		   matches an inbox rather than the admin theme. */
+		background: #f2f4f7;
+	}
+	@media (max-width: 1100px) {
+		.wm-grid {
+			grid-template-columns: 1fr;
+		}
+		.wm-preview {
+			position: static;
+		}
 	}
 	@media (max-width: 640px) {
 		.grid {

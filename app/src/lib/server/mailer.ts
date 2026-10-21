@@ -7,6 +7,10 @@ import { EmailMessage } from './db/schema';
 export interface MailAttachment {
 	filename: string;
 	content: Buffer;
+	/** Makes this an inline image the HTML shows as <img src="cid:…">, rather
+	 *  than a file in the attachment list. How a personal image gets into a mail
+	 *  without a public URL: mail clients strip data: images. Under 128 chars. */
+	contentId?: string;
 }
 
 interface SendMailOptions {
@@ -151,7 +155,8 @@ export async function sendMail(
 	if (options.attachments?.length) {
 		payload.attachments = options.attachments.map((a) => ({
 			filename: a.filename,
-			content: a.content.toString('base64')
+			content: a.content.toString('base64'),
+			...(a.contentId ? { content_id: a.contentId } : {})
 		}));
 	}
 	if (options.tags) {
