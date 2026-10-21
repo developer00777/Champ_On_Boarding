@@ -218,7 +218,7 @@
 
 	{#if !data.canEdit.itMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — to change this you need Act on “{data.capLabel['settings.itMail']}” in Access &amp; org. A super admin can
+			View-only — to change this you need Edit on “{data.capLabel['settings.itMail']}” in Access &amp; org. A super admin can
 			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
@@ -276,7 +276,7 @@
 
 	{#if !data.canEdit.exitMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — to change this you need Act on “{data.capLabel['settings.exitMail']}” in Access &amp; org. A super admin can
+			View-only — to change this you need Edit on “{data.capLabel['settings.exitMail']}” in Access &amp; org. A super admin can
 			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
@@ -312,7 +312,7 @@
 
 	{#if !data.canEdit.lists}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — to change this you need Act on “{data.capLabel['settings.lists']}” in Access &amp; org. A super admin can
+			View-only — to change this you need Edit on “{data.capLabel['settings.lists']}” in Access &amp; org. A super admin can
 			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
@@ -380,7 +380,7 @@
 
 	{#if !data.canEdit.empCodeMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — to change this you need Act on “{data.capLabel['settings.empCodeMail']}” in Access &amp; org. A super admin can
+			View-only — to change this you need Edit on “{data.capLabel['settings.empCodeMail']}” in Access &amp; org. A super admin can
 			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}
@@ -478,7 +478,7 @@
 
 	{#if !data.canEdit.welcomeMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
-			View-only — to change this you need Act on “{data.capLabel['settings.welcomeMail']}” in Access &amp; org. A super admin can
+			View-only — to change this you need Edit on “{data.capLabel['settings.welcomeMail']}” in Access &amp; org. A super admin can
 			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}

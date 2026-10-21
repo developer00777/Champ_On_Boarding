@@ -47,7 +47,7 @@ const LABEL: Record<SettingsCap, string> = {
 async function deny(admin: App.Locals['admin'], cap: SettingsCap) {
 	if (await mayToday(admin, cap, 'act')) return null;
 	return fail(403, {
-		error: `You can’t change ${LABEL[cap]}. A super admin can give you Act on “${CAPS[cap].label}” in Access & org, or ask Champ to request it.`
+		error: `You can’t change ${LABEL[cap]}. A super admin can give you Edit on “${CAPS[cap].label}” in Access & org, or ask Champ to request it.`
 	});
 }
 
