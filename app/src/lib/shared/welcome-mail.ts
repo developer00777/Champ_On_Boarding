@@ -239,9 +239,9 @@ function heroHtml(values: WelcomeValues, brand: BrandTheme, photoSrc: string | n
 
 	return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${c.ink}" style="background:${c.ink};background-image:${c.heroGradient}">
 		<tr><td align="center" style="padding:30px 24px 28px;color:${c.onPrimary};text-align:center">
-			<div style="font-size:11px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;color:${c.onPrimary};opacity:.85">✦ Welcome to the family ✦</div>
+			<div style="font-size:11px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;color:${c.onPrimary};opacity:.85">✦ Welcome to the Champions Group ✦</div>
 			<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:18px auto 0"><tr><td style="${frame}">${picture}</td></tr></table>
-			<div style="margin-top:16px;font-size:26px;line-height:1.2;font-weight:800;color:${c.onPrimary}">${esc(values.name)}</div>
+			<div style="margin-top:16px;font-size:26px;line-height:1.2;font-weight:800;color:${c.onPrimary}">Champion ${esc(values.name)}</div>
 			${role ? `<div style="margin-top:6px;font-size:14px;color:${c.onPrimary};opacity:.9">${role}</div>` : ''}
 			<div style="margin:14px auto 0;width:44px;height:3px;border-radius:2px;background:${c.accent};font-size:0;line-height:0">&nbsp;</div>
 		</td></tr>
