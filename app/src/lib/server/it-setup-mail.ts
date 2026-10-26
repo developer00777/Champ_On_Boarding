@@ -54,20 +54,23 @@ function tableHtml(brand: BrandTheme, cells: string[]): string {
 	const border = '1px solid #d0d5dd';
 	const th = COLUMNS.map(
 		(c) =>
-			`<th style="border:${border};padding:6px 7px;background:${brand.colors.ink};color:#ffffff;` +
-			`font-size:11px;font-weight:700;text-align:left">${escapeHtml(c)}</th>`
+			`<th style="border:${border};padding:6px;background:${brand.colors.ink};color:#ffffff;` +
+			`font-size:11px;font-weight:700;text-align:left;vertical-align:top">${escapeHtml(c)}</th>`
 	).join('');
 	const td = cells
 		.map(
 			(v) =>
-				`<td style="border:${border};padding:6px 7px;font-size:11.5px;color:#101828">` +
-				`${v ? escapeHtml(v) : '&nbsp;'}</td>`
+				`<td style="border:${border};padding:6px;font-size:11.5px;color:#101828;vertical-align:top;` +
+				`overflow-wrap:break-word;word-wrap:break-word">${v ? escapeHtml(v) : '&nbsp;'}</td>`
 		)
 		.join('');
-	// table-layout:fixed keeps all twelve columns on screen instead of letting
-	// one long value (a designation, an entity name) push the tail off the
-	// right edge — mail clients widely ignore the overflow-x wrapper.
-	return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;table-layout:fixed">
+	// Auto layout, not table-layout:fixed. Fixed split the width into twelve
+	// equal columns regardless of content, so on narrower screens a whole word
+	// ("Designation", a 10-digit mobile, a date) was wider than its column and
+	// spilled over the next one. Auto layout sizes each column to at least its
+	// longest word and wraps the rest, so cells can never overlap; break-word
+	// only splits a single word too long to fit at all.
+	return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%">
 	<tr>${th}</tr>
 	<tr>${td}</tr>
 </table>`;
