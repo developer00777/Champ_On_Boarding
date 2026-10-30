@@ -82,8 +82,8 @@
 		>
 			<div class="fgrid">
 				<label class="f">
-					<span>Reference no. <b class="req">*</b></span>
-					<input name="refNo" required placeholder="e.g. Ref\2026\RL\CIPL-00239" />
+					<span>Reference no.</span>
+					<input name="refNo" placeholder="Optional — e.g.Ref\2026\RL\CIPL-00239" />
 				</label>
 				<label class="f">
 					<span>Employee ID <b class="req">*</b></span>
@@ -147,7 +147,8 @@
 			</div>
 			<p class="hint">
 				The last working day can be added later — it is confirmed at resignation approval, and the
-				exit forms link is sent once it is known.
+				exit forms link is sent once it is known. The reference number can wait too — it is only
+				needed when the relieving letter is released.
 			</p>
 			{#if form?.initiateError && form?.message}
 				<p class="error">{form.message}</p>

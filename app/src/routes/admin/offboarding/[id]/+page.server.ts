@@ -144,7 +144,7 @@ const PARTICULAR_FIELDS = {
 	panNo: (v: string) => v.toUpperCase(),
 	bankAccountName: titleCase,
 	noticePeriod: (v: string) => v,
-	// Set when the exit was started; printed on the exit letters.
+	// Printed on the exit letters; may be left blank until they are released.
 	refNo: (v: string) => v
 } as const;
 
@@ -448,8 +448,8 @@ export const actions: Actions = {
 		else if (!isValidEmail(patch.personalEmail)) errors.push('Enter a valid personal email address.');
 		if (patch.personalMobile && !isValidMobile(patch.personalMobile))
 			errors.push('Mobile number must be 10 digits starting 6-9.');
-		if (!patch.refNo) errors.push('Reference number is required.');
-		else if (await Exit.exists({ refNo: patch.refNo, _id: { $ne: params.id } }))
+		// Optional until the letters go out — releaseLetters() insists on it then.
+		if (patch.refNo && await Exit.exists({ refNo: patch.refNo, _id: { $ne: params.id } }))
 			errors.push(`Reference number ${patch.refNo} is already used by another offboarding.`);
 		if (errors.length) return no(400, errors.join(' '), 'particulars');
 

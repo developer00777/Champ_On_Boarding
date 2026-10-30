@@ -564,7 +564,7 @@
 			<form method="POST" action="?/saveParticulars" use:enhance={track('particulars')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
 					<div class="fgrid">
-						<label class="f"><span>Reference no.</span><input name="refNo" required value={e.refNo ?? ''} placeholder="Ref\2026\RL\CIPL-00239" /></label>
+						<label class="f"><span>Reference no.</span><input name="refNo" value={e.refNo ?? ''} placeholder="Needed before the letters are released" /></label>
 						<label class="f"><span>Employee name</span><input name="fullName" value={e.fullName} /></label>
 						<label class="f"><span>Personal email</span><input name="personalEmail" type="email" value={e.personalEmail} /></label>
 						<label class="f"><span>Personal mobile</span><input name="personalMobile" value={e.personalMobile ?? ''} /></label>
@@ -1103,6 +1103,12 @@
 						The last step. The letters ticked here go to {e.personalEmail} with their handover link —
 						automatically, the set number of days after payroll signs off, or now by hand.
 					</p>
+					{#if !e.refNo}
+						<p class="map-err">
+							No reference number yet — add it under Particulars before the letters go out; they
+							print it at the top.
+						</p>
+					{/if}
 				</div>
 				{#if form?.releaseSaved}<span class="saved">Saved ✓</span>{/if}
 			</div>

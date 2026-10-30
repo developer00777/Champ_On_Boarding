@@ -723,6 +723,11 @@ export async function releaseLetters(
 		const files = await ExitDocument.find({ exitId, source: 'hr' }).lean<Lean[]>();
 		if (!keys.length && !files.length)
 			throw new Error('Nothing to send — pick at least one letter or upload a handover document.');
+		// Every exit letter opens with the reference number, so it may be left
+		// blank all through the exit but not when a letter actually goes out.
+		// A scheduled release stays due and goes on the first tick after HR adds it.
+		if (keys.length && !String(exit.refNo ?? exit.letters?.refNo ?? '').trim())
+			throw new Error('Add the reference number under Particulars — it is printed on the letters being released.');
 
 		const input = await loadPdfInput(exitId);
 		if (!input) throw new Error('Exit not found.');

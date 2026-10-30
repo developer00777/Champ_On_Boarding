@@ -125,7 +125,6 @@ export const actions: Actions = {
 		const trackInput = TRACKS.includes(get('track') as Track) ? get('track') : null;
 
 		const errors: string[] = [];
-		if (!refNo) errors.push('Reference number is required.');
 		if (!employeeId) errors.push('Employee ID is required.');
 		if (!fullName) errors.push('Employee name is required.');
 		if (!personalEmail) errors.push('Personal email is required.');
@@ -149,8 +148,9 @@ export const actions: Actions = {
 			});
 
 		// The reference number is printed on the exit letters, so two exits must
-		// never share one.
-		const refTaken = await Exit.findOne({ refNo }, 'fullName').lean();
+		// never share one. It is optional here: HR often only has it once the
+		// relieving letter is ready, and the release asks for it then.
+		const refTaken = refNo ? await Exit.findOne({ refNo }, 'fullName').lean() : null;
 		if (refTaken)
 			return fail(409, {
 				message: `Reference number ${refNo} is already used by the offboarding of ${refTaken.fullName}.`,
@@ -175,7 +175,7 @@ export const actions: Actions = {
 
 		const exit = await Exit.create({
 			companyId,
-			refNo,
+			refNo: refNo || null,
 			candidateId: match?.candidate?._id ?? null,
 			employeeId,
 			fullName,
