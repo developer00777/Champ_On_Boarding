@@ -50,6 +50,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 		const mail = await buildExitFormsMail({
 			to: exit.personalEmail,
 			employeeName: exit.fullName,
+			signoff: exit.routing?.signoff ?? null,
 			lwd: exit.lwd ?? null,
 			brand,
 			url: `${baseUrl()}/x/«secure link created when you press Send»`
@@ -72,6 +73,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 		const mail = await buildExitFormsMail({
 			to: exit.personalEmail,
 			employeeName: exit.fullName,
+			signoff: exit.routing?.signoff ?? null,
 			lwd: exit.lwd ?? null,
 			brand,
 			url: `${baseUrl()}/x/«secure link created when you press Send»`,
@@ -103,6 +105,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 			brand,
 			employeeId: exit.employeeId,
 			employeeName: exit.fullName,
+			signoff: exit.routing?.signoff ?? null,
 			lwd: exit.lwd ?? null,
 			team: exit.department ?? exit.division ?? null,
 			to: exit.routing?.itBlock?.to ?? null,

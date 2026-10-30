@@ -44,6 +44,8 @@ import {
 	UPLOAD_REQUEST_PREFIX,
 	lettersForTrack,
 	requestedFieldView,
+	routeCc,
+	routeTo,
 	sendBackItems,
 	type ClearanceDept,
 	type FlowStepKey
@@ -355,12 +357,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			ROUTING_KEYS.map((k) => [
 				k,
 				{
-					email: (e.routing?.[k]?.email as string | null) ?? '',
+					to: routeTo(e.routing?.[k]),
+					cc: routeCc(e.routing?.[k]),
 					name: (e.routing?.[k]?.name as string | null) ?? '',
 					designation: (e.routing?.[k]?.designation as string | null) ?? ''
 				}
 			])
-		) as Record<(typeof ROUTING_KEYS)[number], { email: string; name: string; designation: string }>,
+		) as Record<(typeof ROUTING_KEYS)[number], { to: string[]; cc: string[]; name: string; designation: string }>,
 		salesforceEnabled: !!e.routing?.salesforce?.enabled,
 		routingDefaults: await getRoutingDefaults(),
 		// HR's settlement form: HR fills it, payroll gets it prefilled and has
@@ -418,6 +421,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			cc: Array.isArray(e.routing?.itBlock?.cc) ? (e.routing.itBlock.cc as string[]) : mailSettings.itCc
 		},
 		itMailDefaults: { to: mailSettings.itTo, cc: mailSettings.itCc },
+		/** This exit's own sign-off (blank = Settings'), and Settings' for the placeholders. */
+		signoff: {
+			name: (e.routing?.signoff?.name as string | null) ?? '',
+			designation: (e.routing?.signoff?.designation as string | null) ?? ''
+		},
+		signoffDefaults: { name: mailSettings.signoffName, designation: mailSettings.signoffDesignation },
 		isHr: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin',
 		isSuperAdmin: locals.admin?.role === 'super_admin',
 		/** "Exits: reopen or delete an exit" in Access & org — the reopen action's check. */
@@ -584,6 +593,7 @@ export const actions: Actions = {
 				exitId: params.id,
 				to: exit.personalEmail,
 				employeeName: exit.fullName,
+				signoff: exit.routing?.signoff ?? null,
 				lwd: exit.lwd ?? null,
 				brand,
 				url
@@ -685,6 +695,7 @@ export const actions: Actions = {
 				exitId: params.id,
 				to: exit.personalEmail,
 				employeeName: exit.fullName,
+				signoff: exit.routing?.signoff ?? null,
 				lwd: exit.lwd ?? null,
 				brand,
 				url,
@@ -882,6 +893,7 @@ export const actions: Actions = {
 				exitId: params.id,
 				to: exit.personalEmail,
 				employeeName: exit.fullName,
+				signoff: exit.routing?.signoff ?? null,
 				lwd: exit.lwd ?? null,
 				brand: brandBySlug(company?.brandSlug ?? undefined),
 				url: `${baseUrl()}/x/${token}`,
@@ -932,15 +944,27 @@ export const actions: Actions = {
 
 		const patch: Record<string, unknown> = {};
 		const errors: string[] = [];
-		const value: Record<string, { email: string; name: string; designation: string }> = {};
+		// To and Cc each take any number of addresses — one per line, or
+		// separated by commas. A typo is refused rather than silently dropped,
+		// so a step is never sent to fewer people than HR thinks.
+		const addresses = (field: string, label: string) => {
+			const tokens = get(field)
+				.split(/[\s,;]+/)
+				.map((t) => t.trim().toLowerCase())
+				.filter(Boolean);
+			for (const t of tokens) if (!isValidEmail(t)) errors.push(`${label}: "${t}" is not a valid email address.`);
+			return [...new Set(tokens.filter((t) => isValidEmail(t)))];
+		};
+		const value: Record<string, { email: string; cc: string[]; name: string; designation: string }> = {};
 		for (const key of ROUTING_KEYS) {
-			const email = get(`${key}_email`).toLowerCase();
+			const to = addresses(`${key}_to`, `${ROUTING_LABELS[key]} — To`);
+			const cc = addresses(`${key}_cc`, `${ROUTING_LABELS[key]} — Cc`).filter((a) => !to.includes(a));
 			const name = get(`${key}_name`);
 			const designation = get(`${key}_designation`).slice(0, 80);
-			if (email && !isValidEmail(email))
-				errors.push(`${ROUTING_LABELS[key]}: "${email}" is not a valid email address.`);
-			value[key] = { email, name, designation };
+			const email = to.join(', ');
+			value[key] = { email, cc, name, designation };
 			patch[`routing.${key}.email`] = email || null;
+			patch[`routing.${key}.cc`] = cc;
 			patch[`routing.${key}.name`] = name || null;
 			patch[`routing.${key}.designation`] = designation || null;
 		}
@@ -954,6 +978,12 @@ export const actions: Actions = {
 		if (!itBlockTo.length) errors.push('IT — block system access: enter at least one valid "To" address.');
 		patch['routing.itBlock.to'] = itBlockTo;
 		patch['routing.itBlock.cc'] = itBlockCc;
+
+		// Who "Regards," names on this exit's mails; blank falls back to Settings.
+		const signoffName = get('signoff_name').slice(0, 80);
+		const signoffDesignation = get('signoff_designation').slice(0, 80);
+		patch['routing.signoff.name'] = signoffName || null;
+		patch['routing.signoff.designation'] = signoffDesignation || null;
 		if (errors.length) return no(400, errors.join(' '), 'routing');
 
 		await Exit.findByIdAndUpdate(params.id, patch);
@@ -977,6 +1007,7 @@ export const actions: Actions = {
 			const current = await getRoutingDefaults();
 			await saveRoutingDefaults(
 				{
+					manager: { cc: value.manager.cc },
 					it: value.it,
 					salesforce: { ...value.salesforce, enabled: salesforceOn },
 					hr: value.hr,
@@ -985,11 +1016,21 @@ export const actions: Actions = {
 				},
 				locals.admin!.id
 			);
-			// The IT block recipients' default lives with the other exit mail
-			// settings, which Settings guards with its own Access & org row.
+			// The IT block recipients' and the sign-off's defaults live with the
+			// other exit mail settings, which Settings guards with its own Access
+			// & org row. A blank sign-off part keeps the saved one.
 			if (!(await lacking(locals.admin, 'settings.exitMail'))) {
 				const mail = await getExitMailSettings();
-				await saveExitMailSettings({ ...mail, itTo: itBlockTo, itCc: itBlockCc }, locals.admin!.id);
+				await saveExitMailSettings(
+					{
+						...mail,
+						itTo: itBlockTo,
+						itCc: itBlockCc,
+						signoffName: signoffName || mail.signoffName,
+						signoffDesignation: signoffDesignation || mail.signoffDesignation
+					},
+					locals.admin!.id
+				);
 			} else itDefaultSkipped = true;
 		}
 		await audit({
@@ -998,8 +1039,11 @@ export const actions: Actions = {
 			action: 'exit_routing_saved',
 			field: asDefault ? 'this exit + default' : 'this exit',
 			newValue: [
-				...ROUTING_KEYS.map((k) => `${k}=${value[k].email || '—'}`),
-				`itBlock=${itBlockTo.join(' ')}${itBlockCc.length ? ` cc ${itBlockCc.join(' ')}` : ''}`
+				...ROUTING_KEYS.map(
+					(k) => `${k}=${value[k].email || '—'}${value[k].cc.length ? ` cc ${value[k].cc.join(' ')}` : ''}`
+				),
+				`itBlock=${itBlockTo.join(' ')}${itBlockCc.length ? ` cc ${itBlockCc.join(' ')}` : ''}`,
+				`signoff=${[signoffName, signoffDesignation].filter(Boolean).join(' / ') || 'from Settings'}`
 			].join(', '),
 			ip: getClientAddress()
 		});
@@ -1021,6 +1065,7 @@ export const actions: Actions = {
 				brand: brandBySlug(company?.brandSlug ?? undefined),
 				employeeId: exit.employeeId,
 				employeeName: exit.fullName,
+				signoff: exit.routing?.signoff ?? null,
 				lwd: exit.lwd ?? null,
 				team: exit.department ?? exit.division ?? null,
 				to: exit.routing?.itBlock?.to ?? null,

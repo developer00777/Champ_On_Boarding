@@ -27,6 +27,8 @@ import {
 	HANDOVER_DOCS,
 	defaultReleaseLetters,
 	lettersForTrack,
+	routeCc,
+	routeTo,
 	type ClearanceDept,
 	type FlowStepKey,
 	type RoutingKey
@@ -52,11 +54,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // The manager is never defaulted: it is a different person for every employee.
 
 interface Addr {
+	/** The To addresses, comma-separated (see routeTo()). */
 	email: string;
+	cc: string[];
 	name: string;
 	designation: string;
 }
 export interface RoutingDefaults {
+	/** Only the manager's Cc has a default — the manager differs per employee. */
+	manager: { cc: string[] };
 	it: Addr;
 	salesforce: Addr & { enabled: boolean };
 	hr: Addr;
@@ -67,10 +73,11 @@ export interface RoutingDefaults {
 const ROUTING_SETTING_KEY = 'exit_routing';
 
 export const ROUTING_FALLBACK: RoutingDefaults = {
-	it: { email: 'ithelpdesk@championsmail.com', name: 'IT Helpdesk', designation: '' },
-	salesforce: { email: '', name: '', designation: '', enabled: false },
-	hr: { email: 'hrd.jst@championsmail.com', name: 'HR desk', designation: '' },
-	payroll: { email: '', name: '', designation: '' },
+	manager: { cc: [] },
+	it: { email: 'ithelpdesk@championsmail.com', cc: [], name: 'IT Helpdesk', designation: '' },
+	salesforce: { email: '', cc: [], name: '', designation: '', enabled: false },
+	hr: { email: 'hrd.jst@championsmail.com', cc: [], name: 'HR desk', designation: '' },
+	payroll: { email: '', cc: [], name: '', designation: '' },
 	releaseAfterDays: 30
 };
 
@@ -79,10 +86,12 @@ export async function getRoutingDefaults(): Promise<RoutingDefaults> {
 	const v = (row?.value ?? {}) as Partial<RoutingDefaults>;
 	const addr = (a: Partial<Addr> | undefined, f: Addr): Addr => ({
 		email: a?.email ?? f.email,
+		cc: Array.isArray(a?.cc) ? a.cc : f.cc,
 		name: a?.name ?? f.name,
 		designation: a?.designation ?? f.designation
 	});
 	return {
+		manager: { cc: Array.isArray(v.manager?.cc) ? v.manager.cc : ROUTING_FALLBACK.manager.cc },
 		it: addr(v.it, ROUTING_FALLBACK.it),
 		salesforce: {
 			...addr(v.salesforce, ROUTING_FALLBACK.salesforce),
@@ -105,18 +114,14 @@ export async function saveRoutingDefaults(value: RoutingDefaults, adminId: strin
 /** The routing and cadence a brand-new exit starts with. */
 export async function initialRouting(reportingManager: string | null) {
 	const d = await getRoutingDefaults();
+	const from = (a: Addr) => ({ email: a.email || null, cc: a.cc, name: a.name || null, designation: a.designation || null });
 	return {
 		routing: {
-			manager: { email: null, name: reportingManager || null, designation: null },
-			it: { email: d.it.email || null, name: d.it.name || null, designation: d.it.designation || null },
-			salesforce: {
-				email: d.salesforce.email || null,
-				name: d.salesforce.name || null,
-				designation: d.salesforce.designation || null,
-				enabled: d.salesforce.enabled
-			},
-			hr: { email: d.hr.email || null, name: d.hr.name || null, designation: d.hr.designation || null },
-			payroll: { email: d.payroll.email || null, name: d.payroll.name || null, designation: d.payroll.designation || null }
+			manager: { email: null, cc: d.manager.cc, name: reportingManager || null, designation: null },
+			it: from(d.it),
+			salesforce: { ...from(d.salesforce), enabled: d.salesforce.enabled },
+			hr: from(d.hr),
+			payroll: from(d.payroll)
 		},
 		flow: { releaseAfterDays: d.releaseAfterDays, autoRelease: true }
 	};
@@ -178,7 +183,7 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 		const route = exit.routing?.[def.key as RoutingKey] as Lean | undefined;
 
 		if (def.dept) {
-			base.to = route?.email || null;
+			base.to = routeTo(route).join(', ') || null;
 			if (def.key === 'salesforce' && !route?.enabled) {
 				return { ...base, status: 'skipped', detail: 'Not part of this exit' };
 			}
@@ -339,7 +344,9 @@ function stepMailOpts(
 	const route = (exit.routing?.[key as RoutingKey] ?? {}) as Lean;
 	return {
 		sendBack,
-		to: String(route.email ?? '').trim().toLowerCase(),
+		to: routeTo(route),
+		cc: routeCc(route),
+		signoff: exit.routing?.signoff ?? null,
 		approverName: (route.name as string) || null,
 		department: dept,
 		employeeName: exit.fullName,
@@ -428,7 +435,7 @@ export async function draftStep(
 					? 'This exit is closed — reopen it first.'
 					: row?.status !== 'completed'
 						? 'They have not signed yet — there is nothing to send back.'
-						: !opts.to
+						: !opts.to.length
 							? 'No email set — add it in Mail settings.'
 							: !back
 								? 'Tick what is missing, ask for a document, or write a note.'
@@ -440,7 +447,7 @@ export async function draftStep(
 				? 'Already signed.'
 				: state.status === 'skipped'
 					? 'Not part of this exit.'
-					: !opts.to
+					: !opts.to.length
 						? 'No email set — add it in Mail settings.'
 						: state.status !== 'active'
 							? 'An earlier step is still open — this is what will go once it is done.'
@@ -454,6 +461,7 @@ export async function draftStep(
 		const mail = await buildHandoverMail({
 			to: exit.personalEmail,
 			employeeName: exit.fullName,
+			signoff: exit.routing?.signoff ?? null,
 			brand,
 			url: placeholder('/x/final'),
 			fnfAmount: exit.fnf?.netAmount ?? null,
@@ -504,8 +512,11 @@ export async function mailStep(
 	const exit = await Exit.findById(exitId).lean<Lean>();
 	if (!exit) return { error: 'Exit not found.' };
 	const route = (exit.routing?.[key as RoutingKey] ?? {}) as Lean;
-	const email = String(route.email ?? '').trim().toLowerCase();
-	if (!email) return { error: `Add the ${def.label} email in Mail settings first.` };
+	const to = routeTo(route);
+	if (!to.length) return { error: `Add the ${def.label} email in Mail settings first.` };
+	// The first To address is the approver on record; the rest are copied in
+	// as recipients of the same mail and can open the same link.
+	const email = to[0];
 
 	const existing = await ExitClearance.findOne({ exitId, department: dept }).lean<Lean>();
 	if (existing?.status === 'completed') return { error: `The ${def.label} has already signed.` };
@@ -560,7 +571,6 @@ export async function mailStep(
 		}
 		await sendClearanceMail({
 			...stepMailOpts(exit, key, dept, !!opts.reminder, asSendBack(existing?.sendBack)),
-			to: email,
 			brand,
 			url,
 			attachments
@@ -570,8 +580,8 @@ export async function mailStep(
 		// Put a first send back so the next advance retries it.
 		if (!opts.reminder)
 			await ExitClearance.updateOne({ _id: row._id, status: 'sent' }, { $set: { status: 'pending' }, $inc: { sentCount: -1 } });
-		await setLastError(exitId, key, `The ${def.label} mail to ${email} could not be sent. Check the address, then Review & send again.`);
-		return { error: `The mail to ${email} could not be sent.` };
+		await setLastError(exitId, key, `The ${def.label} mail to ${to.join(', ')} could not be sent. Check the addresses, then Review & send again.`);
+		return { error: `The mail to ${to.join(', ')} could not be sent.` };
 	}
 	if (exit.flow?.lastError?.step) await setLastError(exitId, null, null);
 	return { ok: true };
@@ -623,7 +633,7 @@ export async function sendBackStep(
 
 async function hrRecipients(exit: Lean): Promise<string[]> {
 	const to = new Set<string>();
-	if (exit.routing?.hr?.email) to.add(String(exit.routing.hr.email).toLowerCase());
+	for (const a of routeTo(exit.routing?.hr)) to.add(a);
 	if (exit.createdBy) {
 		const admin = await Admin.findById(exit.createdBy, 'email').lean<Lean>();
 		if (admin?.email) to.add(String(admin.email).toLowerCase());
@@ -641,6 +651,7 @@ async function notifyHrTurn(exit: Lean) {
 		const company = await exitCompany(exit.companyId);
 		await sendExitAlert({
 			to: await hrRecipients(exit),
+			cc: routeCc(exit.routing?.hr),
 			subject: `Your turn: F&F and leave for ${exit.fullName}`,
 			lines: [
 				`The departmental clearances for ${exit.fullName} (${exit.employeeId}) are signed.`,
@@ -745,6 +756,7 @@ export async function releaseLetters(
 		await sendHandoverMail({
 			to: exit.personalEmail,
 			employeeName: exit.fullName,
+			signoff: exit.routing?.signoff ?? null,
 			brand,
 			url,
 			fnfAmount: exit.fnf?.netAmount ?? null,

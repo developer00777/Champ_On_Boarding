@@ -15,7 +15,7 @@ import { sendExitAlert } from '$lib/server/offboarding/mail';
 import { baseUrl } from '$lib/server/base-url';
 import { brandBySlug } from '$lib/shared/brands';
 import { extFor } from '$lib/server/offboarding/documents';
-import { EXIT_UPLOAD_DOCS, UPLOAD_REQUEST_PREFIX } from '$lib/shared/offboarding';
+import { EXIT_UPLOAD_DOCS, UPLOAD_REQUEST_PREFIX, routeTo } from '$lib/shared/offboarding';
 import {
 	ACCEPTED_EXIT_MIMES,
 	ACCEPTED_IMAGE_MIMES,
@@ -134,8 +134,8 @@ export const POST: RequestHandler = async ({ params, request, getClientAddress }
 				const admin = await Admin.findById(exit.createdBy, 'email').lean();
 				if (admin?.email) to.push(admin.email);
 			}
-			const hr = (exit as unknown as { routing?: { hr?: { email?: string | null } } }).routing?.hr?.email;
-			if (hr && !to.includes(hr)) to.push(hr);
+			const hrRoute = (exit as unknown as { routing?: { hr?: { email?: string | null } } }).routing?.hr;
+			for (const hr of routeTo(hrRoute)) if (!to.includes(hr)) to.push(hr);
 			await sendExitAlert({
 				to,
 				subject: `Document received: ${exit.fullName}`,

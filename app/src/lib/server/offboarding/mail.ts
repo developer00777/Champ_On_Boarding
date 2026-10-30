@@ -65,6 +65,19 @@ export async function saveExitMailSettings(value: ExitMailSettings, adminId: str
 	);
 }
 
+/** A per-exit sign-off: who "Regards," names on that exit's mails. */
+export interface ExitSignoff {
+	name?: string | null;
+	designation?: string | null;
+}
+
+function signoffFor(s: ExitMailSettings, own: ExitSignoff | null | undefined) {
+	return {
+		name: own?.name?.trim() || s.signoffName,
+		designation: own?.designation?.trim() || s.signoffDesignation
+	};
+}
+
 // ── Shared HTML shell ────────────────────────────────────────────────────────
 
 interface ShellOpts {
@@ -153,6 +166,9 @@ function textBody(lines: string[], signoffName: string, signoffDesignation: stri
 // ── 1. Exit-forms invitation ─────────────────────────────────────────────────
 
 export async function buildExitFormsMail(opts: {
+	/** This exit's own sign-off, from its mail settings card; blank parts
+	 *  fall back to Settings. */
+	signoff?: ExitSignoff | null;
 	to: string;
 	employeeName: string;
 	lwd: string | null;
@@ -165,6 +181,7 @@ export async function buildExitFormsMail(opts: {
 		| null;
 }) {
 	const s = await getExitMailSettings();
+	const sign = signoffFor(s, opts.signoff);
 	const isRework = !!opts.changesRequested?.length;
 	// Only documents asked for (no form fields): the employee may well have
 	// finished their forms long ago, so the mail asks for uploads, not edits.
@@ -232,8 +249,8 @@ export async function buildExitFormsMail(opts: {
 						'The link is private to you — please do not forward it. Once you submit, our HR desk reviews your ' +
 						'submission and will come back to you if anything else is needed.'
 				},
-		signoffName: s.signoffName,
-		signoffDesignation: s.signoffDesignation
+		signoffName: sign.name,
+		signoffDesignation: sign.designation
 	});
 
 	const text = textBody(
@@ -251,8 +268,8 @@ export async function buildExitFormsMail(opts: {
 			'',
 			'The link is private to you — please do not forward it.'
 		],
-		s.signoffName,
-		s.signoffDesignation,
+		sign.name,
+		sign.designation,
 		opts.brand.legalName
 	);
 
@@ -291,7 +308,11 @@ export function prettyField(path: string): string {
 // ── 2. Clearance request ─────────────────────────────────────────────────────
 
 export async function buildClearanceMail(opts: {
-	to: string;
+	/** This exit's own sign-off, from its mail settings card; blank parts
+	 *  fall back to Settings. */
+	signoff?: ExitSignoff | null;
+	to: string[];
+	cc?: string[];
 	approverName: string | null;
 	department: ClearanceDept;
 	employeeName: string;
@@ -310,6 +331,7 @@ export async function buildClearanceMail(opts: {
 	sendBack?: { note: string | null; items: string[]; uploads: string[] } | null;
 }) {
 	const s = await getExitMailSettings();
+	const sign = signoffFor(s, opts.signoff);
 	const deptLabel = CLEARANCE_DEPT_LABELS[opts.department] ?? opts.department;
 	const back = opts.sendBack && (opts.sendBack.items.length || opts.sendBack.uploads.length || opts.sendBack.note)
 		? opts.sendBack
@@ -374,8 +396,8 @@ export async function buildClearanceMail(opts: {
 				'Your sign-off is recorded against the No Dues Certificate for this employee. A copy of the certificate ' +
 				'as it currently stands is attached for reference.'
 		},
-		signoffName: s.signoffName,
-		signoffDesignation: s.signoffDesignation
+		signoffName: sign.name,
+		signoffDesignation: sign.designation
 	});
 
 	const text = textBody(
@@ -390,14 +412,14 @@ export async function buildClearanceMail(opts: {
 			'',
 			`Review & sign: ${opts.url}`
 		],
-		s.signoffName,
-		s.signoffDesignation,
+		sign.name,
+		sign.designation,
 		opts.brand.legalName
 	);
 
 	return {
-		to: [opts.to],
-		cc: [],
+		to: opts.to,
+		cc: opts.cc ?? [],
 		subject: back
 			? `More needed for the exit clearance — ${opts.employeeName} (${opts.employeeId})`
 			: `${opts.reminder ? 'Reminder: ' : ''}Exit clearance needed — ${opts.employeeName} (${opts.employeeId})`,
@@ -408,7 +430,8 @@ export async function buildClearanceMail(opts: {
 
 export async function sendClearanceMail(opts: Parameters<typeof buildClearanceMail>[0]) {
 	const d = await buildClearanceMail(opts);
-	await sendBrandedMail(d.to[0], d.subject, d.text, opts.brand, opts.attachments, 'exit', undefined, {
+	await sendBrandedMail(d.to, d.subject, d.text, opts.brand, opts.attachments, 'exit', undefined, {
+		cc: d.cc.length ? d.cc : undefined,
 		tagPurpose: 'exit_clearance',
 		html: d.html
 	});
@@ -422,6 +445,9 @@ const IT_COLUMNS = ['Employee ID', 'Employee Name', 'LWD', 'Team'] as const;
  *  the same four-column table IT already works from. Split build/send like
  *  it-setup-mail.ts so HR's preview and the actual send cannot drift. */
 export async function buildItExitMail(opts: {
+	/** This exit's own sign-off, from its mail settings card; blank parts
+	 *  fall back to Settings. */
+	signoff?: ExitSignoff | null;
 	brand: BrandTheme;
 	employeeId: string;
 	employeeName: string;
@@ -432,6 +458,7 @@ export async function buildItExitMail(opts: {
 	cc?: string[] | null;
 }) {
 	const s = await getExitMailSettings();
+	const sign = signoffFor(s, opts.signoff);
 	const cells = [opts.employeeId, opts.employeeName, opts.lwd ?? '', opts.team ?? ''];
 	const border = '1px solid #d0d5dd';
 	const th = IT_COLUMNS.map(
@@ -466,14 +493,14 @@ export async function buildItExitMail(opts: {
 				'Please also confirm recovery of the IT assets issued to this employee — a separate clearance request ' +
 				'has been sent for the No Dues Certificate.'
 		},
-		signoffName: s.signoffName,
-		signoffDesignation: s.signoffDesignation
+		signoffName: sign.name,
+		signoffDesignation: sign.designation
 	});
 
 	const text = textBody(
 		[...intro, '', ...IT_COLUMNS.map((c, i) => `${c}: ${cells[i] || '—'}`), '', 'Kindly support and do the needful.'],
-		s.signoffName,
-		s.signoffDesignation,
+		sign.name,
+		sign.designation,
 		opts.brand.legalName
 	);
 
@@ -506,6 +533,9 @@ export async function sendItExitMail(opts: Parameters<typeof buildItExitMail>[0]
 // ── 4. Final handover mail ───────────────────────────────────────────────────
 
 export async function buildHandoverMail(opts: {
+	/** This exit's own sign-off, from its mail settings card; blank parts
+	 *  fall back to Settings. */
+	signoff?: ExitSignoff | null;
 	to: string;
 	employeeName: string;
 	brand: BrandTheme;
@@ -516,6 +546,7 @@ export async function buildHandoverMail(opts: {
 	attachments?: MailAttachment[];
 }) {
 	const s = await getExitMailSettings();
+	const sign = signoffFor(s, opts.signoff);
 
 	const intro = [
 		`Hello ${opts.employeeName},`,
@@ -560,8 +591,8 @@ export async function buildHandoverMail(opts: {
 				'The link stays valid for six months. Please download and save your documents — you may need them for ' +
 				'your next employer or for tax filing.'
 		},
-		signoffName: s.signoffName,
-		signoffDesignation: s.signoffDesignation
+		signoffName: sign.name,
+		signoffDesignation: sign.designation
 	});
 
 	const text = textBody(
@@ -573,8 +604,8 @@ export async function buildHandoverMail(opts: {
 			'',
 			`View & download: ${opts.url}`
 		],
-		s.signoffName,
-		s.signoffDesignation,
+		sign.name,
+		sign.designation,
 		opts.brand.legalName
 	);
 
@@ -602,6 +633,7 @@ export async function sendHandoverMail(opts: Parameters<typeof buildHandoverMail
  *  Best-effort: callers must not let an alert failure roll back the event. */
 export async function sendExitAlert(opts: {
 	to: string[];
+	cc?: string[];
 	subject: string;
 	lines: string[];
 	brand: BrandTheme;
@@ -626,6 +658,6 @@ export async function sendExitAlert(opts: {
 		undefined,
 		'exit',
 		undefined,
-		{ tagPurpose: 'exit_alert', html }
+		{ cc: opts.cc?.length ? opts.cc : undefined, tagPurpose: 'exit_alert', html }
 	);
 }

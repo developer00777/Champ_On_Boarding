@@ -21,7 +21,9 @@
 		LETTER_SALUTATIONS,
 		RELIEVING_ITEMS,
 		ROUTING_KEYS,
-		ROUTING_LABELS
+		ROUTING_LABELS,
+		routeCc,
+		routeTo
 	} from '$lib/shared/offboarding';
 	import { TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
@@ -376,6 +378,22 @@
 	$effect(() => {
 		salesforceOn = data.salesforceEnabled;
 	});
+
+	// The mail settings show one step at a time, picked from the nav across
+	// the top. The other panels are only hidden, so Save still sends them all.
+	type RouteTab = (typeof ROUTING_KEYS)[number] | 'itBlock' | 'signoff';
+	let routeTab = $state<RouteTab>('manager');
+	const sameList = (a: string[], b: string[]) => a.join(',') === b.join(',');
+	function routeDiffers(k: (typeof ROUTING_KEYS)[number]): boolean {
+		const r = data.routing[k];
+		if (k === 'manager') return !sameList(r.cc, data.routingDefaults.manager.cc);
+		const d = data.routingDefaults[k];
+		return !sameList(r.to, routeTo(d)) || !sameList(r.cc, routeCc(d));
+	}
+	const itBlockDiffers = $derived(
+		!sameList(data.itMailRecipients.to, data.itMailDefaults.to) ||
+			!sameList(data.itMailRecipients.cc, data.itMailDefaults.cc)
+	);
 </script>
 
 <a href="/admin/offboarding" class="back">
@@ -1262,80 +1280,146 @@
 				<div>
 					<h2>Mail settings</h2>
 					<p class="muted">
-						Who each step of the chain emails, in order, and who gets the IT "block system access"
-						mail. The name and designation prefill the approver's clearance page and print on the No
-						Dues certificate. These start from the saved defaults — change them here for this person
-						alone, or tick the box to make them the default for new offboardings.
+						Who each step of the chain emails — any number of To and Cc addresses, one per line. The
+						name and designation prefill the approver's page and print on the No Dues certificate.
 					</p>
 				</div>
 				{#if form?.routingSaved}
 					<span class="saved">Saved{form.routingDefaulted ? ' · default updated' : ''} ✓</span>
 				{/if}
 				{#if form?.itDefaultSkipped}
-					<span class="opt">IT block mail default not changed — needs the exit mail row in Access & org</span>
+					<span class="opt">IT block mail and sign-off defaults not changed — needs the exit mail row in Access & org</span>
 				{/if}
 			</div>
 
 			<form method="POST" action="?/saveRouting" use:enhance={track('routing')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
-					<div class="routes">
+					<div class="rtabs" role="tablist" aria-label="Mail steps">
 						{#each ROUTING_KEYS as k, i (k)}
-							<div class="route" class:off={k === 'salesforce' && !salesforceOn}>
-								<div class="route-h">
-									<span class="route-n">{i + 1}</span>
-									<span class="route-l">{ROUTING_LABELS[k]}</span>
-									{#if k === 'salesforce'}
-										<label class="check inline">
-											<input type="checkbox" name="salesforce_enabled" bind:checked={salesforceOn} />
-											<span>Include in this exit</span>
-										</label>
-									{/if}
-									{#if k !== 'manager' && data.routing[k].email !== (data.routingDefaults[k as Exclude<typeof k, 'manager'>].email ?? '')}
-										<span class="opt">differs from default</span>
-									{/if}
-								</div>
-								<div class="arow arow3">
-									<input
-										name="{k}_email"
-										type="email"
-										placeholder={k === 'manager' ? 'manager@championsmail.com' : `${k}@championsmail.com`}
-										value={data.routing[k].email}
-									/>
-									<input name="{k}_name" placeholder="Name" value={data.routing[k].name} />
-									<input
-										name="{k}_designation"
-										placeholder="Designation"
-										maxlength="80"
-										value={data.routing[k].designation}
-									/>
-								</div>
-							</div>
-						{/each}
-						<div class="route">
-							<div class="route-h">
-								<span class="route-n">IT</span>
-								<span class="route-l">IT — block system access mail</span>
-								{#if data.itMailRecipients.to.join(',') !== data.itMailDefaults.to.join(',') || data.itMailRecipients.cc.join(',') !== data.itMailDefaults.cc.join(',')}
-									<span class="opt">differs from default</span>
+							{@const skipped = k === 'salesforce' && !salesforceOn}
+							<button
+								type="button"
+								role="tab"
+								class="rtab"
+								class:on={routeTab === k}
+								class:off={skipped}
+								aria-selected={routeTab === k}
+								onclick={() => (routeTab = k)}
+							>
+								<span class="route-n">{i + 1}</span>
+								<span>{ROUTING_LABELS[k]}</span>
+								{#if !skipped && !data.routing[k].to.length}
+									<span class="rdot" title="No To address — this step is held until one is added"></span>
 								{/if}
+							</button>
+						{/each}
+						<button
+							type="button"
+							role="tab"
+							class="rtab"
+							class:on={routeTab === 'itBlock'}
+							aria-selected={routeTab === 'itBlock'}
+							onclick={() => (routeTab = 'itBlock')}
+						>
+							<span class="route-n">IT</span>
+							<span>Block access</span>
+						</button>
+						<button
+							type="button"
+							role="tab"
+							class="rtab"
+							class:on={routeTab === 'signoff'}
+							aria-selected={routeTab === 'signoff'}
+							onclick={() => (routeTab = 'signoff')}
+						>
+							<span class="route-n">✎</span>
+							<span>Sign-off</span>
+						</button>
+					</div>
+
+					{#each ROUTING_KEYS as k (k)}
+						<div class="rpanel" role="tabpanel" hidden={routeTab !== k} class:off={k === 'salesforce' && !salesforceOn}>
+							<div class="route-h">
+								<span class="route-l">{ROUTING_LABELS[k]}</span>
+								{#if k === 'salesforce'}
+									<label class="check inline">
+										<input type="checkbox" name="salesforce_enabled" bind:checked={salesforceOn} />
+										<span>Include in this exit</span>
+									</label>
+								{/if}
+								{#if routeDiffers(k)}<span class="opt">differs from default</span>{/if}
 							</div>
-							<div class="arow">
+							<div class="arow arow-even">
 								<label class="f">
 									<span>To</span>
-									<textarea name="itblock_to" rows="2" placeholder="one address per line" value={data.itMailRecipients.to.join(NL)}></textarea>
+									<textarea
+										name="{k}_to"
+										rows="2"
+										placeholder={k === 'manager' ? 'manager@championsmail.com' : 'one address per line'}
+										value={data.routing[k].to.join(NL)}
+									></textarea>
 								</label>
 								<label class="f">
 									<span>Cc</span>
-									<textarea name="itblock_cc" rows="2" placeholder="one address per line" value={data.itMailRecipients.cc.join(NL)}></textarea>
+									<textarea name="{k}_cc" rows="2" placeholder="optional · one per line" value={data.routing[k].cc.join(NL)}></textarea>
+								</label>
+								<label class="f">
+									<span>Name</span>
+									<input name="{k}_name" placeholder="Name" value={data.routing[k].name} />
+								</label>
+								<label class="f">
+									<span>Designation</span>
+									<input name="{k}_designation" placeholder="Designation" maxlength="80" value={data.routing[k].designation} />
 								</label>
 							</div>
 						</div>
+					{/each}
+					<div class="rpanel" role="tabpanel" hidden={routeTab !== 'itBlock'}>
+						<div class="route-h">
+							<span class="route-l">IT — block system access mail</span>
+							{#if itBlockDiffers}<span class="opt">differs from default</span>{/if}
+						</div>
+						<div class="arow arow-even">
+							<label class="f">
+								<span>To</span>
+								<textarea name="itblock_to" rows="2" placeholder="one address per line" value={data.itMailRecipients.to.join(NL)}></textarea>
+							</label>
+							<label class="f">
+								<span>Cc</span>
+								<textarea name="itblock_cc" rows="2" placeholder="optional · one per line" value={data.itMailRecipients.cc.join(NL)}></textarea>
+							</label>
+						</div>
+					</div>
+					<div class="rpanel" role="tabpanel" hidden={routeTab !== 'signoff'}>
+						<div class="route-h">
+							<span class="route-l">Sign-off on this exit's mails</span>
+							{#if data.signoff.name || data.signoff.designation}<span class="opt">differs from default</span>{/if}
+						</div>
+						<div class="arow arow-even">
+							<label class="f">
+								<span>Name</span>
+								<input name="signoff_name" maxlength="80" placeholder={data.signoffDefaults.name} value={data.signoff.name} />
+							</label>
+							<label class="f">
+								<span>Designation</span>
+								<input
+									name="signoff_designation"
+									maxlength="80"
+									placeholder={data.signoffDefaults.designation}
+									value={data.signoff.designation}
+								/>
+							</label>
+						</div>
+						<p class="muted tiny" style="margin:8px 0 0">
+							Printed under "Regards," on the clearance, IT block-access, exit-forms and handover mails.
+							Left blank, it uses Settings → Offboarding mail; the company line is always the employee's entity.
+						</p>
 					</div>
 					<label class="check">
 						<input type="checkbox" name="saveDefault" />
 						<span>
 							Also use these as the default for new offboardings
-							<small class="muted">(the reporting manager is never saved — it differs for every employee)</small>
+							<small class="muted">(the reporting manager's own address is never saved — only their Cc)</small>
 						</span>
 					</label>
 					{#if form?.routingError && form?.message}<p class="error">{form.message}</p>{/if}
@@ -2327,19 +2411,70 @@
 		color: var(--ae-text-2);
 		margin: 12px 0 0;
 	}
-	.routes {
+	/* One step at a time: a nav across the top, the picked step below it. */
+	.rtabs {
 		display: flex;
-		flex-direction: column;
-		gap: 12px;
+		gap: 4px;
+		overflow-x: auto;
+		border-bottom: 1px solid var(--ae-line-soft);
+		margin-bottom: 12px;
+		scrollbar-width: thin;
 	}
-	.route {
-		border: 1px solid var(--ae-line-soft);
-		border-radius: 10px;
-		padding: 10px 12px;
+	.rtab {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex: none;
+		padding: 7px 10px 8px;
+		border: 0;
+		border-bottom: 2px solid transparent;
+		margin-bottom: -1px;
+		background: none;
+		color: var(--ae-text-2);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		white-space: nowrap;
+		cursor: pointer;
+		border-radius: 6px 6px 0 0;
+	}
+	.rtab:hover {
+		background: var(--ae-hover);
+	}
+	.rtab.on {
+		color: var(--ae-text);
+		border-bottom-color: var(--ae-ember);
+	}
+	.rtab.off {
+		opacity: 0.5;
+	}
+	.rtab .route-n {
+		width: 18px;
+		height: 18px;
+		font-size: 9.5px;
+	}
+	.rtab.on .route-n {
+		border-color: var(--ae-ember);
+		color: var(--ae-ember);
+	}
+	.rdot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--ae-ember);
+	}
+	.rpanel {
 		transition: opacity 0.2s;
 	}
-	.route.off .arow {
+	.rpanel.off .arow {
 		opacity: 0.45;
+	}
+	.arow.arow-even {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.arow-even textarea {
+		resize: vertical;
+		min-height: 58px;
 	}
 	.route-h {
 		display: flex;
@@ -2672,7 +2807,8 @@
 	}
 	@media (max-width: 720px) {
 		.arow,
-		.arow.arow3 {
+		.arow.arow3,
+		.arow.arow-even {
 			grid-template-columns: minmax(0, 1fr);
 		}
 		.rrow,

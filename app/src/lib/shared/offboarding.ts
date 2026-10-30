@@ -719,6 +719,26 @@ export const ROUTING_LABELS: Record<RoutingKey, string> = {
 	payroll: 'Payroll team'
 };
 
+const addrList = (v: unknown): string[] => [
+	...new Set(
+		(Array.isArray(v) ? v.map(String) : String(v ?? '').split(/[\s,;]+/))
+			.map((a) => a.trim().toLowerCase())
+			.filter((a) => a.includes('@'))
+	)
+];
+
+/** A step's To addresses. `routing.<step>.email` holds them comma-separated
+ *  — a single address, as older exits stored it, is a list of one. */
+export function routeTo(route: { email?: string | null } | null | undefined): string[] {
+	return addrList(route?.email);
+}
+
+/** A step's Cc addresses, never repeating one already in To. */
+export function routeCc(route: { email?: string | null; cc?: string[] | null } | null | undefined): string[] {
+	const to = new Set(routeTo(route));
+	return addrList(route?.cc).filter((a) => !to.has(a));
+}
+
 /** What HR can tick when sending a signed clearance back: the department's
  *  own No-Dues rows, plus what every clearance carries. Stored and mailed as
  *  these labels. */

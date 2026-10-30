@@ -781,22 +781,27 @@ const exitSchema = new Schema(
 		// ── Who each step of the exit chain mails (FLOW_STEPS) ───────────────
 		// Copied from the saved defaults when the exit is created, then HR's to
 		// change for this person alone. A blank address holds the chain at that
-		// step until one is filled in.
+		// step until one is filled in. `email` may hold several To addresses,
+		// comma-separated (see routeTo() in shared/offboarding.ts); `cc` is
+		// copied on the same mail.
 		// The designation prefills the approver's clearance page and prints
 		// beside their name on the No Dues certificate.
 		routing: {
 			manager: {
 				email: { type: String, default: null },
+				cc: { type: [String], default: undefined },
 				name: { type: String, default: null },
 				designation: { type: String, default: null }
 			},
 			it: {
 				email: { type: String, default: null },
+				cc: { type: [String], default: undefined },
 				name: { type: String, default: null },
 				designation: { type: String, default: null }
 			},
 			salesforce: {
 				email: { type: String, default: null },
+				cc: { type: [String], default: undefined },
 				name: { type: String, default: null },
 				designation: { type: String, default: null },
 				/** Salesforce clearance is for sales staff only, so it is opt-in. */
@@ -805,11 +810,19 @@ const exitSchema = new Schema(
 			/** Not a clearance: told when it is HR's turn to fill the F&F. */
 			hr: {
 				email: { type: String, default: null },
+				cc: { type: [String], default: undefined },
 				name: { type: String, default: null },
 				designation: { type: String, default: null }
 			},
 			payroll: {
 				email: { type: String, default: null },
+				cc: { type: [String], default: undefined },
+				name: { type: String, default: null },
+				designation: { type: String, default: null }
+			},
+			/** Who "Regards," names on this exit's mails. Blank parts fall back to
+			 *  the sign-off in Settings → Offboarding mail. */
+			signoff: {
 				name: { type: String, default: null },
 				designation: { type: String, default: null }
 			},
