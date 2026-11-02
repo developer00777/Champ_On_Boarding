@@ -65,6 +65,9 @@ export interface BrandTheme {
 		address?: string;
 		email?: string;
 		website?: string;
+		/** Printed ahead of the email only when set — most letterheads carry no
+		 *  phone, so the band is unchanged for them. */
+		phone?: string;
 	};
 
 	logo: {
@@ -470,6 +473,53 @@ export const BRANDS: BrandTheme[] = [
 		// Address is the shared JS Tower desk (CONTACT_DEFAULTS), as the letterhead prints.
 		contact: { website: 'https://www.championsbeachcities.com/' },
 		logo: { src: '/brands/champions-beach-city.png', monogram: 'CBC', hasWordmark: true }
+	},
+	{
+		// From the supplied letterhead (Aqua Marine Letterhead.pdf) and badge art
+		// (AQUA-MARINE.png). A Dubai company, so the legal name ends "LLC", not
+		// "Pvt Ltd", and its office is its own Dubai Marina address rather than the
+		// shared JS Towers desk. The letterhead spells it "Aquamarine"; the badge
+		// reads "Aqua Marine", which stays an alias in the company seed.
+		//
+		// Primary is the letterhead's orange (its rule and footer band), sampled
+		// from the badge; accent the badge's "AQUA" blue. The printed band is that
+		// bright orange, but white 7pt type on it is under 3:1, so `ink` (footer
+		// band, hero) is a deeper shade of the same orange, dark enough for the
+		// band's white type. Poppins is the letterhead's typeface.
+		slug: 'aqua-marine',
+		name: 'Aquamarine Boat and Yacht Charter',
+		legalName: 'Aquamarine Boat and Yacht Charter LLC',
+		tagline: 'Boat and yacht charters in Dubai. Celebrate like Champions on yachts.',
+		colors: {
+			primary: '#F18321',
+			primaryDark: '#C9670F',
+			accent: '#0B76BB',
+			ink: '#B0560C',
+			bg: '#FFFFFF',
+			surface: '#FFFFFF',
+			text: '#1A1A1A',
+			muted: '#5C6872',
+			border: '#F3E6DA',
+			onPrimary: '#FFFFFF',
+			heroGradient: 'linear-gradient(135deg, #7A3B07 0%, #B0560C 50%, #F18321 100%)'
+		},
+		fonts: {
+			heading: "'Poppins', Arial, sans-serif",
+			body: "'Poppins', Arial, sans-serif",
+			googleFamilies: ['Poppins:wght@400;500;600;700']
+		},
+		buttonRadius: 6,
+		cardRadius: 12,
+		uppercaseCta: false,
+		// Email stays the shared HR desk (CONTACT_DEFAULTS): offer replies are
+		// handled centrally. Address, phone and website are as the letterhead prints.
+		contact: {
+			address: '3206, Marina Plaza, Dubai Marina, Dubai, UAE',
+			phone: '+971-585835296',
+			website: 'https://www.aquamarineyachts.ae/'
+		},
+		// The round badge spells out "Aqua Marine Boat & Yacht Charter".
+		logo: { src: '/brands/aqua-marine.png', monogram: 'AM', hasWordmark: true }
 	},
 	{
 		slug: '100x-longevity',

@@ -478,13 +478,14 @@ function drawChrome(ctx: Ctx, page: PDFPage) {
 	const address = sanitize(contact.address ?? CONTACT_DEFAULTS.address);
 	const email = sanitize(contact.email ?? CONTACT_DEFAULTS.email);
 	const website = sanitize(contact.website ?? '');
+	const phone = sanitize(contact.phone ?? '');
 
 	page.drawRectangle({ x: 0, y: 0, width: W, height: FOOTER_H, color: ctx.inkColor });
 
-	// Just the two contact details the printed letterhead carries. The entity is
+	// Just the contact details the printed letterhead carries. The entity is
 	// already named by the logo above and throughout the letter body, so it is
-	// not repeated here.
-	const line2 = [`Email: ${email}`, website ? `Website: ${website}` : '']
+	// not repeated here. Phone appears only for a letterhead that prints one.
+	const line2 = [phone ? `Phone: ${phone}` : '', `Email: ${email}`, website ? `Website: ${website}` : '']
 		.filter(Boolean)
 		.join('   |   ');
 
