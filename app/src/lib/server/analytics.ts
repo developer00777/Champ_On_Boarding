@@ -13,7 +13,7 @@ import {
 	OfferLetter,
 	Admin
 } from './db/schema';
-import { DOC_SLOTS, TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
+import { DOC_SLOTS, TRACKS, TRACK_LABELS, slotsForTrack, type Track } from '$lib/shared/matrix';
 
 export interface AnalyticsFilters {
 	from: Date | null;
@@ -240,11 +240,15 @@ export async function getDocSlotSatisfaction(filters: AnalyticsFilters) {
 		satisfied.set(slot.type, 0);
 	}
 
+	const baseMandatory = new Map(DOC_SLOTS.map((s) => [s.type, s.mandatory]));
 	for (const c of candidates) {
 		const track = c.track as Track;
-		const applicableSlots = DOC_SLOTS.filter((s) => s.tracks.includes(track));
 		const candidateDocs = docsByCandidate.get(String(c._id)) ?? [];
-		for (const slot of applicableSlots) {
+		for (const slot of slotsForTrack(track)) {
+			// A slot that is mandatory in general but optional on this candidate's
+			// track (Test Results for consultants) is not counted: skipping it is
+			// allowed, so it must not read as a failure on a "Mandatory" row.
+			if (baseMandatory.get(slot.type) && !slot.mandatory) continue;
 			need.set(slot.type, (need.get(slot.type) ?? 0) + 1);
 			const hasUsable = candidateDocs.some((d) => d.docType === slot.type && d.reviewStatus !== 'reupload_requested');
 			if (hasUsable) satisfied.set(slot.type, (satisfied.get(slot.type) ?? 0) + 1);

@@ -150,15 +150,33 @@ export const ENTITY_DOC_OVERRIDES: Record<string, Record<string, { mandatory: bo
 	'champion-infometrics': { degree_cert: { mandatory: true } }
 };
 
-/** The slots for a track, with any entity-level exception applied.
+/** Per-track exceptions to a slot's `mandatory` flag, at every entity.
+ *
+ *  Same shape and limits as ENTITY_DOC_OVERRIDES: a track can make a slot it
+ *  already has optional or mandatory, never add or remove one. An entity
+ *  override for the same slot is the more specific rule and wins.
+ *
+ *  Resolved at request time by slotsForTrack(), like the rest of the matrix, so
+ *  a change here reaches candidates whose onboarding links are already live the
+ *  next time their portal loads. Nothing is snapshotted per candidate.
+ */
+export const TRACK_DOC_OVERRIDES: Partial<Record<Track, Record<string, { mandatory: boolean }>>> = {
+	// HR decision (Nov 2026): consultants are not put through the IQ, GRIT and
+	// Growth Mindset tests, so their screenshots are optional on the consultant
+	// track at every entity. Every other track still requires them.
+	consultant: { test_results: { mandatory: false } }
+};
+
+/** The slots for a track, with any track- and entity-level exception applied.
  *
  *  `brandSlug` is optional and unknown slugs fall through untouched, so callers
- *  that have no entity in hand still get the plain track matrix.
+ *  that have no entity in hand still get the track matrix.
  */
 export function slotsForTrack(track: Track, brandSlug?: string | null): DocSlot[] {
-	const overrides = brandSlug ? ENTITY_DOC_OVERRIDES[brandSlug] : undefined;
+	const trackOverrides = TRACK_DOC_OVERRIDES[track];
+	const entityOverrides = brandSlug ? ENTITY_DOC_OVERRIDES[brandSlug] : undefined;
 	return DOC_SLOTS.filter((s) => s.tracks.includes(track)).map((slot) => {
-		const o = overrides?.[slot.type];
+		const o = entityOverrides?.[slot.type] ?? trackOverrides?.[slot.type];
 		if (!o) return slot;
 		// The label carries "(optional)" for every other optional slot; keep that
 		// in sync with the effective mandatory flag in both directions, or the
