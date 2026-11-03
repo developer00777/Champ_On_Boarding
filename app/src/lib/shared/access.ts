@@ -312,6 +312,8 @@ export const MODULES: Module[] = [
 				surface: ['/admin/settings::saveItSetupMail', '/admin/settings::resetItSetupMail'] },
 			{ key: 'settings.empCodeMail', label: 'Settings: employee code mail', kind: 'write', enforced: true,
 				surface: ['/admin/settings::saveEmployeeCodeMail'] },
+			{ key: 'settings.cubicleMail', label: 'Settings: cubicle allocation mail', kind: 'write', enforced: true,
+				surface: ['/admin/settings::saveCubicleMail'] },
 			{ key: 'settings.exitMail', label: 'Settings: offboarding mail', kind: 'write', enforced: true,
 				surface: ['/admin/settings::saveExitMail', '/admin/settings::resetExitMail'] },
 			{ key: 'settings.lists', label: 'Settings: dropdown options', kind: 'write', enforced: true,
@@ -322,7 +324,7 @@ export const MODULES: Module[] = [
 	}
 ];
 
-export const SETTINGS_CAPS = ['settings.itMail', 'settings.empCodeMail', 'settings.exitMail', 'settings.lists', 'settings.welcomeMail'] as const;
+export const SETTINGS_CAPS = ['settings.itMail', 'settings.empCodeMail', 'settings.cubicleMail', 'settings.exitMail', 'settings.lists', 'settings.welcomeMail'] as const;
 export type SettingsCap = (typeof SETTINGS_CAPS)[number];
 
 /** Every preset reads every Settings section and none edits one — the page was

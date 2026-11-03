@@ -50,6 +50,11 @@
 	// svelte-ignore state_referenced_locally
 	let ecCc = $state(data.employeeCodeMail?.cc.join('\n') ?? '');
 
+	// svelte-ignore state_referenced_locally
+	let cmTo = $state(data.cubicleMail?.to.join('\n') ?? '');
+	// svelte-ignore state_referenced_locally
+	let cmCc = $state(data.cubicleMail?.cc.join('\n') ?? '');
+
 	// ── Welcome mail ─────────────────────────────────────────────────────────
 	// Every field is bound so the preview beside the editor re-renders as HR
 	// types — with the same renderer the send uses (shared/welcome-mail.ts), so
@@ -124,6 +129,7 @@
 			!data.exitMail &&
 			!data.fixedLists &&
 			!data.employeeCodeMail &&
+			!data.cubicleMail &&
 			!data.welcomeMail
 	);
 
@@ -381,6 +387,92 @@
 	{#if !data.canEdit.empCodeMail}
 		<p class="muted" style="font-size:12px;margin:12px 0 0">
 			View-only — to change this you need Edit on “{data.capLabel['settings.empCodeMail']}” in Access &amp; org. A super admin can
+			give it to you there, or ask Champ to request it.
+		</p>
+	{/if}
+</section>
+{/if}
+
+<!-- Cubicle allocation mail. Same shape as the employee code mail above: the
+     desk, the subject template and the wording are editable here; the cubicle
+     and floor are typed per joiner on the candidate page. -->
+{#if data.cubicleMail}
+<section class="card" id="cubicle-mail" style="margin-top:18px">
+	<h2 class="card-title">Cubicle allocation mail</h2>
+	<p class="muted" style="margin:-8px 0 18px;font-size:13px">
+		Sent by hand from the candidate page once HR has saved the joiner's cubicle number. Carries the
+		cubicle, then Emp Code, Emp Name, Floor and Team — the code, name and team filled in from the
+		record.
+	</p>
+
+	<form method="POST" action="?/saveCubicleMail" use:enhance={() => async ({ update }) => update({ reset: false })}>
+		<fieldset class="rbac" disabled={!data.canEdit.cubicleMail}>
+			<label class="field">
+				<span>To</span>
+				<textarea name="cmTo" bind:value={cmTo} rows="4" placeholder="one address per line"></textarea>
+				<small>One address per line. Semicolons and commas work too.</small>
+			</label>
+			<label class="field">
+				<span>Cc</span>
+				<textarea name="cmCc" bind:value={cmCc} rows="7" placeholder="one address per line"></textarea>
+				<small>Leave empty to copy no one.</small>
+			</label>
+			<label class="field">
+				<span>Subject line</span>
+				<input
+					name="cmSubject"
+					value={data.cubicleMail!.subject}
+					maxlength="200"
+					placeholder={data.cubicleDefaults.subject}
+				/>
+				<small>
+					{#each data.cubicleTokens as t, i}<code>{t.token}</code> becomes {t.means}{i <
+					data.cubicleTokens.length - 1
+						? ', '
+						: '. '}{/each}Leave blank to use the default:
+					<code>{data.cubicleDefaults.subject}</code>
+				</small>
+			</label>
+			<label class="field">
+				<span>Greeting</span>
+				<input
+					name="cmGreeting"
+					value={data.cubicleMail!.greeting}
+					maxlength="80"
+					placeholder={data.cubicleDefaults.greeting}
+				/>
+			</label>
+			<label class="field">
+				<span>Opening line</span>
+				<input
+					name="cmIntro"
+					value={data.cubicleMail!.intro}
+					maxlength="300"
+					placeholder={data.cubicleDefaults.intro}
+				/>
+				<small>The cubicle number follows it, as <code>Cubicle – 62</code>. Leave blank to use the default.</small>
+			</label>
+			<label class="field">
+				<span>Sign-off name</span>
+				<input name="cmSignoffName" value={data.cubicleMail!.signoffName} maxlength="80" />
+			</label>
+			<label class="field">
+				<span>Sign-off designation</span>
+				<input
+					name="cmSignoffDesignation"
+					value={data.cubicleMail!.signoffDesignation}
+					maxlength="80"
+					placeholder="optional"
+				/>
+			</label>
+			<button class="btn">Save cubicle allocation mail</button>
+			{#if form?.cubicleMailSaved}<span class="saved">Saved ✓</span>{/if}
+		</fieldset>
+	</form>
+
+	{#if !data.canEdit.cubicleMail}
+		<p class="muted" style="font-size:12px;margin:12px 0 0">
+			View-only — to change this you need Edit on “{data.capLabel['settings.cubicleMail']}” in Access &amp; org. A super admin can
 			give it to you there, or ask Champ to request it.
 		</p>
 	{/if}

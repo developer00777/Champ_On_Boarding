@@ -958,6 +958,10 @@
 	const managerEmail = $derived(
 		form?.welcomeFieldsSaved ? (form.reportingManagerEmail ?? '') : (c.reportingManagerEmail ?? '')
 	);
+	const cubicleNo = $derived(form?.cubicleSaved ? (form.cubicleNo ?? '') : (c.cubicleNo ?? ''));
+	const cubicleFloor = $derived(
+		form?.cubicleSaved ? (form.cubicleFloor ?? '') : (c.cubicleFloor ?? '')
+	);
 	const shiftTiming = $derived(form?.shiftTimingSaved ? form.shiftTiming : (c.shiftTiming ?? ''));
 
 	// GlassSelect is controlled, so mirror the stored shift into local state the
@@ -1141,6 +1145,13 @@
 			action: '?/sendWelcomeMail',
 			send: 'Send welcome mail',
 			resend: 'Resend welcome mail'
+		},
+		cubicle: {
+			title: 'Cubicle allocation mail preview',
+			endpoint: 'cubicle-mail-preview',
+			action: '?/sendCubicleMail',
+			send: 'Send cubicle mail',
+			resend: 'Resend cubicle mail'
 		}
 	} as const;
 	type MailKind = keyof typeof MAIL_KINDS;
@@ -1151,16 +1162,24 @@
 	let itPreviewError: string | null = $state(null);
 	let itSending = $state(false);
 	const previewSentAt = $derived(
-		previewKind === 'it'
-			? c.itSetupMailSentAt
-			: previewKind === 'code'
-				? c.employeeCodeMailSentAt
-				: c.welcomeMailSentAt
+		(
+			{
+				it: c.itSetupMailSentAt,
+				code: c.employeeCodeMailSentAt,
+				welcome: c.welcomeMailSentAt,
+				cubicle: c.cubicleMailSentAt
+			} as Record<MailKind, string | null>
+		)[previewKind]
 	);
 	/** The hidden form the modal's Send button submits — keeps the real
 	 *  `use:enhance` POST (and its progressive-enhancement fallback) rather
 	 *  than hand-rolling a fetch that would bypass the action's audit log. */
-	let sendForms: Record<MailKind, HTMLFormElement | null> = $state({ it: null, code: null, welcome: null });
+	let sendForms: Record<MailKind, HTMLFormElement | null> = $state({
+		it: null,
+		code: null,
+		welcome: null,
+		cubicle: null
+	});
 
 	// ── Welcome mail attachments ─────────────────────────────────────────────
 	// Org-wide, not this candidate's: uploading here replaces the document for
@@ -1246,7 +1265,12 @@
 	// Close the modal once the send round-trips, so the "sent ✓" chip on the
 	// page is what HR sees next rather than a stale preview.
 	$effect(() => {
-		if (form?.itSetupMailSent || form?.employeeCodeMailSent || form?.welcomeMailSent) {
+		if (
+			form?.itSetupMailSent ||
+			form?.employeeCodeMailSent ||
+			form?.welcomeMailSent ||
+			form?.cubicleMailSent
+		) {
 			itPreview = null;
 			itSending = false;
 		}
@@ -1676,6 +1700,12 @@
 							<strong>{itPreview.missing.join(', ')}</strong>. The joiner will see a blank where a value
 							goes — fill it in on this page and reopen the preview, or send as-is.
 						</span>
+					{:else if previewKind === 'cubicle'}
+						<span>
+							{itPreview.missing.length === 1 ? 'This detail is blank' : 'These details are blank'}:
+							<strong>{itPreview.missing.join(', ')}</strong>. The desks will have to chase it — fill it in
+							on this page and reopen this preview, or send as-is.
+						</span>
 					{:else}
 						<span>
 							{itPreview.missing.length === 1 ? 'This column is blank' : 'These columns are blank'}:
@@ -1718,7 +1748,7 @@
 		     requireApprover, not super-admin-only, and always have been. A banner
 		     that undersells the role is the same problem as one that oversells it. -->
 		{data.isApprover
-			? 'HR access — you can approve candidates, manage the offer letter, and assign and announce the employee code. Other edits are given per person by a super admin, in Access & org.'
+			? 'HR access — you can approve candidates, manage the offer letter, assign and announce the employee code, and allocate and announce the cubicle. Other edits are given per person by a super admin, in Access & org.'
 			: 'View-only — editing candidate records needs HR access, or a power a super admin gives you in Access & org.'}
 		Running the OCR cross-check is open to everyone.
 	</div>
@@ -3356,6 +3386,102 @@
 					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
 					Sent manually when you're ready · recipients in
 					<a href="/admin/settings" style="color:inherit;text-decoration:underline">settings</a>
+				</div>
+			</div>
+
+			<!-- Cubicle allocation. The cubicle and floor are the two things HR
+			     types; the mail fills in the code, name and team from the record.
+			     Same confirm-then-send flow as the mails above. -->
+			<div class="it-fields">
+				<div class="eyebrow" style="margin-bottom:10px">Cubicle allocation</div>
+				<form method="POST" action="?/setCubicle" use:enhance={() => async ({ update }) => update({ reset: false })}>
+					<fieldset class="rbac it-grid" disabled={!data.isApprover}>
+						<div class="it-pair">
+							<label class="it-label" for="cub-no">Cubicle number</label>
+							<input
+								id="cub-no"
+								name="cubicleNo"
+								value={cubicleNo}
+								placeholder="e.g. 62"
+								class="emp-input"
+								maxlength="20"
+							/>
+						</div>
+						<div class="it-pair">
+							<label class="it-label" for="cub-floor">Floor</label>
+							<input
+								id="cub-floor"
+								name="cubicleFloor"
+								value={cubicleFloor}
+								placeholder="e.g. 2nd Floor"
+								class="emp-input"
+								list="floor-options"
+								maxlength="60"
+							/>
+							<datalist id="floor-options">
+								{#each data.floors as f (f)}<option value={f}></option>{/each}
+							</datalist>
+						</div>
+						<button class="btn small teal" style="width:100%;margin-top:9px">Save cubicle</button>
+					</fieldset>
+				</form>
+				{#if form?.cubicleSaved}
+					<p class="saved-chip" style="margin-top:6px">Saved ✓</p>
+				{/if}
+				<p class="it-link-note">
+					The mail fills in the employee code, name and team from this record — team from the Team name
+					above.
+				</p>
+			</div>
+
+			<div class="it-mail">
+				<form
+					method="POST"
+					action="?/sendCubicleMail"
+					use:enhance={() => {
+						itSending = true;
+						return async ({ update }) => {
+							await update();
+							itSending = false;
+						};
+					}}
+					bind:this={sendForms.cubicle}
+				>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<button
+							class="btn small ghost"
+							style="width:100%"
+							type="button"
+							onclick={() => openItPreview('cubicle')}
+							disabled={itPreviewLoading || !cubicleNo}
+							title={cubicleNo ? '' : 'Save the cubicle number first'}
+						>
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/></svg>
+							{#if itPreviewLoading}
+								Building preview…
+							{:else}
+								{c.cubicleMailSentAt ? 'Review & resend cubicle mail' : 'Review & send cubicle mail'}
+							{/if}
+						</button>
+					</fieldset>
+				</form>
+				{#if !cubicleNo}
+					<p class="emp-hint" style="margin-top:4px">Save the cubicle number above to enable this.</p>
+				{/if}
+				{#if c.cubicleMailSentAt}
+					{@render sentNote(
+						'Cubicle mail',
+						c.cubicleMailSentAt,
+						data.mailSends.cubicle?.to ?? [],
+						data.mailSends.cubicle?.by ?? null,
+						!!form?.cubicleMailSent,
+						'Sending again mails the desks a fresh copy with the current cubicle.'
+					)}
+				{/if}
+				<div class="emp-hint">
+					<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+					Recipients, subject and wording in
+					<a href="/admin/settings#cubicle-mail" style="color:inherit;text-decoration:underline">settings</a>
 				</div>
 			</div>
 		</section>

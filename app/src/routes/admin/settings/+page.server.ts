@@ -18,6 +18,10 @@ import {
 	EMPLOYEE_CODE_SUBJECT_TOKENS,
 	getEmployeeCodeMailSettings,
 	saveEmployeeCodeMailSettings,
+	CUBICLE_MAIL_DEFAULTS,
+	CUBICLE_SUBJECT_TOKENS,
+	getCubicleMailSettings,
+	saveCubicleMailSettings,
 	getWelcomeMailSettings,
 	saveWelcomeMailSettings
 } from '$lib/server/settings';
@@ -38,6 +42,7 @@ import {
 const LABEL: Record<SettingsCap, string> = {
 	'settings.itMail': 'the IT & VPN setup mail',
 	'settings.empCodeMail': 'the employee code mail',
+	'settings.cubicleMail': 'the cubicle allocation mail',
 	'settings.exitMail': 'the offboarding mail',
 	'settings.lists': 'the dropdown options',
 	'settings.welcomeMail': 'the welcome mail'
@@ -55,11 +60,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.admin) redirect(303, '/admin/login');
 	const level = await levelsToday(locals.admin, SETTINGS_CAPS);
 	const see = (c: SettingsCap) => level[c] !== 'none';
-	const [itSetupMail, exitMail, fixedLists, employeeCodeMail, welcomeMail, welcomeAttachments] = await Promise.all([
+	const [itSetupMail, exitMail, fixedLists, employeeCodeMail, cubicleMail, welcomeMail, welcomeAttachments] = await Promise.all([
 		see('settings.itMail') ? getItSetupMailSettings() : null,
 		see('settings.exitMail') ? getExitMailSettings() : null,
 		see('settings.lists') ? getFixedLists() : null,
 		see('settings.empCodeMail') ? getEmployeeCodeMailSettings() : null,
+		see('settings.cubicleMail') ? getCubicleMailSettings() : null,
 		see('settings.welcomeMail') ? getWelcomeMailSettings() : null,
 		see('settings.welcomeMail') ? getWelcomeAttachments() : null
 	]);
@@ -76,6 +82,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		employeeCodeMail,
 		employeeCodeDefaults: EMPLOYEE_CODE_MAIL_DEFAULTS,
 		employeeCodeTokens: EMPLOYEE_CODE_SUBJECT_TOKENS,
+		cubicleMail,
+		cubicleDefaults: CUBICLE_MAIL_DEFAULTS,
+		cubicleTokens: CUBICLE_SUBJECT_TOKENS,
 		exitMail,
 		exitDefaults: EXIT_MAIL_DEFAULTS,
 		welcomeMail,
@@ -93,6 +102,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		canEdit: {
 			itMail: level['settings.itMail'] === 'act',
 			empCodeMail: level['settings.empCodeMail'] === 'act',
+			cubicleMail: level['settings.cubicleMail'] === 'act',
 			exitMail: level['settings.exitMail'] === 'act',
 			lists: level['settings.lists'] === 'act',
 			welcomeMail: level['settings.welcomeMail'] === 'act'
@@ -163,6 +173,37 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { employeeCodeMailSaved: true };
+	},
+
+	saveCubicleMail: async ({ request, locals, getClientAddress }) => {
+		const denied = await deny(locals.admin, 'settings.cubicleMail');
+		if (denied) return denied;
+
+		const form = await request.formData();
+		const oneLine = (k: string, max: number) =>
+			String(form.get(k) ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+		const to = parseRecipients(String(form.get('cmTo') ?? ''));
+		const cc = parseRecipients(String(form.get('cmCc') ?? ''));
+		const subject = oneLine('cmSubject', 200);
+		const greeting = oneLine('cmGreeting', 80);
+		const intro = oneLine('cmIntro', 300);
+		const signoffName = oneLine('cmSignoffName', 80);
+		const signoffDesignation = oneLine('cmSignoffDesignation', 80);
+
+		if (!to.length) return fail(400, { error: 'Enter at least one valid "To" address.' });
+
+		await saveCubicleMailSettings(
+			{ to, cc, subject, greeting, intro, signoffName, signoffDesignation },
+			locals.admin!.id
+		);
+		await audit({
+			actor: locals.admin!.email,
+			action: 'settings_updated',
+			field: 'cubicle_mail',
+			newValue: `to: ${to.join(', ')} | cc: ${cc.join(', ') || '—'} | subject: ${subject || '(default)'} | signoff: ${signoffName || '(default)'}`,
+			ip: getClientAddress()
+		});
+		return { cubicleMailSaved: true };
 	},
 
 	saveItSetupMail: async ({ request, locals, getClientAddress }) => {

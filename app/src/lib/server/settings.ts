@@ -157,6 +157,115 @@ export async function saveEmployeeCodeMailSettings(
 	);
 }
 
+// ── Cubicle allocation mail ──────────────────────────────────────────────────
+
+export interface CubicleMailSettings {
+	to: string[];
+	cc: string[];
+	/** Subject template; tokens below. */
+	subject: string;
+	/** The salutation, and the sentence the cubicle number follows. */
+	greeting: string;
+	intro: string;
+	signoffName: string;
+	signoffDesignation: string;
+}
+
+export const CUBICLE_SUBJECT_TOKENS = [
+	{ token: '{empCode}', means: 'the employee code' },
+	{ token: '{name}', means: "the joiner's name" },
+	{ token: '{cubicle}', means: 'the cubicle number' },
+	{ token: '{floor}', means: 'the floor' },
+	{ token: '{team}', means: 'the team name' }
+] as const;
+
+export interface CubicleSubjectValues {
+	empCode: string;
+	name: string;
+	cubicle: string;
+	floor: string;
+	team: string;
+}
+
+export const CUBICLE_MAIL_KEY = 'cubicle_mail';
+
+/** Seeded from the allocation mail facilities sends by hand today, which goes
+ *  reply-all on the employee code mail: the same desk in To — including the
+ *  portal's own onboarding@ address, so the mail and any reply land in the
+ *  shared inbox — and the same HR list in Cc, which already carries the
+ *  facilities sender. */
+export const CUBICLE_MAIL_DEFAULTS: CubicleMailSettings = {
+	to: [
+		'onboarding@offer.championsmail.com',
+		'ithelpdesk@championsmail.com',
+		'workforce@championsmail.com',
+		'learning@championsmail.com'
+	],
+	cc: [
+		'hrd.jst@championsmail.com',
+		'aleena.j@championsmail.com',
+		'bhavana.setty@championsmail.com',
+		'dongresalomi.s@championsmail.com',
+		'shaik.j@championsmail.com',
+		'renuka.b@championsmail.com',
+		'delwin.a@championsmail.com'
+	],
+	subject: 'New Joinee- Cubicle Number allocation ({empCode} {name})',
+	greeting: 'Hello Team,',
+	intro: 'Please find the cubicle number for the below mentioned employee:',
+	// The sign-off the employee code mail goes out under, so the two read as
+	// one desk's mails.
+	signoffName: 'HRD',
+	signoffDesignation: ''
+};
+
+/** Substitutes the subject tokens. Newlines collapse (a subject is one header),
+ *  and a blank value closes up after itself: no employee code yet reads
+ *  "(Bipin K)", not "( Bipin K)", and an all-blank bracket drops out. */
+export function renderCubicleSubject(template: string, values: CubicleSubjectValues): string {
+	return (
+		(template || CUBICLE_MAIL_DEFAULTS.subject)
+			// Function replacements, so a "$" in a name is never read as a pattern.
+			.replace(/\{empCode\}/g, () => values.empCode)
+			.replace(/\{name\}/g, () => values.name)
+			.replace(/\{cubicle\}/g, () => values.cubicle)
+			.replace(/\{floor\}/g, () => values.floor)
+			.replace(/\{team\}/g, () => values.team)
+			.replace(/[\r\n]+/g, ' ')
+			.replace(/\(\s*\)/g, '')
+			.replace(/\s{2,}/g, ' ')
+			.replace(/\(\s+/g, '(')
+			.replace(/\s+\)/g, ')')
+			.trim()
+	);
+}
+
+export async function getCubicleMailSettings(): Promise<CubicleMailSettings> {
+	const row = await AppSetting.findOne({ key: CUBICLE_MAIL_KEY }).lean();
+	const v = (row?.value ?? {}) as Partial<CubicleMailSettings>;
+	return {
+		// As with the employee code mail: an empty To would send nowhere, so it
+		// falls back; Cc is legitimately clearable.
+		to: v.to?.length ? v.to : CUBICLE_MAIL_DEFAULTS.to,
+		cc: Array.isArray(v.cc) ? v.cc : CUBICLE_MAIL_DEFAULTS.cc,
+		subject: v.subject?.trim() || CUBICLE_MAIL_DEFAULTS.subject,
+		// A cleared greeting or opening line would leave the mail starting
+		// mid-thought, so both fall back like the subject does.
+		greeting: v.greeting?.trim() || CUBICLE_MAIL_DEFAULTS.greeting,
+		intro: v.intro?.trim() || CUBICLE_MAIL_DEFAULTS.intro,
+		signoffName: v.signoffName?.trim() || CUBICLE_MAIL_DEFAULTS.signoffName,
+		signoffDesignation: v.signoffDesignation?.trim() ?? CUBICLE_MAIL_DEFAULTS.signoffDesignation
+	};
+}
+
+export async function saveCubicleMailSettings(value: CubicleMailSettings, adminId: string) {
+	await AppSetting.findOneAndUpdate(
+		{ key: CUBICLE_MAIL_KEY },
+		{ key: CUBICLE_MAIL_KEY, value, updatedBy: adminId },
+		{ upsert: true }
+	);
+}
+
 // ── Welcome mail ─────────────────────────────────────────────────────────────
 // The template and its renderer live in shared/welcome-mail.ts, so the
 // Settings page can preview a draft as HR types it.
@@ -217,6 +326,12 @@ export const FIXED_LIST_DEFS: FixedListDef[] = [
 		// it; dropping it would leave no way to set a consultant's notice without
 		// editing this list first.
 		defaults: ['15 days', '30 days', '60 days', '90 days']
+	},
+	{
+		key: 'floors',
+		label: 'Floors',
+		help: 'Suggested in the candidate page’s cubicle Floor box, which still takes anything typed. Written into the cubicle allocation mail verbatim.',
+		defaults: ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor']
 	}
 ];
 

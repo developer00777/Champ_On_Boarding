@@ -169,6 +169,12 @@ const candidateSchema = new Schema(
 		 *  replies into that thread, so its subject carries this when set; blank
 		 *  simply drops the "[Request ID :## ##] :" prefix. */
 		itRequestId: { type: String, default: null },
+		/** The joiner's desk, as facilities allocates it. HR types both — nothing
+		 *  on the record can derive a seat — and the cubicle allocation mail
+		 *  announces them (see cubicle-mail.ts). Free text: numbering differs by
+		 *  office ("62", "A-14"). */
+		cubicleNo: { type: String, default: null },
+		cubicleFloor: { type: String, default: null },
 		workLocationMode: { type: String, default: null },
 		joiningMode: { type: String, default: null },
 		ocrSuggestions: { type: Map, of: String, default: {} },
@@ -243,7 +249,9 @@ const candidateSchema = new Schema(
 		 *  was last told, driving the button's Send/Resend label. */
 		employeeCodeMailSentAt: { type: Date, default: null },
 		/** And for the welcome mail to the joiner's official mailbox. */
-		welcomeMailSentAt: { type: Date, default: null }
+		welcomeMailSentAt: { type: Date, default: null },
+		/** And for the cubicle allocation mail. */
+		cubicleMailSentAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
 );

@@ -48,6 +48,7 @@ import { lacking, levelsToday, mayToday } from '$lib/server/access';
 import type { Level } from '$lib/shared/access';
 import { getFixedLists } from '$lib/server/settings';
 import { sendEmployeeCodeMail } from '$lib/server/employee-code-mail';
+import { sendCubicleMail } from '$lib/server/cubicle-mail';
 import { generatedLetterProblem, hasUploadedLetter, sendOfferLetterMail } from '$lib/server/offer-letter/send';
 import { sendApprovalNotificationWA, sendOfferLetterNotificationWA } from '$lib/server/whatsapp';
 import { createLinkToken, ensureLiveLinkToken } from '$lib/server/tokens';
@@ -250,7 +251,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// has to say where it went, not where it would go now.
 	const lastSends = await AuditLog.find({
 		candidateId: candidate._id,
-		action: { $in: ['it_setup_mail_sent', 'employee_code_mail_sent', 'welcome_mail_sent'] }
+		action: { $in: ['it_setup_mail_sent', 'employee_code_mail_sent', 'welcome_mail_sent', 'cubicle_mail_sent'] }
 	})
 		.sort({ createdAt: -1 })
 		.limit(20)
@@ -268,7 +269,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const mailSends = {
 		it: lastSend('it_setup_mail_sent'),
 		code: lastSend('employee_code_mail_sent'),
-		welcome: lastSend('welcome_mail_sent')
+		welcome: lastSend('welcome_mail_sent'),
+		cubicle: lastSend('cubicle_mail_sent')
 	};
 
 	// Candidates created before an item type existed have no row for it, and the
@@ -373,6 +375,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			teamName: candidate.teamName ?? null,
 			itRequestId: candidate.itRequestId ?? null,
 			employeeCodeMailSentAt: candidate.employeeCodeMailSentAt?.toISOString() ?? null,
+			cubicleNo: candidate.cubicleNo ?? null,
+			cubicleFloor: candidate.cubicleFloor ?? null,
+			cubicleMailSentAt: candidate.cubicleMailSentAt?.toISOString() ?? null,
 			payrollEntity: candidate.payrollEntity ?? null,
 			workLocationMode: candidate.workLocationMode ?? null,
 			joiningMode: candidate.joiningMode ?? null,
@@ -519,6 +524,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		/** Admin-editable option lists (settings → Dropdown options). */
 		officeLocations: fixedLists.officeLocations ?? [],
 		noticePeriods: fixedLists.noticePeriods ?? [],
+		floors: fixedLists.floors ?? [],
 		isSuperAdmin: locals.admin?.role === 'super_admin',
 		/** What this login may do with the powers handed out in Access & org —
 		 *  the same checks the actions and endpoints make, read once here so the
@@ -800,6 +806,66 @@ export const actions: Actions = {
 		} catch (e) {
 			console.error(`[employee-code-mail] send failed for candidate=${params.id}:`, e);
 			return fail(502, { message: 'Could not send the employee code mail. Please try again.' });
+		}
+	},
+
+	/** The joiner's cubicle number and floor, as facilities allocated them. Both
+	 *  feed the cubicle allocation mail; blank clears. */
+	setCubicle: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		const form = await request.formData();
+		// Whitespace (newlines included) collapses: both values go into the
+		// mail's subject line, which is a single header.
+		const clean = (k: string, max: number) =>
+			String(form.get(k) ?? '').replace(/\s+/g, ' ').trim().slice(0, max) || null;
+		const patch = { cubicleNo: clean('cubicleNo', 20), cubicleFloor: clean('cubicleFloor', 60) };
+		await Candidate.findByIdAndUpdate(params.id, patch);
+		for (const [field, newValue] of Object.entries(patch)) {
+			const oldValue = (row.candidate as unknown as Record<string, string | null>)[field] ?? null;
+			if (oldValue === newValue) continue;
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'cubicle_set',
+				field,
+				oldValue,
+				newValue,
+				ip: getClientAddress()
+			});
+		}
+		return {
+			cubicleSaved: true,
+			cubicleNo: patch.cubicleNo ?? '',
+			cubicleFloor: patch.cubicleFloor ?? ''
+		};
+	},
+
+	/** The cubicle allocation mail to the IT, workforce and learning desks.
+	 *  Manual only, sent from inside the preview like the other joiner mails,
+	 *  and refused without a cubicle — it is the one thing the mail announces. */
+	sendCubicleMail: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (!row.candidate.cubicleNo)
+			return fail(409, { message: 'Save the cubicle number before announcing it.' });
+		try {
+			const { to, cc } = await sendCubicleMail(params.id);
+			await audit({
+				candidateId: params.id,
+				actor: locals.admin!.email,
+				action: 'cubicle_mail_sent',
+				newValue: `manual → ${[...to, ...cc].join(', ')}`,
+				ip: getClientAddress()
+			});
+			return { cubicleMailSent: true };
+		} catch (e) {
+			console.error(`[cubicle-mail] send failed for candidate=${params.id}:`, e);
+			return fail(502, { message: 'Could not send the cubicle mail. Please try again.' });
 		}
 	},
 
