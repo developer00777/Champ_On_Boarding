@@ -2,16 +2,32 @@
 // Track → required document slots. This is data: a new track or document is a
 // new entry here (plus an OCR schema in ocr.ts if it is an extraction target).
 
-export type Track = 'intern' | 'fresher' | 'experienced' | 'consultant' | 'contract';
-export const TRACKS: Track[] = ['intern', 'fresher', 'experienced', 'consultant', 'contract'];
+export type Track = 'intern' | 'fresher' | 'experienced' | 'consultant' | 'contract' | 'admin';
+export const TRACKS: Track[] = ['intern', 'fresher', 'experienced', 'consultant', 'contract', 'admin'];
 
 export const TRACK_LABELS: Record<Track, string> = {
 	intern: 'Intern',
 	fresher: 'Fresher',
 	experienced: 'Experienced',
 	consultant: 'Consultant',
-	contract: 'Contract'
+	contract: 'Contract',
+	admin: 'Admin'
 };
+
+/** Tracks HR files by hand (HR decision, Nov 2026). Admin staff are never sent
+ *  an onboarding link: HR fills in their details and uploads their documents
+ *  from the candidate page, then approves the record as usual. Nothing on these
+ *  records is mandatory — every document, every profile field (religion
+ *  included) and the joining-day items — so approval moves them straight to
+ *  complete. Creating one of
+ *  these sends no mail or WhatsApp and issues no link token, and every action
+ *  that would point the person at a link (regenerate, request upload or
+ *  re-upload, confirm a detail) is refused for them. */
+export const HR_FILED_TRACKS: Track[] = ['admin'];
+
+export function isHrFiledTrack(track: string | null | undefined): boolean {
+	return !!track && (HR_FILED_TRACKS as string[]).includes(track);
+}
 
 /** Tracks whose letter uses the consultant-style agreement: same structure and
  *  terms (clause 3 weekly expectation, clause 4 KRAs, clause 5 payment) and the
@@ -55,6 +71,11 @@ export const COMPENSATION_FIELD_BY_TRACK: Record<
 		label: 'Professional fees (monthly)',
 		placeholder: 'e.g. 45,000',
 		hint: 'Paid per month. Clause 5 states this as "Total sum of <amount>/- per month".'
+	},
+	admin: {
+		label: 'CTC (annual)',
+		placeholder: 'e.g. 2,40,000',
+		hint: 'Total cost to company per year. Clause 1 states this as an annual figure.'
 	}
 };
 
@@ -75,7 +96,7 @@ export interface DocSlot {
 	group?: string;
 }
 
-const ALL: Track[] = ['intern', 'fresher', 'experienced', 'consultant', 'contract'];
+const ALL: Track[] = ['intern', 'fresher', 'experienced', 'consultant', 'contract', 'admin'];
 // "Same document/OCR requirements as Experienced" — Consultant Basis and
 // Contract Basis reuse every Experienced-only slot (relieving letters, bank
 // statements, payslips, etc.), and also self-enter their own UAN the same
@@ -165,6 +186,8 @@ export const TRACK_DOC_OVERRIDES: Partial<Record<Track, Record<string, { mandato
 	// Growth Mindset tests, so their screenshots are optional on the consultant
 	// track at every entity. Every other track still requires them.
 	consultant: { test_results: { mandatory: false } }
+	// Admin (and any other HR-filed track) is handled in slotsForTrack: every
+	// slot is optional there, whatever the entity, so it is not listed here.
 };
 
 /** The slots for a track, with any track- and entity-level exception applied.
@@ -175,8 +198,14 @@ export const TRACK_DOC_OVERRIDES: Partial<Record<Track, Record<string, { mandato
 export function slotsForTrack(track: Track, brandSlug?: string | null): DocSlot[] {
 	const trackOverrides = TRACK_DOC_OVERRIDES[track];
 	const entityOverrides = brandSlug ? ENTITY_DOC_OVERRIDES[brandSlug] : undefined;
+	// HR decision (Nov 2026): nothing blocks an HR-filed (Admin) record. HR
+	// collects what it can by hand, so every slot is optional — this beats the
+	// entity overrides too (e.g. the degree certificate at Cirrologix).
+	const allOptional = isHrFiledTrack(track);
 	return DOC_SLOTS.filter((s) => s.tracks.includes(track)).map((slot) => {
-		const o = entityOverrides?.[slot.type] ?? trackOverrides?.[slot.type];
+		const o = allOptional
+			? { mandatory: false }
+			: (entityOverrides?.[slot.type] ?? trackOverrides?.[slot.type]);
 		if (!o) return slot;
 		// The label carries "(optional)" for every other optional slot; keep that
 		// in sync with the effective mandatory flag in both directions, or the

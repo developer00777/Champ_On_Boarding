@@ -363,7 +363,7 @@ function leadingFor(size: number): number {
  *  (3 pages: terms → acceptance → joining documents). `contract` shares the same
  *  template text but was not part of that reference, so it keeps the original
  *  free-flowing layout and its existing page count. */
-const APPOINTMENT_PINNED_TRACKS: ReadonlySet<Track> = new Set<Track>(['fresher', 'experienced']);
+const APPOINTMENT_PINNED_TRACKS: ReadonlySet<Track> = new Set<Track>(['fresher', 'experienced', 'admin']);
 
 /** Body/rhythm for the pinned appointment letters. Same reasoning as the intern
  *  letter: the reference is ~11pt on US Letter, so at BODY_SIZE on A4 the text

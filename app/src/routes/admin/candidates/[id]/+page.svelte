@@ -679,7 +679,7 @@
 	 *  compensation annexure — consultants/contract are paid a flat fee via
 	 *  clause 5, interns a flat stipend via clause 1. Matches
 	 *  APPOINTMENT_PINNED_TRACKS in pdf.ts. */
-	const showAnnexure = $derived(c.track === 'fresher' || c.track === 'experienced');
+	const showAnnexure = $derived(c.track === 'fresher' || c.track === 'experienced' || c.track === 'admin');
 
 	// The annexure's PM inputs are bound to local state (not just `value=`) so the
 	// P.A./total columns can recompute live as HR types, mirroring exactly what
@@ -1748,7 +1748,7 @@
 		     requireApprover, not super-admin-only, and always have been. A banner
 		     that undersells the role is the same problem as one that oversells it. -->
 		{data.isApprover
-			? 'HR access — you can approve candidates, manage the offer letter, assign and announce the employee code, and allocate and announce the cubicle. Other edits are given per person by a super admin, in Access & org.'
+			? `HR access — you can approve candidates, manage the offer letter, assign and announce the employee code, and allocate and announce the cubicle.${data.hrFiled ? ' On this Admin-track record you also fill in their details and upload their documents.' : ''} Other edits are given per person by a super admin, in Access & org.`
 			: 'View-only — editing candidate records needs HR access, or a power a super admin gives you in Access & org.'}
 		Running the OCR cross-check is open to everyone.
 	</div>
@@ -1857,7 +1857,7 @@
 			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 			Download report
 		</a>
-		{#if !['approved', 'complete', 'revoked'].includes(c.status)}
+		{#if !data.hrFiled && !['approved', 'complete', 'revoked'].includes(c.status)}
 			<form method="POST" action="?/revoke" use:enhance onsubmit={(e) => {
 				if (!confirm('Revoke this onboarding link?')) e.preventDefault();
 			}}>
@@ -1878,7 +1878,15 @@
 
 {#if form?.message}<p class="error">{form.message}</p>{/if}
 
-{#if data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
+{#if data.hrFiled}
+	<div class="linkbox hr-filed">
+		<div style="font-size:13px;color:var(--ae-text);font-weight:600;margin-bottom:4px">Admin track — filed by HR</div>
+		<div style="font-size:12.5px;color:var(--ae-text-2)">
+			No onboarding link is sent for this record. Fill in their details on the <strong>Details</strong> tab and upload
+			each document under <strong>Documents</strong>, then approve.
+		</div>
+	</div>
+{:else if data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
 	<div class="linkbox">
 		{#if data.onboardingLink}
 			{@const link = data.onboardingLink}
@@ -1921,22 +1929,24 @@
 	</div>
 {/if}
 
-{#if c.status === 'submitted'}
+{#if c.status === 'submitted' || (data.hrFiled && !['approved', 'complete', 'revoked'].includes(c.status))}
 	<div class="approval-widget">
 		<div class="approval-icon">
 			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
 		</div>
 		<div style="flex:1">
-			<div style="font-weight:800;font-size:15px;color:var(--ae-text)">Ready for review</div>
+			<div style="font-weight:800;font-size:15px;color:var(--ae-text)">{data.hrFiled ? 'Filed by HR' : 'Ready for review'}</div>
 			<div style="font-size:12.5px;color:var(--ae-muted);margin-top:2px">
-				{c.fullName || c.email} has submitted all documentation. Review below and approve or request changes.
+				{data.hrFiled
+					? `Approve once you have filled in ${c.fullName || c.email}'s details and uploaded their documents. Nothing is sent to them.`
+					: `${c.fullName || c.email} has submitted all documentation. Review below and approve or request changes.`}
 			</div>
 		</div>
 		<form method="POST" action="?/approve" use:enhance>
 			<fieldset class="rbac" disabled={!data.isApprover}>
 				<button class="btn teal" style="font-size:14px;padding:11px 22px">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-					Approve &amp; notify
+					{data.hrFiled ? 'Approve' : 'Approve & notify'}
 				</button>
 			</fieldset>
 		</form>
@@ -2204,7 +2214,7 @@
 								Upload
 							</button>
 						{/if}
-						{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status)}
+						{#if data.isApprover && !data.hrFiled && !['approved', 'complete', 'revoked'].includes(c.status)}
 							<button type="button" class="btn ghost small" onclick={() => (uploadRequestFor = uploadRequestFor === slot.type ? null : slot.type)}>
 								{slot.uploadRequested ? 'Ask again' : 'Request upload'}
 							</button>
@@ -2265,7 +2275,7 @@
 									Replace
 								</button>
 							{/if}
-							{#if data.isApprover && !['approved', 'complete', 'revoked'].includes(c.status)}
+							{#if data.isApprover && !data.hrFiled && !['approved', 'complete', 'revoked'].includes(c.status)}
 								<button type="button" class="btn ghost small" onclick={() => (reuploadFor = reuploadFor === doc.id ? null : doc.id)}>
 									{doc.reviewStatus === 'reupload_requested' ? 'Ask again' : 'Ask re-upload'}
 								</button>
@@ -2484,7 +2494,7 @@
 								name="religion"
 								ariaLabel="Religion"
 								placeholder="— select —"
-								required
+								required={!data.hrFiled}
 								value={c.religion ?? ''}
 								options={[
 									...RELIGIONS.map((r) => ({ value: r, label: r })),
@@ -3536,6 +3546,7 @@
 									})} — waiting for their reply{item.requestNote ? ` · "${item.requestNote}"` : ''}
 								</p>
 							{/if}
+							{#if !data.hrFiled}
 							<form method="POST" action="?/requestConfirmation" use:enhance class="cd-form">
 								<fieldset class="rbac" disabled={!data.isApprover}>
 									<input type="hidden" name="field" value={item.confirms} />
@@ -3545,6 +3556,7 @@
 									</button>
 								</fieldset>
 							</form>
+							{/if}
 						</div>
 					{/if}
 				{/each}

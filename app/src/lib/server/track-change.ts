@@ -26,6 +26,7 @@ import {
 	TRACK_LABELS,
 	TRACKS,
 	isBgvEligible,
+	isHrFiledTrack,
 	type Track
 } from '$lib/shared/matrix';
 import { TRACK_MODE } from '$lib/shared/shifts';
@@ -72,7 +73,7 @@ const TEMPLATE_ONLY_FIELDS: { key: string; label: string; in: Template[] }[] = [
 /** Whether the single pay figure is a monthly or an annual amount on a track's
  *  letter — the same stored number reads differently (see
  *  COMPENSATION_FIELD_BY_TRACK). */
-const payPeriod = (t: Track) => (t === 'fresher' || t === 'experienced' ? 'annual' : 'monthly');
+const payPeriod = (t: Track) => (t === 'fresher' || t === 'experienced' || t === 'admin' ? 'annual' : 'monthly');
 
 export async function trackImpact(candidate: Lean, company: Lean | null, to: Track): Promise<TrackNote[]> {
 	const notes: TrackNote[] = [];
@@ -93,6 +94,12 @@ export async function trackImpact(candidate: Lean, company: Lean | null, to: Tra
 		tone: 'info',
 		text: `Same record, same onboarding link and the same uploaded files. The documents list, the candidate's form, the offer letter and every list or report now treat them as ${toLabel}.`
 	});
+
+	// ── HR filing (Admin track) ──────────────────────────────────────────────
+	if (!isHrFiledTrack(from) && isHrFiledTrack(to))
+		notes.push({ tone: 'loss', text: `${toLabel} records are filed by HR: their onboarding link stops working, and you fill in their details and upload their documents on this page from now on.` });
+	if (isHrFiledTrack(from) && !isHrFiledTrack(to))
+		notes.push({ tone: 'todo', text: `${fromLabel} records have no onboarding link. Use "Generate link" on this page to send them one for the ${toLabel} track.` });
 
 	// ── Documents ────────────────────────────────────────────────────────────
 	// Uploads in a slot the new track does not have drop out of the checklist.
@@ -119,7 +126,9 @@ export async function trackImpact(candidate: Lean, company: Lean | null, to: Tra
 	}
 	if (newlyMissing.length) {
 		// Where the candidate can upload it from depends on how far they got.
-		if (candidate.status === 'submitted')
+		if (isHrFiledTrack(to) && !['approved', 'complete'].includes(candidate.status))
+			notes.push({ tone: 'todo', text: 'Upload them under Documents on this page — there is no link for the candidate to use.' });
+		else if (candidate.status === 'submitted')
 			notes.push({ tone: 'todo', text: `They have already submitted, so their link is closed to uploads. Use "Request upload" on ${newlyMissing.length > 1 ? 'each missing document' : 'it'} in the documents list — that reopens the link.` });
 		else if (['approved', 'complete'].includes(candidate.status))
 			notes.push({ tone: 'todo', text: `This record is already approved. The approval stands, but ${newlyMissing.length > 1 ? 'these documents are' : 'this document is'} outstanding for the ${toLabel} track — collect ${newlyMissing.length > 1 ? 'them' : 'it'} by hand.` });

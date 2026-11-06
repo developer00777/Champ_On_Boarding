@@ -22,7 +22,8 @@ export const TRACK_MODE: Record<string, string> = {
 	fresher: 'Full-time',
 	experienced: 'Full-time',
 	consultant: 'Consultant',
-	contract: 'Contract'
+	contract: 'Contract',
+	admin: 'Full-time'
 };
 
 /** The only Mode values HR can pick. Deliberately short: IT asked for the four

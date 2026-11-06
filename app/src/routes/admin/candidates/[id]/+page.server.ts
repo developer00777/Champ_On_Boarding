@@ -33,6 +33,7 @@ import {
 	confirmableItemByField,
 	slotByType,
 	isBgvEligible,
+	isHrFiledTrack,
 	type Track
 } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
@@ -93,6 +94,24 @@ function requireApprover(locals: App.Locals) {
 	if (locals.admin?.role !== 'super_admin' && locals.admin?.role !== 'hr_admin')
 		return fail(403, { message: 'Only HR or a super admin can do this.' });
 	return null;
+}
+
+/** Admin-track records are filed by HR by hand — there is no link for the
+ *  person to fill anything in from. So for these records, filling in their
+ *  details and uploading their documents is HR's core job like approving is,
+ *  open to every approver without the per-person Access & org grant. */
+function isHrFilingApprover(locals: App.Locals, track: string | null | undefined) {
+	return isHrFiledTrack(track) && requireApprover(locals) === null;
+}
+
+/** Refuses the actions that would send the person to their onboarding link. */
+function refuseForHrFiled(track: string | null | undefined) {
+	return isHrFiledTrack(track)
+		? fail(409, {
+				message:
+					'Admin-track records have no onboarding link — HR fills in the details and uploads the documents on this page.'
+			})
+		: null;
 }
 
 /** Signed in, whatever the role. Only the OCR cross-check uses this: see the
@@ -157,7 +176,10 @@ function profileFormToUpdate(form: FormData): Record<string, string> {
  *  unrelated field the candidate never filled in — so this checks format only
  *  where a value is present, not the full master-sheet completeness gate
  *  candidates face at submission. */
-function validateProfileEdit(fields: Record<string, string>, original?: { religion?: string | null }): string[] {
+function validateProfileEdit(
+	fields: Record<string, string>,
+	original?: { religion?: string | null; track?: string | null }
+): string[] {
 	const errors: string[] = [];
 	if (fields.panNo && !isValidPan(fields.panNo)) errors.push('PAN must match AAAAA9999A');
 	if (fields.ifsc && !isValidIfsc(fields.ifsc)) errors.push('IFSC must match AAAA0XXXXXX');
@@ -188,7 +210,12 @@ function validateProfileEdit(fields: Record<string, string>, original?: { religi
 	// in the editor now requires a religion before it will save. That is the
 	// intended way those blanks get backfilled — the dropdown is right there — but
 	// it does mean an unrelated edit to an old record has to fill this in first.
-	if (!fields.religion?.trim()) errors.push('Religion is required');
+	//
+	// Admin-track records are the exception: nothing is mandatory on them (HR
+	// decision, Nov 2026), so a blank religion saves there.
+	if (!fields.religion?.trim()) {
+		if (!isHrFiledTrack(original?.track)) errors.push('Religion is required');
+	}
 	// Same closed-list check as marital status. A legacy value already on the row
 	// (e.g. the retired "Prefer not to say") is left alone — the editor re-offers
 	// it as an option, so round-tripping an unrelated edit must not fail here.
@@ -305,6 +332,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			: null;
 
 	return {
+		/** Admin track: HR files this record by hand; no onboarding link. */
+		hrFiled: isHrFiledTrack(candidate.track),
 		candidate: {
 			id: String(candidate._id),
 			email: candidate.email,
@@ -533,8 +562,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			if (!locals.admin) return { edit: false, link: false, uan: false, delete: false, upload: false, manual: false, markSent: false, entity: false, track: false, docUpload: false };
 			const lv = await levelsToday(locals.admin, ['candidate.edit', 'candidate.link', 'empid.uan', 'candidate.delete', 'offer.upload', 'offer.manual', 'offer.markSent', 'candidate.entity', 'candidate.track', 'docs.upload'] as const);
 			const at = (l: Level, min: Level) => ['none', 'view', 'act', 'approve'].indexOf(l) >= ['none', 'view', 'act', 'approve'].indexOf(min);
+			const hrFiling = isHrFilingApprover(locals, candidate.track);
 			return {
-				edit: at(lv['candidate.edit'], 'act'),
+				edit: hrFiling || at(lv['candidate.edit'], 'act'),
 				link: at(lv['candidate.link'], 'act'),
 				uan: at(lv['empid.uan'], 'act'),
 				delete: at(lv['candidate.delete'], 'approve'),
@@ -543,7 +573,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				markSent: at(lv['offer.markSent'], 'act'),
 				entity: at(lv['candidate.entity'], 'act'),
 				track: at(lv['candidate.track'], 'act'),
-				docUpload: at(lv['docs.upload'], 'act')
+				docUpload: hrFiling || at(lv['docs.upload'], 'act')
 			};
 		})(),
 		isApprover: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin'
@@ -588,8 +618,10 @@ export const actions: Actions = {
 		const allPhysical =
 			physical.filter((p) => p.received).length === PHYSICAL_ITEM_TYPES.length;
 
+		// Admin track: the joining-day items are optional too, so approving one
+		// closes the record outright.
 		await Candidate.findByIdAndUpdate(candidate._id, {
-			status: allPhysical ? 'complete' : 'approved',
+			status: allPhysical || isHrFiledTrack(candidate.track) ? 'complete' : 'approved',
 			reviewedAt: new Date(),
 			reviewedBy: locals.admin!.id
 		});
@@ -603,6 +635,11 @@ export const actions: Actions = {
 		// so rather than implying the file is closed — otherwise a candidate reads
 		// "approved" and stops uploading. The pending list is the same one the
 		// checklist shows HR.
+		// Admin track: the person never had a link and submitted nothing, so the
+		// candidate-facing approval mail and WhatsApp (which point them at their
+		// link for anything outstanding) are not sent. The employee-code alert to
+		// the onboarding desk below still goes out.
+		const hrFiled = isHrFiledTrack(candidate.track);
 		const pendingNote = stillMissing.length
 			? `\nStill pending from your side — please open your onboarding link and upload:\n` +
 				stillMissing
@@ -614,7 +651,7 @@ export const actions: Actions = {
 					.join('\n') +
 				`\n`
 			: '';
-		await sendBrandedMail(
+		if (!hrFiled) await sendBrandedMail(
 			candidate.email,
 			'Your onboarding is approved',
 			`Hello,\n\nYour onboarding submission has been reviewed and approved by HR.\n` +
@@ -628,7 +665,7 @@ export const actions: Actions = {
 
 		// WhatsApp approval notification (best-effort — a WhatsApp failure must
 		// never block approval, which has already been committed to the DB above).
-		if (candidate.mobile) {
+		if (candidate.mobile && !hrFiled) {
 			await sendApprovalNotificationWA({
 				mobile: candidate.mobile,
 				candidateName: candidate.fullName || '',
@@ -981,6 +1018,8 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
+		const noLink = refuseForHrFiled(row.candidate.track);
+		if (noLink) return noLink;
 		const form = await request.formData();
 		const docId = String(form.get('docId') ?? '');
 		const note = String(form.get('note') ?? '').trim();
@@ -1062,6 +1101,8 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
+		const noLink = refuseForHrFiled(row.candidate.track);
+		if (noLink) return noLink;
 		const form = await request.formData();
 		const docType = String(form.get('docType') ?? '');
 		const note = String(form.get('note') ?? '').trim();
@@ -1144,6 +1185,8 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
+		const noLink = refuseForHrFiled(row.candidate.track);
+		if (noLink) return noLink;
 		const form = await request.formData();
 		const field = String(form.get('field') ?? '');
 		const note = String(form.get('note') ?? '').trim();
@@ -1251,7 +1294,10 @@ ${brandSignoff(brand)}`,
 		// that predates an item type would otherwise reach `complete` by having no
 		// row for it at all.
 		const physical = await PhysicalItem.find({ candidateId: params.id }).lean();
+		// Admin track: the items are optional, so ticking or unticking one never
+		// moves the record between approved and complete.
 		const allReceived =
+			isHrFiledTrack(row.candidate.track) ||
 			physical.filter((p) => p.received).length === PHYSICAL_ITEM_TYPES.length;
 		if (row.candidate.status === 'approved' && allReceived) {
 			await Candidate.findByIdAndUpdate(params.id, { status: 'complete' });
@@ -1301,6 +1347,8 @@ ${brandSignoff(brand)}`,
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
+		const noLink = refuseForHrFiled(row.candidate.track);
+		if (noLink) return noLink;
 		if (['revoked', 'complete'].includes(row.candidate.status))
 			return fail(409, { message: `Cannot regenerate a link for a ${row.candidate.status} candidate.` });
 
@@ -1415,7 +1463,7 @@ ${brandSignoff(brand)}`,
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
-		if (['intern', 'fresher'].includes(row.candidate.track) === false)
+		if (['intern', 'fresher', 'admin'].includes(row.candidate.track) === false)
 			return fail(400, { message: 'UAN is set by the candidate for experienced track.' });
 		const form = await request.formData();
 		const uanNo = String(form.get('uanNo') ?? '').trim() || null;
@@ -1611,10 +1659,12 @@ ${brandSignoff(brand)}`,
 	// they've submitted (or been approved), this is the only way to fix a typo
 	// without asking them to redo the whole form.
 	editProfile: async ({ params, request, locals, getClientAddress }) => {
-		const forbidden = await requireCap(locals, 'candidate.edit');
-		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
+		if (!isHrFilingApprover(locals, row.candidate.track)) {
+			const forbidden = await requireCap(locals, 'candidate.edit');
+			if (forbidden) return forbidden;
+		}
 
 		const form = await request.formData();
 		const fields = profileFormToUpdate(form);

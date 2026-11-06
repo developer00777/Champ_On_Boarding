@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { TRACK_LABELS, type Track } from '$lib/shared/matrix';
+	import { TRACK_LABELS, isHrFiledTrack, type Track } from '$lib/shared/matrix';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
@@ -14,6 +14,8 @@
 	let inviteTrack = $state<string>(data.tracks[0] ?? '');
 	// svelte-ignore state_referenced_locally
 	let inviteCompany = $state<string>(data.companies[0]?.id ?? '');
+	/** Admin track: no link goes out — HR files the record by hand. */
+	const hrFiled = $derived(isHrFiledTrack(inviteTrack));
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
 		created: { label: 'Link sent', cls: '' },
@@ -355,10 +357,24 @@
 							options={data.companies.map((c: { id: string; name: string }) => ({ value: c.id, label: c.name }))}
 						/>
 					</div>
-					<button class="btn">Generate &amp; email {@render glyph('arrow')}</button>
+					<button class="btn">{hrFiled ? 'Create record' : 'Generate & email'} {@render glyph('arrow')}</button>
 				</div>
+				{#if hrFiled}
+					<p class="hr-filed-note">
+						Admin track — no onboarding link, email or WhatsApp is sent. You fill in their details and
+						upload their documents on the candidate page, then approve as usual.
+					</p>
+				{/if}
 			</form>
 			{#if form?.message}<p class="error">{form.message}</p>{/if}
+			{#if form?.hrFiled}
+				<div class="linkbox">
+					<div style="font-size:12.5px;color:var(--ae-text-2);margin-bottom:9px">
+						Record created for <strong style="color:var(--ae-text);font-weight:500">{form.email}</strong> — nothing was sent to them.
+					</div>
+					<a class="teal-pill-btn" href="/admin/candidates/{form.candidateId}">Open record to fill in details</a>
+				</div>
+			{/if}
 			{#if form?.link}
 				<div class="linkbox">
 					<div style="font-size:12.5px;color:var(--ae-text-2);margin-bottom:9px">
@@ -546,6 +562,11 @@
 		margin: 0;
 		font-size: 13px;
 		color: var(--ae-muted-2);
+	}
+	.hr-filed-note {
+		margin: 10px 0 0;
+		font-size: 12.5px;
+		color: var(--ae-text-2);
 	}
 	.panel-link {
 		display: inline-flex;

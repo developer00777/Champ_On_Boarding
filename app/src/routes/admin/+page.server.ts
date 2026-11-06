@@ -5,7 +5,7 @@ import { Candidate, Company, PhysicalItem, OfferLetter } from '$lib/server/db/sc
 import { createLinkToken } from '$lib/server/tokens';
 import { audit } from '$lib/server/audit';
 import { sendBrandedMail, brandSignoff } from '$lib/server/mailer';
-import { TRACKS, TRACK_LABELS, PHYSICAL_ITEM_TYPES, type Track } from '$lib/shared/matrix';
+import { TRACKS, TRACK_LABELS, PHYSICAL_ITEM_TYPES, isHrFiledTrack, type Track } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
 import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
 import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
@@ -204,18 +204,36 @@ export const actions: Actions = {
 			});
 		}
 
+		const hrFiled = isHrFiledTrack(track);
 		const candidate = await Candidate.create({
 			email,
 			track,
 			companyId,
 			fullName: candidateName || null,
 			mobile: candidateMobile || null,
+			// An HR-filed record has no link to open, so it starts where HR
+			// filling it in leaves it: in progress, not 'link sent'.
+			...(hrFiled ? { status: 'in_progress' } : {}),
 			createdBy: locals.admin!.id
 		});
 
 		await PhysicalItem.insertMany(
 			PHYSICAL_ITEM_TYPES.map((p) => ({ candidateId: candidate._id, itemType: p.type }))
 		);
+
+		// Admin track: HR fills in the details and uploads the documents by hand,
+		// so no link token is issued and nothing goes to the person — no email,
+		// no WhatsApp. HR is sent straight to the record to start filing.
+		if (hrFiled) {
+			await audit({
+				candidateId: String(candidate._id),
+				actor: locals.admin!.email,
+				action: 'record_created_for_hr_filing',
+				field: track,
+				ip: getClientAddress()
+			});
+			return { hrFiled: true as const, candidateId: String(candidate._id), email };
+		}
 
 		const token = await createLinkToken(String(candidate._id));
 		const base = baseUrl();

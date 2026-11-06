@@ -38,7 +38,8 @@ export const LETTER_TYPE_BY_TRACK: Record<Track, string> = {
 	fresher: 'Offer Letter',
 	experienced: 'Offer Letter',
 	consultant: 'Consultant Letter',
-	contract: 'Contract Letter'
+	contract: 'Contract Letter',
+	admin: 'Offer Letter'
 };
 
 /** Compensation field label per track — same underlying `ctcAmount` DB field.

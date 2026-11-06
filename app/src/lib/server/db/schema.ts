@@ -82,7 +82,7 @@ export const Admin = models.Admin ?? model('Admin', adminSchema);
 const candidateSchema = new Schema(
 	{
 		companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
-		track: { type: String, enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract'], required: true },
+		track: { type: String, enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract', 'admin'], required: true },
 		fullName: { type: String, index: true },
 		dob: String,
 		gender: String,
@@ -765,7 +765,7 @@ const exitSchema = new Schema(
 		 *  onboarding record; null for exits recorded before the field existed. */
 		track: {
 			type: String,
-			enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract', null],
+			enum: ['intern', 'fresher', 'experienced', 'consultant', 'contract', 'admin', null],
 			default: null
 		},
 

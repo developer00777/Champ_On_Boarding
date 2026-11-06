@@ -17,18 +17,24 @@ import { audit } from '$lib/server/audit';
 import { lacking } from '$lib/server/access';
 import { matchesMagicBytes } from '$lib/server/uploads';
 import { storeCandidateDocument } from '$lib/server/candidate-documents';
-import { slotByType, ACCEPTED_MIMES, MAX_FILE_BYTES } from '$lib/shared/matrix';
+import { slotByType, isHrFiledTrack, ACCEPTED_MIMES, MAX_FILE_BYTES } from '$lib/shared/matrix';
 
 export const config = { runtime: 'nodejs24.x' };
 
 export const POST: RequestHandler = async ({ params, request, locals, getClientAddress }) => {
 	if (!locals.admin) error(401, 'Not authenticated');
-	// Handed out per person in Access & org (docs.upload), not by role.
-	const refused = await lacking(locals.admin, 'docs.upload', 'act');
-	if (refused) error(403, refused);
 
 	const candidate = await Candidate.findById(params.id).lean();
 	if (!candidate) error(404, 'Candidate not found');
+	// Handed out per person in Access & org (docs.upload), not by role — except
+	// on Admin-track records, which HR files by hand (no onboarding link), so
+	// every approver uploads for them.
+	const hrFiling =
+		isHrFiledTrack(candidate.track) && ['super_admin', 'hr_admin'].includes(locals.admin.role);
+	if (!hrFiling) {
+		const refused = await lacking(locals.admin, 'docs.upload', 'act');
+		if (refused) error(403, refused);
+	}
 	// Same window as the Request upload / Re-upload buttons beside it.
 	if (['approved', 'complete', 'revoked'].includes(candidate.status))
 		error(409, 'This record is closed — documents can no longer be changed');
