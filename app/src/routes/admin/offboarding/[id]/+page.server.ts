@@ -1,24 +1,24 @@
 // The exit workspace: one page carrying an exit from resignation to closure.
 //
-// Ordered by the SOP's steps, and each action is one step of it:
-//   saveParticulars   step 2   confirm LWD + the employment details the forms print
-//   sendFormsLink     step 5   email the employee their exit-documents link
-//   requestChanges    step 5   send them back to specific fields
-//   acceptSubmission  step 7   accept the submission, which starts the exit chain
-//   startChain        step 7   start the chain on an exit accepted before it existed
-//   resendStep        step 7   send one step's mail after HR reviewed it (or a reminder)
-//   sendBackStep      step 7   reopen a signed clearance: ask for what is missing
+// The page runs in the workflow's order (see FLOW_STEPS), and every step is
+// independent — no action here waits on another having happened first:
+//   saveParticulars   record   confirm LWD + the employment details the forms print
+//   sendItBlockMail   1        the "block system access" mail to IT
+//   sendFormsLink     2        email the employee their exit-documents link
+//   requestChanges    2        send them back to specific fields
+//   acceptSubmission  2        accept the submission (closes the forms to edits)
+//   resendStep        3–6      send one clearance mail after HR reviewed it (or a reminder)
+//   sendBackStep      3–6      reopen a signed clearance: ask for what is missing
+//   saveFnf           7        HR's F&F, leave and loans — and handing them to payroll
+//   saveRelease       8        which letters go to the employee, and the cadence
+//   sendHandover      8        release now: the letters and the handover link
 //   requestUploads    any      ask the employee for a document again, at any stage
 //   saveRouting       —        who each step mails, for this exit (and the default)
-//   sendItBlockMail   step 5   the "block system access" mail to IT
-//   saveFnf           step 8   HR's F&F, leave and loans — and handing them to payroll
-//   saveRelease       step 9   which letters go to the employee, and the cadence
-//   saveClosure       step 10  the exit-completion checklist
-//   sendHandover      step 9   release now: the letters and the handover link
+//   saveClosure       —        the exit-completion checklist
 //
-// The order the mails go out in lives in offboarding/flow.ts, not here: each
-// step's mail is readied when the one before it finishes, and goes once HR has
-// reviewed it (mail-preview/[step]) and pressed Send.
+// Each mail goes once HR has reviewed it (mail-preview/[step]) and pressed
+// Send. What follows from a send or a signature — the exit's status, the
+// scheduled release — is offboarding/flow.ts's syncFlow().
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { Admin, Exit, ExitClearance, ExitDocument, ExitToken } from '$lib/server/db/schema';
@@ -66,7 +66,6 @@ import {
 } from '$lib/server/offboarding/exit';
 import { EXIT_DOC_BY_KEY, availableDocs } from '$lib/server/offboarding/documents';
 import {
-	advanceFlow,
 	flowSteps,
 	getRoutingDefaults,
 	mailStep,
@@ -75,7 +74,8 @@ import {
 	saveRoutingDefaults,
 	scheduleRelease,
 	sendBackStep,
-	startFlow
+	startFlow,
+	syncFlow
 } from '$lib/server/offboarding/flow';
 import {
 	buildItExitMail,
@@ -293,9 +293,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			link: exitTokenUrl(clearanceTokens[i])
 		})),
 		clearanceProgress: clearanceProgress(clearances.map((c) => ({ status: String(c.status) }))),
-		/** The exit chain, step by step — what the map on the left draws. Each
-		 *  step carries its clearance link (when it has one) so HR can copy it
-		 *  out of band when someone says the mail never arrived. */
+		/** The workflow, step by step — what the map on the left and the
+		 *  clearance cards draw. Each step carries its clearance link (when it
+		 *  has one) so HR can copy it out of band when someone says the mail
+		 *  never arrived. */
 		steps: flowSteps(e, clearances as unknown as Record<string, unknown>[]).map((s) => {
 			const i = clearances.findIndex((c) => String(c._id) === s.clearanceId);
 			const c = i >= 0 ? (clearances[i] as unknown as Record<string, any>) : null;
@@ -657,8 +658,8 @@ export const actions: Actions = {
 					? 'This exit is closed. Reopen it before asking the employee for changes.'
 					: exit.status === 'initiated'
 						? 'Send the employee their exit forms link first — there is nothing to send back yet.'
-						: `Clearances are already under way (status "${exit.status}") — sending the forms back now ` +
-								'would invalidate signatures already collected.',
+						: 'You have already accepted this submission, so the forms are closed. Use "Ask for documents" ' +
+								'if you need a file from them again.',
 				'changes'
 			);
 
@@ -728,18 +729,9 @@ export const actions: Actions = {
 		return { changesRequested: asked.length };
 	},
 
-	/** SOP step 7 — HR accepts the employee's submission, which is what opens the
-	 *  clearance round. Deliberately separate from sending the clearance emails:
-	 *  accepting is a judgement, sending is a mechanical follow-up, and HR may
-	 *  want to fix an approver address in between. */
-	/** The No Dues certificate, filled internally.
-	 *
-	 *  This used to be the employee's first exit form. It is now HR's: the
-	 *  certificate records what the company holds and what each department
-	 *  signs off, none of which the employee is in a position to state. The
-	 *  header (name, employee number, team, reporting to, dates, contact, bank
-	 *  name) comes from the particulars above; this action captures the
-	 *  handover notes and the per-row position the approvers cross-check. */
+	/** HR accepts the employee's submission, which closes their forms to further
+	 *  edits. It gates nothing else: the clearance mails go whenever HR sends
+	 *  them, before or after this. */
 	acceptSubmission: async ({ params, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
@@ -765,36 +757,15 @@ export const actions: Actions = {
 			action: 'exit_submission_accepted',
 			ip: getClientAddress()
 		});
-		// Accepting is what starts the chain: the reporting manager's mail is
-		// readied for HR to review and send, and each step after it likewise as
-		// the one before it signs.
+		// Puts the exit on the workflow (if no mail has already) and sets its
+		// status from where the clearances stand — some may be signed already.
 		await startFlow(params.id);
 		return { accepted: true };
 	},
 
-	/** Starts the exit chain for an exit accepted before the chain existed, or
-	 *  nudges it on after something was fixed. Safe to press twice. */
-	startChain: async ({ params, locals, getClientAddress }) => {
-		const forbidden = requireHr(locals);
-		if (forbidden) return forbidden;
-		const row = await getExit(params.id);
-		if (!row) return no(404, 'Offboarding record not found.');
-		if (!row.exit.reviewedAt)
-			return no(409, "Accept the employee's submission first — that is what starts the chain.");
-		if (row.exit.status === 'completed') return no(409, 'This exit is closed.');
-		await startFlow(params.id);
-		await audit({
-			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
-			actor: locals.admin!.email,
-			action: 'exit_chain_started',
-			ip: getClientAddress()
-		});
-		return { chainStarted: true };
-	},
-
 	/** Sends one clearance step's mail once HR has reviewed it — the first
-	 *  send, or a reminder to someone who has not signed. Only the step the
-	 *  chain is on can be sent, so nobody is asked out of order. */
+	 *  send, or a reminder to someone who has not signed. Any step, at any
+	 *  time: none waits on another. */
 	resendStep: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
@@ -807,19 +778,20 @@ export const actions: Actions = {
 		const state = flowSteps(row.exit as unknown as Record<string, unknown>, clearances as unknown as Record<string, unknown>[]).find(
 			(s) => s.key === key
 		);
-		if (state?.status !== 'active')
+		if (row.exit.status === 'completed') return no(409, 'This exit is closed — reopen it first.');
+		if (!state || state.status === 'done' || state.status === 'skipped' || state.status === 'blocked')
 			return no(
 				409,
 				state?.status === 'done'
 					? `The ${def.label} has already signed.`
-					: state?.status === 'blocked'
-						? `Add the ${def.label} email in Mail settings first.`
-						: `It is not the ${def.label}'s turn yet — the steps before it are still open.`
+					: state?.status === 'skipped'
+						? `The ${def.label} is not part of this exit — switch it on in Mail settings.`
+						: `Add the ${def.label} email in Mail settings first.`
 			);
 		const current = clearances.find((c) => c.department === def.dept);
 		const res = await mailStep(params.id, key, { reminder: current?.status === 'sent' });
 		if ('error' in res) return no(400, res.error);
-		await advanceFlow(params.id);
+		await syncFlow(params.id);
 		await audit({
 			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
 			actor: locals.admin!.email,
@@ -1047,8 +1019,8 @@ export const actions: Actions = {
 			].join(', '),
 			ip: getClientAddress()
 		});
-		// A blank address may have been holding the chain; this is what lets it on.
-		await advanceFlow(params.id);
+		// Salesforce switched on or off changes what the release waits for.
+		await syncFlow(params.id);
 		return { routingSaved: true, routingDefaulted: asDefault, itDefaultSkipped };
 	},
 
@@ -1087,10 +1059,11 @@ export const actions: Actions = {
 		return { itMailSent: true };
 	},
 
-	/** HR's step in the chain: the F&F, leave and loan figures, plus the PF and
-	 *  tax follow-ups. "Save & hand to payroll" also closes HR's step, which
-	 *  readies payroll's mail — the prefilled settlement with every document
-	 *  attached — for HR to review and send.
+	/** HR's step: the F&F, leave and loan figures, plus the PF and tax
+	 *  follow-ups — filled whenever HR has them. "Save & hand to payroll" also
+	 *  marks HR's step done, so payroll's page shows the figures as prefilled;
+	 *  the page then opens payroll's mail for HR to review and send, if it has
+	 *  not gone already. Payroll's mail does not wait on this.
 	 *  Once payroll has signed, their figures are final and only the PF/tax
 	 *  block stays HR's to edit. */
 	saveFnf: async ({ params, request, locals, getClientAddress }) => {
@@ -1120,18 +1093,7 @@ export const actions: Actions = {
 
 		const handOver = form.get('handToPayroll') === '1';
 		if (handOver) {
-			const clearances = await ExitClearance.find({ exitId: params.id }).lean();
-			const current = flowSteps(e, clearances as unknown as Record<string, unknown>[]).find(
-				(s) => s.status === 'active' || s.status === 'blocked'
-			);
-			if (current?.key !== 'hr')
-				return no(
-					409,
-					current
-						? `The chain is waiting on "${current.label}" — it is not HR's turn yet.`
-						: "The chain has not started. Accept the employee's submission first.",
-					'fnf'
-				);
+			if (payrollSigned) return no(409, 'Payroll has already signed — their figures are final.', 'fnf');
 			if (!String(form.get('netAmount') ?? '').trim())
 				return no(400, 'Fill in the net F&F payable before handing it to payroll.', 'fnf');
 			patch['flow.hrDoneAt'] = new Date();
@@ -1147,7 +1109,7 @@ export const actions: Actions = {
 			newValue: String(form.get('netAmount') ?? '') || null,
 			ip: getClientAddress()
 		});
-		if (handOver) await advanceFlow(params.id);
+		if (handOver) await syncFlow(params.id);
 		return { fnfSaved: true, handedToPayroll: handOver };
 	},
 

@@ -1,21 +1,22 @@
-// The exit chain: who is mailed next, and when the letters go out.
+// The exit workflow: where each step stands, its mails, and when the letters go.
 //
-// FLOW_STEPS (shared/offboarding.ts) is the order. Nothing here is sent in
-// parallel: each step's mail is readied only once the step before it is done,
-// so IT is never asked to sign before the manager has, and payroll gets the
-// settlement only after HR has filled it. advanceFlow() is the one function
-// that moves an exit along — called when the chain starts, when an approver
-// signs, when HR hands over to payroll, and when HR fixes a missing address —
-// and it is idempotent.
+// FLOW_STEPS (shared/offboarding.ts) is the order the page lists the steps in,
+// and nothing more (HR decision, Nov 2026): every step is independent. Each
+// clearance mail is ready from the start and goes whenever HR sends it — the
+// manager need not have signed before IT is asked, and payroll can be mailed
+// before HR has filled the F&F. syncFlow() keeps the rest in step with what has
+// happened — the exit's status, the "your turn" alert to HR, the scheduled
+// release — and is called after every send and signature. It is idempotent.
 //
-// No approver is mailed on its own: when a step comes up, its mail waits for
-// HR, who previews it (draftStep) and sends it (mailStep) from the exit page.
-// A signed step can be sent back (sendBackStep) when something is missing: it
-// reopens, and the same reviewed mail asks for exactly what HR ticked.
+// No approver is mailed on its own: each mail waits for HR, who previews it
+// (draftStep) and sends it (mailStep) from the exit page. A signed step can be
+// sent back (sendBackStep) when something is missing: it reopens, and the same
+// reviewed mail asks for exactly what HR ticked.
 //
 // The last step is the release: the letters HR picked go to the employee a set
-// number of days after payroll signs. A ticker (like the BGV reminders') sends
-// whatever has come due; HR can also release by hand at any point.
+// number of days after payroll signs — automatically only once every clearance
+// is signed. A ticker (like the BGV reminders') sends whatever has come due;
+// HR can also release by hand at any point.
 import { env } from '$env/dynamic/private';
 import { connectDb } from '$lib/server/db';
 import { Admin, AppSetting, Exit, ExitClearance, ExitDocument } from '$lib/server/db/schema';
@@ -23,6 +24,7 @@ import { audit } from '$lib/server/audit';
 import { baseUrl } from '$lib/server/base-url';
 import { brandBySlug } from '$lib/shared/brands';
 import {
+	DEPT_FLOW_STEPS,
 	FLOW_STEPS,
 	HANDOVER_DOCS,
 	defaultReleaseLetters,
@@ -127,8 +129,15 @@ export async function initialRouting(reportingManager: string | null) {
 	};
 }
 
-// ── Where the chain stands ───────────────────────────────────────────────────
+// ── Where each step stands ───────────────────────────────────────────────────
 
+/** done — signed, filled or released.
+ *  active — out of HR's hands for now: a mail awaiting sign-off, or a release
+ *    that is scheduled.
+ *  waiting — not started: a mail not sent yet, F&F not handed over, letters
+ *    not scheduled. Never "held": every step can be started at any time.
+ *  blocked — a mail with no address to send to.
+ *  skipped — Salesforce, when it is not part of this exit. */
 export type StepStatus = 'done' | 'active' | 'blocked' | 'waiting' | 'skipped';
 
 export interface StepState {
@@ -144,9 +153,12 @@ export interface StepState {
 	/** One line under the label: a verdict, a due date, what is missing. */
 	detail: string | null;
 	clearanceId: string | null;
-	/** The step's mail is waiting for HR to review and send. */
+	/** The step's first mail is ready for HR to review and send. */
 	ready: boolean;
 }
+
+/** Whether a step still needs something — not done, and part of this exit. */
+const isOpen = (s: StepState | undefined) => !!s && s.status !== 'done' && s.status !== 'skipped';
 
 const fmt = (d: Date | string | null | undefined) =>
 	d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '';
@@ -160,13 +172,10 @@ export function releaseLetterKeys(exit: Lean): string[] {
 	return (picked ?? defaultReleaseLetters(exit.track)).filter((k) => allowed.includes(k));
 }
 
-/** Pure: the state of every step, from the exit and its clearance rows. The
- *  first step that is not done or skipped is the active one; everything after
- *  it is waiting. Before the chain starts, every step waits. */
+/** Pure: the state of every step, from the exit and its clearance rows. Each
+ *  step is read on its own — no step's state depends on another's. */
 export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
-	const started = !!exit.flow?.startedAt;
 	const byDept = new Map(clearances.map((c) => [String(c.department), c]));
-	let reached = !started;
 	return FLOW_STEPS.map((def) => {
 		const base: StepState = {
 			key: def.key,
@@ -198,8 +207,6 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 					detail: `${row.verdict === 'dues' ? 'Dues outstanding' : 'No dues'}${row.approverName ? ` · ${row.approverName}` : ''}`
 				};
 			}
-			if (reached) return base;
-			reached = true;
 			if (!base.to) return { ...base, status: 'blocked', detail: 'Add an email in Mail settings' };
 			const sentBack = !!row?.sendBack?.at;
 			if (row?.status === 'sent')
@@ -212,9 +219,8 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 				};
 			return {
 				...base,
-				status: 'active',
 				ready: true,
-				detail: sentBack ? 'Send-back ready — review and send it' : 'Mail ready — review and send it'
+				detail: sentBack ? 'Send-back ready — review and send it' : 'Not sent yet — send it any time'
 			};
 		}
 
@@ -225,11 +231,9 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 					...base,
 					status: 'done',
 					doneAt: new Date(exit.flow.hrDoneAt).toISOString(),
-					detail: exit.flow.hrDoneBy ? `Sent to payroll by ${exit.flow.hrDoneBy}` : 'Sent to payroll'
+					detail: exit.flow.hrDoneBy ? `Handed to payroll by ${exit.flow.hrDoneBy}` : 'Handed to payroll'
 				};
-			if (reached) return base;
-			reached = true;
-			return { ...base, status: 'active', detail: 'Fill the F&F and leave, then send to payroll' };
+			return { ...base, detail: 'Fill the F&F and leave any time, then hand it to payroll' };
 		}
 
 		// letters
@@ -241,37 +245,29 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 				doneAt: new Date(exit.flow.releasedAt).toISOString(),
 				detail: `Sent${exit.flow.releasedBy ? ` · ${exit.flow.releasedBy}` : ''}`
 			};
-		if (reached) {
-			return {
-				...base,
-				detail: exit.flow?.autoRelease === false ? 'Manual release' : `${exit.flow?.releaseAfterDays ?? 30} days after payroll`
-			};
-		}
-		reached = true;
+		if (exit.flow?.autoRelease === false)
+			return { ...base, detail: 'Manual — release them whenever you are ready' };
+		if (exit.flow?.scheduledAt)
+			return { ...base, status: 'active', detail: `Scheduled for ${fmt(exit.flow.scheduledAt)}` };
 		return {
 			...base,
-			status: 'active',
-			detail:
-				exit.flow?.autoRelease === false
-					? 'Waiting for HR to release'
-					: exit.flow?.scheduledAt
-						? `Scheduled for ${fmt(exit.flow.scheduledAt)}`
-						: 'Scheduling…'
+			detail: `${exit.flow?.releaseAfterDays ?? 30} days after payroll signs, once every clearance is in — or release by hand`
 		};
 	});
 }
 
-// ── Moving along ─────────────────────────────────────────────────────────────
+/** The clearance mails still waiting on a signature, by label. */
+export function openClearances(steps: StepState[]): string[] {
+	return steps
+		.filter((s) => FLOW_STEPS.find((d) => d.key === s.key)?.dept && isOpen(s))
+		.map((s) => s.label);
+}
 
-/** The exit's status follows the chain, but never moves a closed exit. */
-const STATUS_FOR: Record<FlowStepKey, string> = {
-	manager: 'clearances',
-	it: 'clearances',
-	salesforce: 'clearances',
-	hr: 'cleared',
-	payroll: 'fnf',
-	letters: 'fnf'
-};
+// ── Keeping in step ──────────────────────────────────────────────────────────
+
+/** Statuses syncFlow may move between. Only reached once HR has accepted the
+ *  employee's submission: before that the status tracks the employee's forms,
+ *  and a clearance going out must not lock them out of finishing them. */
 const MOVABLE = ['in_progress', 'submitted', 'changes_requested', 'clearances', 'cleared', 'fnf'];
 
 async function setLastError(exitId: string, step: string | null, message: string | null) {
@@ -280,42 +276,40 @@ async function setLastError(exitId: string, step: string | null, message: string
 	});
 }
 
-/** Moves the exit to its next step: readies that step's mail for HR to
- *  review, or tells HR it is their turn, or schedules the release. Safe to
- *  call at any time and any number of times. Errors are recorded on the exit,
- *  never thrown. */
-export async function advanceFlow(exitId: string): Promise<void> {
+/** Brings the exit in line with its steps: the status (once the submission is
+ *  accepted), the alert telling HR the departmental clearances are in, and the
+ *  scheduled release. Sends no approver mail — those are HR's to send. Safe to
+ *  call at any time and any number of times. Errors are logged, never thrown. */
+export async function syncFlow(exitId: string): Promise<void> {
 	try {
 		const exit = await Exit.findById(exitId).lean<Lean>();
+		// Exits from before the workflow keep their old rules.
 		if (!exit?.flow?.startedAt || exit.status === 'completed') return;
 		const clearances = await ExitClearance.find({ exitId }).lean<Lean[]>();
 		const steps = flowSteps(exit, clearances);
-		const current = steps.find((s) => s.status === 'active' || s.status === 'blocked');
-		if (!current) return;
+		const by = new Map(steps.map((s) => [s.key, s]));
+		const deptOpen = DEPT_FLOW_STEPS.some((k) => isOpen(by.get(k)));
+		const payrollDone = by.get('payroll')?.status === 'done';
 
-		const status = STATUS_FOR[current.key];
-		if (MOVABLE.includes(exit.status) && exit.status !== status)
-			await Exit.findByIdAndUpdate(exitId, { status });
-		if (current.status === 'blocked') return;
-
-		const def = FLOW_STEPS.find((d) => d.key === current.key)!;
-		// A mail step waits on HR: they review the draft and press Send.
-		if (def.dept) return;
-		if (current.key === 'hr') {
-			await notifyHrTurn(exit);
-			return;
+		// Clearances pending → F&F in progress (only payroll left) → cleared
+		// (everyone signed, the letters to go).
+		if (exit.reviewedAt && MOVABLE.includes(exit.status)) {
+			const status = deptOpen ? 'clearances' : payrollDone ? 'cleared' : 'fnf';
+			if (exit.status !== status) await Exit.findByIdAndUpdate(exitId, { status });
 		}
+		// A nudge, not a gate: HR can fill the F&F at any time.
+		if (!deptOpen && !payrollDone && !exit.flow?.hrDoneAt) await notifyHrTurn(exit);
 		await scheduleRelease(exitId);
 	} catch (e) {
-		console.error(`[exit-flow] advance failed for exit=${exitId}:`, e);
+		console.error(`[exit-flow] sync failed for exit=${exitId}:`, e);
 	}
 }
 
-/** Starts the chain — on accepting the submission, or by hand for an exit that
- *  was accepted before the chain existed. */
+/** Puts an exit on the workflow — when HR accepts the submission or sends any
+ *  of its mails — and brings it in step. */
 export async function startFlow(exitId: string) {
 	await Exit.updateOne({ _id: exitId, 'flow.startedAt': null }, { $set: { 'flow.startedAt': new Date() } });
-	await advanceFlow(exitId);
+	await syncFlow(exitId);
 }
 
 /** Every generated exit document except the letters, plus every file uploaded
@@ -356,8 +350,13 @@ function stepMailOpts(
 		...(dept === 'payroll'
 			? {
 					extraIntro: [
-						'HR has filled in the full & final settlement and the leave position. Everything is done on the page ' +
-							'the button below opens — no login, nothing else to open: check and correct the F&F figures, tick ' +
+						// Payroll can be mailed before HR has filled the F&F: then
+						// they enter the figures rather than check them.
+						(exit.flow?.hrDoneAt
+							? 'HR has filled in the full & final settlement and the leave position. Everything is done on the page ' +
+								'the button below opens — no login, nothing else to open: check and correct the F&F figures, tick '
+							: 'Everything is done on the page the button below opens — no login, nothing else to open: fill in ' +
+								'the full & final settlement and the leave position, tick ') +
 							'off the F&F checks, upload the last three months’ payslips, and sign.',
 						'Every exit document for this employee is attached as one zip file, and can be downloaded again from that page.'
 					],
@@ -376,8 +375,8 @@ export interface StepDraft extends MailDraft {
 	key: FlowStepKey | 'letters';
 	label: string;
 	reminder: boolean;
-	/** False when the mail can only be previewed: an earlier step is still open,
-	 *  or the address is missing. */
+	/** False when the mail can only be previewed: already signed, not part of
+	 *  this exit, or the address is missing. */
 	sendable: boolean;
 	why: string | null;
 	attachments: { name: string; href: string }[];
@@ -446,12 +445,10 @@ export async function draftStep(
 			state.status === 'done'
 				? 'Already signed.'
 				: state.status === 'skipped'
-					? 'Not part of this exit.'
+					? 'Not part of this exit — switch it on in Mail settings.'
 					: !opts.to.length
 						? 'No email set — add it in Mail settings.'
-						: state.status !== 'active'
-							? 'An earlier step is still open — this is what will go once it is done.'
-							: null;
+						: null;
 		return { ...mail, key, label: def.label, reminder, sendable: !why, why, attachments, sendBack: back };
 	}
 
@@ -477,9 +474,10 @@ export async function draftStep(
 				? 'Nothing to send — pick at least one letter or upload a handover document.'
 				: null;
 		// Releasing early is allowed (HR's call), but never without saying so.
+		const open = openClearances(flowSteps(exit, clearances));
 		const early =
-			!blocker && state.status !== 'active'
-				? 'Payroll has not signed off yet — releasing now sends this before the rest of the chain is done, and closes the exit.'
+			!blocker && open.length
+				? `Not every clearance is signed yet (still open: ${open.join(', ')}) — releasing now sends this before they are in, and closes the exit.`
 				: null;
 		return {
 			...mail,
@@ -498,9 +496,9 @@ export async function draftStep(
 }
 
 /** Sends (or, with `reminder`, re-sends) one clearance step's mail to the
- *  address in the exit's mail settings. The first send is claimed atomically
- *  — pending → sent — so two signatures landing at once cannot mail the next
- *  approver twice. */
+ *  address in the exit's mail settings — whenever HR chooses, whatever the
+ *  other steps are doing. The first send is claimed atomically — pending →
+ *  sent — so a double press cannot mail the approver twice. */
 export async function mailStep(
 	exitId: string,
 	key: FlowStepKey,
@@ -584,14 +582,19 @@ export async function mailStep(
 		return { error: `The mail to ${to.join(', ')} could not be sent.` };
 	}
 	if (exit.flow?.lastError?.step) await setLastError(exitId, null, null);
+	// A clearance can now go before the submission is accepted. Sending one puts
+	// the exit on the workflow, so the approver's signature is handled by it
+	// rather than by the pre-workflow rules on the clearance page.
+	if (!exit.flow?.startedAt)
+		await Exit.updateOne({ _id: exitId, 'flow.startedAt': null }, { $set: { 'flow.startedAt': new Date() } });
 	return { ok: true };
 }
 
 /** Reopens a signed clearance and mails the approver what HR says is missing
  *  — the reviewed send-back. Their earlier answers stay filled in; they
- *  complete what was asked and sign again, and the chain carries on from
- *  there. Sending payroll back also stops a scheduled release, since the
- *  figures it would print are no longer final. */
+ *  complete what was asked and sign again. Sending anyone back also stops a
+ *  scheduled release until they have: it waits on every clearance, and
+ *  payroll's figures especially are no longer final. */
 export async function sendBackStep(
 	exitId: string,
 	key: FlowStepKey,
@@ -622,12 +625,13 @@ export async function sendBackStep(
 		await Exit.findByIdAndUpdate(exitId, { 'fnf.submittedByPayrollAt': null, 'flow.scheduledAt': null });
 
 	const res = await mailStep(exitId, key);
+	// Either way the step is open again, so a scheduled release is withdrawn.
+	await syncFlow(exitId);
 	if ('error' in res) {
-		// Leave it reopened: the map now shows the step as ready, and Review &
-		// send re-sends the same request once the address is fixed.
+		// Leave it reopened: the step now shows as ready, and Review & send
+		// re-sends the same request once the address is fixed.
 		return res;
 	}
-	await advanceFlow(exitId);
 	return { ok: true };
 }
 
@@ -652,11 +656,11 @@ async function notifyHrTurn(exit: Lean) {
 		await sendExitAlert({
 			to: await hrRecipients(exit),
 			cc: routeCc(exit.routing?.hr),
-			subject: `Your turn: F&F and leave for ${exit.fullName}`,
+			subject: `Clearances signed: F&F and leave for ${exit.fullName}`,
 			lines: [
 				`The departmental clearances for ${exit.fullName} (${exit.employeeId}) are signed.`,
-				'Fill in the full & final settlement and the leave position on the exit page, then send it to payroll — ' +
-					'they get it prefilled, with every exit document attached.'
+				'If you have not yet, fill in the full & final settlement and the leave position on the exit page and ' +
+					'hand it to payroll — they get it prefilled, with every exit document attached.'
 			],
 			brand: brandBySlug(company?.brandSlug ?? undefined),
 			url: `${baseUrl()}/admin/offboarding/${String(exit._id)}`
@@ -673,12 +677,18 @@ async function payrollSignedAt(exitId: string): Promise<Date | null> {
 }
 
 /** Sets (or, after HR changes the cadence, resets) when the release is due,
- *  and releases straight away if that is already past. */
+ *  and releases straight away if that is already past. The date counts from
+ *  payroll's sign-off, but nothing is scheduled while any clearance is still
+ *  open: with the steps independent, payroll may sign before IT has, and the
+ *  letters must not go out on their own ahead of a department. HR can still
+ *  release by hand whenever they choose. */
 export async function scheduleRelease(exitId: string, opts: { reset?: boolean } = {}) {
 	const exit = await Exit.findById(exitId).lean<Lean>();
 	if (!exit || exit.flow?.releasedAt || exit.status === 'completed') return;
 	const signed = await payrollSignedAt(exitId);
-	if (!signed || exit.flow?.autoRelease === false) {
+	const clearances = await ExitClearance.find({ exitId }).lean<Lean[]>();
+	const pending = openClearances(flowSteps(exit, clearances)).length > 0;
+	if (!signed || pending || exit.flow?.autoRelease === false) {
 		if (exit.flow?.scheduledAt) await Exit.findByIdAndUpdate(exitId, { 'flow.scheduledAt': null });
 		return;
 	}
@@ -699,9 +709,9 @@ export async function scheduleRelease(exitId: string, opts: { reset?: boolean } 
 			const company = await exitCompany(exit.companyId);
 			await sendExitAlert({
 				to: await hrRecipients(exit),
-				subject: `Payroll signed: ${exit.fullName}`,
+				subject: `All clearances signed: ${exit.fullName}`,
 				lines: [
-					`Payroll has signed off the full & final settlement for ${exit.fullName} (${exit.employeeId}).`,
+					`Every clearance for ${exit.fullName} (${exit.employeeId}) is signed, payroll's full & final settlement included.`,
 					`Their letters go out automatically on ${fmt(due)}. Change the selection or the date on the exit page.`
 				],
 				brand: brandBySlug(company?.brandSlug ?? undefined),

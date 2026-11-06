@@ -153,10 +153,6 @@
 		draftCache.set(url, { at: Date.now(), p });
 		return p;
 	}
-	/** The first mail the chain will ask HR to send — what Start opens. */
-	const firstMailStep = $derived(
-		data.steps.find((s) => MAIL_STEPS.has(s.key) && s.status !== 'done' && s.status !== 'skipped')?.key ?? 'manager'
-	);
 	function prefetch(step: string) {
 		loadDraft(`/admin/offboarding/${e.id}/mail-preview/${step}`).catch(() => {});
 	}
@@ -200,11 +196,10 @@
 		if (!stage) await fetchDraft();
 	}
 
-	/** The two hand-offs that ready a mail — accepting the submission (or
-	 *  starting the chain) and handing the F&F to payroll — open the mail's
-	 *  dialog the moment HR presses the button, with the loader saying what is
-	 *  happening, and fetch the draft as soon as the server has finished,
-	 *  alongside the page refresh rather than after it. */
+	/** Handing the F&F to payroll opens payroll's mail dialog the moment HR
+	 *  presses the button, with the loader saying what is happening, and
+	 *  fetches the draft as soon as the server has finished, alongside the page
+	 *  refresh rather than after it. */
 	function handoff(
 		key: string,
 		step: string,
@@ -352,25 +347,183 @@
 		}
 	]);
 
-	// ── The exit-chain map ──────────────────────────────────────────────────
+	// ── The workflow map ────────────────────────────────────────────────────
+	// The map on the left lists every step, and each one is independent: any
+	// mail can go at any time. Clicking a step scrolls to its section — the
+	// actions live there, not on the map — so the map is the page's navigation.
+
 	/** Steps that send a clearance mail, and so offer Send / Remind / Copy link. */
 	const MAIL_STEPS = new Set(['manager', 'it', 'salesforce', 'payroll']);
 	const hrStep = $derived(data.steps.find((s) => s.key === 'hr'));
+	const payrollStep = $derived(data.steps.find((s) => s.key === 'payroll'));
+	const mailSteps = $derived(data.steps.filter((s) => MAIL_STEPS.has(s.key)));
 
-	/** The employee's own forms, drawn as the map's first node. */
-	const formsNode = $derived.by(() => {
+	/** Each step's number — the same on the map, on its section and on its
+	 *  Mail settings tab, so HR can match them up at a glance. */
+	const STEP_NUM: Record<string, string> = {
+		itblock: '01',
+		forms: '02',
+		manager: '03',
+		it: '04',
+		salesforce: '05',
+		payroll: '06',
+		hr: '07',
+		letters: '08'
+	};
+
+	type NodeStatus = 'done' | 'active' | 'waiting' | 'blocked' | 'skipped';
+	interface MapNode {
+		key: string;
+		label: string;
+		to: string | null;
+		status: NodeStatus;
+		detail: string;
+		/** What is still being waited on, in amber under the detail. */
+		wait: string | null;
+		/** The section a click goes to. */
+		target: string;
+		/** Every section that counts as this step for the "you are here" mark. */
+		spy: string[];
+		optional?: boolean;
+	}
+
+	/** The IT block-access mail: HR's own mail, outside the clearance steps. */
+	const itBlockNode = $derived.by((): { status: NodeStatus; detail: string } => {
+		if (e.itAccessRevokedMailSentAt) return { status: 'done', detail: `Sent ${stamp(e.itAccessRevokedMailSentAt)}` };
+		if (!data.itMailRecipients.to.length) return { status: 'blocked', detail: 'Add the IT address in Mail settings' };
+		return { status: 'waiting', detail: 'Not sent yet — send it any time' };
+	});
+
+	/** The employee's own forms. "active" means the employee has them. */
+	const formsNode = $derived.by((): { status: NodeStatus; detail: string } => {
 		if (e.reviewedAt) return { status: 'done', detail: `Accepted ${stamp(e.reviewedAt)}` };
-		if (e.submittedAt) return { status: 'active', detail: 'Submitted — review and accept below' };
-		if (e.status === 'initiated') return { status: 'active', detail: 'Send the employee their forms link' };
-		return { status: 'active', detail: 'Employee is filling their forms' };
+		if (e.submittedAt) return { status: 'active', detail: 'Submitted — review and accept it' };
+		if (data.formsLink || e.status !== 'initiated')
+			return { status: 'active', detail: data.formsLinkOpened ? 'Employee is filling their forms' : 'Link sent — not opened yet' };
+		return { status: 'waiting', detail: 'Not sent yet — send it any time' };
 	});
 
-	/** Share of the chain finished, counting the forms and every step not skipped. */
-	const chainPct = $derived.by(() => {
-		const counted = data.steps.filter((s) => s.status !== 'skipped');
-		const done = counted.filter((s) => s.status === 'done').length + (formsNode.status === 'done' ? 1 : 0);
-		return Math.round((done / (counted.length + 1)) * 100);
+	const mapNodes = $derived<MapNode[]>([
+		{
+			key: 'itblock',
+			label: 'IT — block access',
+			to: data.itMailRecipients.to.join(', ') || null,
+			...itBlockNode,
+			wait: null,
+			target: 'it-block',
+			spy: ['it-block']
+		},
+		{
+			key: 'forms',
+			label: 'Employee exit forms',
+			to: e.personalEmail,
+			...formsNode,
+			wait: docsAsked.length
+				? `Waiting on: ${docsAsked.map((r: { label: string }) => r.label.replace(/^Upload: /, '')).join(', ')}`
+				: null,
+			// Once they have submitted, what needs HR is the review below the link.
+			target: e.submittedAt ? 'review' : 'exit-forms',
+			spy: ['exit-forms', 'review']
+		},
+		...data.steps.map((s): MapNode => {
+			const target = s.key === 'hr' ? 'fnf' : s.key === 'letters' ? 'letters' : `step-${s.key}`;
+			return {
+				key: s.key,
+				label: s.label,
+				to: s.status === 'skipped' ? null : s.to,
+				status: s.status,
+				detail: s.status === 'done' && s.doneAt ? `${s.detail} · ${stamp(s.doneAt)}` : (s.detail ?? s.hint),
+				wait: s.sendBack
+					? `Asked for: ${[...s.sendBack.items, ...s.sendBack.uploads.map((u: string) => `attach ${u}`)].join(', ') || s.sendBack.note}`
+					: null,
+				target,
+				spy: s.key === 'letters' ? ['letters', 'release'] : [target],
+				optional: s.key === 'salesforce'
+			};
+		})
+	]);
+
+	/** Share of the workflow finished, counting every step not skipped. */
+	const flowPct = $derived.by(() => {
+		const counted = mapNodes.filter((n) => n.status !== 'skipped');
+		return Math.round((counted.filter((n) => n.status === 'done').length / counted.length) * 100);
 	});
+
+	/** The rest of the page, reachable from under the map. */
+	const JUMP_LINKS = [
+		{ id: 'particulars', label: 'Employment particulars' },
+		{ id: 'review', label: 'Review submission' },
+		{ id: 'mail-settings', label: 'Mail settings' },
+		{ id: 'live-docs', label: 'Live documents' },
+		{ id: 'closure', label: 'Closure checklist' }
+	];
+
+	/** The section at the top of the screen, which the map marks. */
+	let here = $state('');
+	/** The section just jumped to — outlined for a moment so the eye lands on it. */
+	let flash = $state('');
+	let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/** Scrolls to a section (and, for Mail settings, opens a tab). */
+	function jump(ev: Event | null, id: string, tab?: RouteTab) {
+		const el = document.getElementById(id);
+		if (!el) return;
+		ev?.preventDefault();
+		if (tab) routeTab = tab;
+		const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+		el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+		here = id;
+		// Cleared first so jumping to the same section twice flashes it again.
+		flash = '';
+		clearTimeout(flashTimer);
+		requestAnimationFrame(() => {
+			flash = id;
+			flashTimer = setTimeout(() => (flash = ''), 1600);
+		});
+	}
+
+	/** The Mail settings tab for a step, when it has one. */
+	const tabFor = (step: string): RouteTab | undefined =>
+		step === 'itblock' ? 'itBlock' : (ROUTING_KEYS as readonly string[]).includes(step) ? (step as RouteTab) : undefined;
+
+	// "You are here": whichever section crosses a band near the top of the
+	// screen. The sections are always rendered, so observing once is enough.
+	const SPY_IDS = [
+		'particulars',
+		'it-block',
+		'exit-forms',
+		'review',
+		'step-manager',
+		'step-it',
+		'step-salesforce',
+		'step-payroll',
+		'fnf',
+		'letters',
+		'release',
+		'mail-settings'
+	];
+	$effect(() => {
+		const io = new IntersectionObserver(
+			(entries) => {
+				for (const en of entries) if (en.isIntersecting) here = en.target.id;
+			},
+			{ rootMargin: '-12% 0px -78% 0px' }
+		);
+		for (const id of SPY_IDS) {
+			const el = document.getElementById(id);
+			if (el) io.observe(el);
+		}
+		return () => io.disconnect();
+	});
+
+	/** How a clearance step reads on its card. */
+	function stepPill(s: { status: string; sendBack: unknown }): { label: string; cls: string } {
+		if (s.status === 'done') return { label: 'Signed', cls: 'teal' };
+		if (s.status === 'active') return { label: s.sendBack ? 'Sent back' : 'Awaiting sign-off', cls: 'gold' };
+		if (s.status === 'blocked') return { label: 'No email', cls: 'red' };
+		if (s.status === 'skipped') return { label: 'Not in this exit', cls: '' };
+		return { label: 'Not sent', cls: '' };
+	}
 
 	// Mirrors the Salesforce tick in the mail settings, so its row dims as it is
 	// switched off rather than only after a save.
@@ -382,7 +535,7 @@
 	// The mail settings show one step at a time, picked from the nav across
 	// the top. The other panels are only hidden, so Save still sends them all.
 	type RouteTab = (typeof ROUTING_KEYS)[number] | 'itBlock' | 'signoff';
-	let routeTab = $state<RouteTab>('manager');
+	let routeTab = $state<RouteTab>('itBlock');
 	const sameList = (a: string[], b: string[]) => a.join(',') === b.join(',');
 	function routeDiffers(k: (typeof ROUTING_KEYS)[number]): boolean {
 		const r = data.routing[k];
@@ -430,144 +583,71 @@
 {/if}
 
 <div class="cols">
-	<!-- ─────────────── Far left: the exit chain, as a map ─────────────── -->
+	<!-- ─────────────── Far left: the workflow, as a map ─────────────── -->
+	<!-- Navigation, not controls: a click on any step scrolls to its section,
+	     where its actions are. Every step is independent of the others. -->
 	<aside class="flowmap">
-		<section class="card mapcard">
+		<nav class="card mapcard" aria-label="Exit workflow">
 			<div class="map-head">
-				<div class="eyebrow">Exit chain</div>
-				<span class="map-pct">{chainPct}%</span>
+				<div class="eyebrow">Exit workflow</div>
+				<span class="map-pct">{flowPct}%</span>
 			</div>
-			<div class="map-bar"><span style="width:{chainPct}%"></span></div>
+			<div class="map-bar"><span style="width:{flowPct}%"></span></div>
 			{#if e.refNo}<div class="map-ref">{e.refNo}</div>{/if}
+			<p class="map-note">Each step runs on its own, in any order. Click one to go to it.</p>
 
 			<ol class="map">
-				<li class="node {formsNode.status}">
-					<span class="dot">
-						{#if formsNode.status === 'done'}
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M20 6L9 17l-5-5" /></svg>
-						{:else}
-							<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></svg>
-						{/if}
-					</span>
-					<div class="nbody">
-						<div class="nlabel">Employee exit forms</div>
-						<div class="nto">{e.personalEmail}</div>
-						<div class="ndetail">{formsNode.detail}</div>
-						{#if docsAsked.length}
-							<div class="nwait">Waiting on: {docsAsked.map((r: { label: string }) => r.label.replace(/^Upload: /, '')).join(', ')}</div>
-						{/if}
-						{#if canAskDocs}
-							<button class="nact quiet" type="button" onclick={() => openReview('docs', false, 'docs')}>
-								Ask for documents
-							</button>
-						{/if}
-					</div>
-				</li>
-				{#each data.steps as s, i (s.key)}
-					<li class="node {s.status}">
-						<span class="dot">
-							{#if s.status === 'done'}
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M20 6L9 17l-5-5" /></svg>
-							{:else if s.status === 'skipped'}
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14" /></svg>
-							{:else if s.status === 'blocked'}
-								!
-							{:else}
-								{i + 1}
-							{/if}
-						</span>
-						<div class="nbody">
-							<div class="nlabel">
-								{s.label}
-								{#if s.key === 'salesforce'}<span class="opt">optional</span>{/if}
-							</div>
-							{#if s.to && s.status !== 'skipped'}<div class="nto">{s.to}</div>{/if}
-							<div class="ndetail">
-								{#if s.status === 'done' && s.doneAt}{s.detail} · {stamp(s.doneAt)}{:else}{s.detail ?? s.hint}{/if}
-							</div>
-							{#if s.sendBack}
-								<div class="nwait">
-									Asked for: {[...s.sendBack.items, ...s.sendBack.uploads.map((u: string) => `attach ${u}`)].join(', ') ||
-										s.sendBack.note}
-								</div>
-							{/if}
-							{#each s.files as f (f.id)}
-								<a class="nfile" href="/admin/offboarding/{e.id}/file/{f.id}" target="_blank" rel="noreferrer">📎 {f.label}</a>
-							{/each}
-
-							{#if s.status === 'blocked'}
-								<a class="nact" href="#mail-settings">Set the email ↓</a>
-							{:else if s.status === 'active' && MAIL_STEPS.has(s.key)}
-								<div class="nacts">
-									<button
-										class="nact {s.ready ? 'go' : ''}"
-										type="button"
-										disabled={!data.isHr}
-										onpointerenter={() => prefetch(s.key)} onfocus={() => prefetch(s.key)} onclick={() => openReview(s.key)}
-									>
-										{s.ready ? 'Review & send' : 'Review reminder'}
-									</button>
-									{#if s.link}
-										<button class="nact" type="button" onclick={() => copy(s.link!, `link-${s.key}`)}>
-											{copied === `link-${s.key}` ? 'Copied ✓' : 'Copy link'}
-										</button>
-									{/if}
-								</div>
-							{:else if s.status === 'active' && s.key === 'hr'}
-								<a class="nact" href="#fnf">Fill the F&amp;F ↓</a>
-							{:else if s.status === 'active' && s.key === 'letters'}
-								<div class="nacts">
-									<button class="nact" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('letters')} onfocus={() => prefetch('letters')} onclick={() => openReview('letters')}>
-										Review &amp; release
-									</button>
-									<a class="nact" href="#release">Settings ↓</a>
-								</div>
-							{:else if s.status === 'waiting' && data.flow.startedAt && (MAIL_STEPS.has(s.key) || s.key === 'letters')}
-								<button class="nact quiet" type="button" onpointerenter={() => prefetch(s.key)} onfocus={() => prefetch(s.key)} onclick={() => openReview(s.key, true)}>Preview mail</button>
-							{/if}
-							{#if s.status === 'done' && MAIL_STEPS.has(s.key) && e.status !== 'completed' && data.isHr}
-								<button class="nact quiet" type="button" onclick={() => openReview(s.key, false, 'back')}>
-									Send back — something missing
-								</button>
-							{/if}
-						</div>
+				{#each mapNodes as n (n.key)}
+					{@const isHere = n.spy.includes(here)}
+					<li class="node {n.status}" class:here={isHere}>
+						<a
+							class="nlink"
+							href="#{n.target}"
+							aria-current={isHere ? 'location' : undefined}
+							onclick={(ev) => jump(ev, n.target)}
+						>
+							<span class="dot">
+								{#if n.status === 'done'}
+									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><path d="M20 6L9 17l-5-5" /></svg>
+								{:else if n.status === 'skipped'}
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12h14" /></svg>
+								{:else if n.status === 'blocked'}
+									!
+								{:else}
+									{Number(STEP_NUM[n.key])}
+								{/if}
+							</span>
+							<span class="nbody">
+								<span class="nlabel">
+									{n.label}
+									{#if n.optional}<span class="opt">optional</span>{/if}
+								</span>
+								{#if n.to}<span class="nto">{n.to}</span>{/if}
+								<span class="ndetail">{n.detail}</span>
+								{#if n.wait}<span class="nwait">{n.wait}</span>{/if}
+							</span>
+						</a>
 					</li>
 				{/each}
 			</ol>
 
-			{#if !data.flow.startedAt}
-				{#if e.reviewedAt}
-					<form
-						method="POST"
-						action="?/startChain"
-						use:enhance={handoff(
-							'chain',
-							firstMailStep,
-							'Starting the chain…',
-							() => true,
-							() => true
-						)}
-					>
-						<button class="btn small teal" style="width:100%" disabled={!data.isHr || sending['chain']}>
-							{sending['chain'] ? 'Starting…' : 'Start the chain'}
-						</button>
-					</form>
-				{:else}
-					<p class="map-note">The chain starts when you accept the employee's submission.</p>
-				{/if}
-			{/if}
 			{#if data.flow.lastError}<p class="map-err">{data.flow.lastError.message}</p>{/if}
 			{#if reviewSent}<p class="map-ok">{reviewSent}</p>{/if}
-			<a class="map-settings" href="#mail-settings">Mail settings ↓</a>
-		</section>
+
+			<div class="map-jump">
+				<div class="tiny-eyebrow">Also on this page</div>
+				{#each JUMP_LINKS as j (j.id)}
+					<a href="#{j.id}" class:here={here === j.id} onclick={(ev) => jump(ev, j.id)}>{j.label}</a>
+				{/each}
+			</div>
+		</nav>
 	</aside>
 
 	<!-- ─────────────── Left: the flow, step by step ─────────────── -->
 	<div class="main">
-		<!-- 1. Particulars -->
-		<section class="card">
+		<!-- The record every document prints from — not a step of its own. -->
+		<section class="card" id="particulars" class:jump-flash={flash === 'particulars'}>
 			<div class="sec-head">
-				<span class="section-num">01</span>
 				<div>
 					<h2>Employment particulars</h2>
 					<p class="muted">
@@ -656,15 +736,54 @@
 			</form>
 		</section>
 
-		<!-- 2. Exit forms link -->
-		<section class="card">
+		<!-- 01. IT — block system access -->
+		<section class="card" id="it-block" class:jump-flash={flash === 'it-block'}>
 			<div class="sec-head">
-				<span class="section-num">02</span>
+				<span class="section-num">{STEP_NUM.itblock}</span>
 				<div>
-					<h2>Exit documents link</h2>
+					<h2>IT — block system access</h2>
 					<p class="muted">
-						Sends the employee a private link to complete the NDA, Exit Interview
-						and Relieving Formalities — plus Gratuity Form I when it applies.
+						Asks the IT desk to block the employee's system access and official logins. It goes on its
+						own — send it whenever you are ready, before or after any other step.
+					</p>
+				</div>
+				<span class="pill {itBlockNode.status === 'done' ? 'teal' : itBlockNode.status === 'blocked' ? 'red' : ''}">
+					{itBlockNode.status === 'done' ? 'Sent' : itBlockNode.status === 'blocked' ? 'No email' : 'Not sent'}
+				</span>
+			</div>
+
+			<dl class="kv">
+				<dt>To</dt>
+				<dd>{data.itMailRecipients.to.join(', ') || 'No address set'}</dd>
+				{#if data.itMailRecipients.cc.length}
+					<dt>Cc</dt>
+					<dd>{data.itMailRecipients.cc.join(', ')}</dd>
+				{/if}
+				{#if e.itAccessRevokedMailSentAt}
+					<dt>Sent</dt>
+					<dd>{stamp(e.itAccessRevokedMailSentAt)}</dd>
+				{/if}
+			</dl>
+
+			<div class="btn-row">
+				<button class="btn grad" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('itblock')} onfocus={() => prefetch('itblock')} onclick={() => openReview('itblock')}>
+					{e.itAccessRevokedMailSentAt ? 'Review & resend' : 'Review & mail IT to block access'}
+				</button>
+				<a class="btn ghost small" href="#mail-settings" onclick={(ev) => jump(ev, 'mail-settings', 'itBlock')}>Change recipients</a>
+			</div>
+			{#if form?.itMailSent}<p class="ok">IT has been asked to block system access.</p>{/if}
+		</section>
+
+		<!-- 02. Employee exit forms -->
+		<section class="card" id="exit-forms" class:jump-flash={flash === 'exit-forms'}>
+			<div class="sec-head">
+				<span class="section-num">{STEP_NUM.forms}</span>
+				<div>
+					<h2>Employee exit forms</h2>
+					<p class="muted">
+						Sends the employee a private link to complete the NDA, Exit Interview and Relieving
+						Formalities — plus Gratuity Form I when it applies. Independent of every other step: the
+						clearance mails do not wait for it.
 					</p>
 				</div>
 			</div>
@@ -703,23 +822,24 @@
 						<button class="btn ghost small" disabled={!data.isHr}>Revoke</button>
 					</form>
 				{/if}
-				<button class="btn ghost" type="button" disabled={!data.isHr} onpointerenter={() => prefetch('itblock')} onfocus={() => prefetch('itblock')} onclick={() => openReview('itblock')}>
-					{e.itAccessRevokedMailSentAt ? 'Review & resend IT access-block mail' : 'Review & mail IT to block access'}
-				</button>
+				{#if canAskDocs}
+					<button class="btn ghost small" type="button" onclick={() => openReview('docs', false, 'docs')}>
+						Ask for documents
+					</button>
+				{/if}
 			</div>
-			{#if e.itAccessRevokedMailSentAt}
+			{#if docsAsked.length}
 				<p class="muted tiny">
-					IT notified {stamp(e.itAccessRevokedMailSentAt)} — to {data.itMailRecipients.to.join(', ')}
+					Waiting on: {docsAsked.map((r: { label: string }) => r.label.replace(/^Upload: /, '')).join(', ')}
 				</p>
 			{/if}
 			{#if form?.formsLinkSent}<p class="ok">Link emailed to {e.personalEmail}.</p>{/if}
-			{#if form?.itMailSent}<p class="ok">IT has been asked to block system access.</p>{/if}
 		</section>
 
-		<!-- 3. Review the submission -->
-		<section class="card">
+		<!-- 02b. Review the submission -->
+		<section class="card" id="review" class:jump-flash={flash === 'review'}>
 			<div class="sec-head">
-				<span class="section-num">03</span>
+				<span class="section-num">{STEP_NUM.forms}b</span>
 				<div>
 					<h2>Review submission</h2>
 					<p class="muted">
@@ -885,29 +1005,23 @@
 				</fieldset>
 			</form>
 
-			<form
-				method="POST"
-				action="?/acceptSubmission"
-				use:enhance={handoff(
-					'accept',
-					'manager',
-					'Accepting the submission and starting the chain…',
-					() => true,
-					(d) => !!d?.accepted
-				)}
-			>
-				<div class="btn-row" style="margin-top:4px">
-					<button class="btn teal" disabled={!data.isHr || sending['accept']}>
-						{sending['accept'] ? 'Accepting…' : 'Accept & start the exit chain'}
-					</button>
-					{#if !data.formsComplete}
+			{#if !e.reviewedAt}
+				<form method="POST" action="?/acceptSubmission" use:enhance={track('accept')}>
+					<div class="btn-row" style="margin-top:4px">
+						<button class="btn teal" disabled={!data.isHr || sending['accept']}>
+							{sending['accept'] ? 'Accepting…' : 'Accept submission'}
+						</button>
 						<span class="muted tiny">
-							Not every form is submitted yet — accepting now moves straight to clearances.
+							{data.formsComplete
+								? 'Closes their forms to further edits. The clearance mails do not wait for this.'
+								: 'Not every form is submitted yet — accepting now closes them to further edits.'}
 						</span>
-					{/if}
-				</div>
-			</form>
-			{#if form?.accepted}<p class="ok">Submission accepted — the chain has started with the reporting manager (see the map).</p>{/if}
+					</div>
+				</form>
+			{:else}
+				<p class="muted tiny" style="margin:4px 0 0">Accepted {stamp(e.reviewedAt)}.</p>
+			{/if}
+			{#if form?.accepted}<p class="ok">Submission accepted.</p>{/if}
 			{#if form?.changesRequested}
 				<p class="ok">
 					Asked {e.personalEmail} again for {form.changesRequested} item{form.changesRequested === 1 ? '' : 's'}, with
@@ -916,20 +1030,145 @@
 			{/if}
 		</section>
 
-		<!-- 5. HR's step: F&F, leave and loans -->
-		<section class="card" id="fnf">
+		<!-- 03–06. Clearance mails: one block per approver, each independent -->
+		<section class="card" id="clearances">
 			<div class="sec-head">
-				<span class="section-num">05</span>
+				<span class="section-num">{STEP_NUM.manager}–{STEP_NUM.payroll}</span>
+				<div>
+					<h2>Clearance mails</h2>
+					<p class="muted">
+						One mail per approver, each with the No Dues certificate — payroll gets every exit document
+						as one zip. They are independent: send them in any order, all on day one if you like.
+						Nobody waits for anyone else to sign, and you review every mail before it goes.
+					</p>
+				</div>
+			</div>
+
+			<div class="clrs">
+				{#each mailSteps as s (s.key)}
+					{@const c = data.clearances.find((x) => x.id === s.clearanceId)}
+					{@const pill = stepPill(s)}
+					{@const route = data.routing[s.key as (typeof ROUTING_KEYS)[number]]}
+					<div class="clr {s.status}" id="step-{s.key}" class:jump-flash={flash === `step-${s.key}`}>
+						<div class="clr-head">
+							<span class="section-num">{STEP_NUM[s.key]}</span>
+							<div class="clr-title">
+								<h3>
+									{s.label}
+									{#if s.key === 'salesforce'}<span class="opt">optional</span>{/if}
+								</h3>
+								<span class="muted tiny">{s.hint}</span>
+							</div>
+							<span class="pill {pill.cls}">{pill.label}</span>
+						</div>
+
+						{#if s.status === 'skipped'}
+							<p class="clr-detail">Not part of this exit. Switch it on in Mail settings for sales staff.</p>
+						{:else}
+							<dl class="kv">
+								<dt>To</dt>
+								<dd>{s.to ?? 'No address set'}</dd>
+								{#if route?.cc.length}
+									<dt>Cc</dt>
+									<dd>{route.cc.join(', ')}</dd>
+								{/if}
+								{#if s.sentAt}
+									<dt>Sent</dt>
+									<dd>{stamp(s.sentAt)}{c && c.sentCount > 1 ? ` · ${c.sentCount} mails in all` : ''}</dd>
+								{/if}
+								{#if s.status === 'done'}
+									<dt>Signed</dt>
+									<dd>
+										{stamp(s.doneAt)}{c?.approverName ? ` · ${c.approverName}` : ''}{c?.approverDesignation
+											? `, ${c.approverDesignation}`
+											: ''}
+									</dd>
+									{#if c?.verdict}
+										<dt>Verdict</dt>
+										<dd>
+											<span class="pill {c.verdict === 'dues' ? 'gold' : 'teal'}">{VERDICT_LABEL[c.verdict]}</span>
+										</dd>
+									{/if}
+									{#if c?.remarks}
+										<dt>Remarks</dt>
+										<dd>{c.remarks}</dd>
+									{/if}
+								{/if}
+							</dl>
+							{#if s.status !== 'done'}<p class="clr-detail">{s.detail ?? s.hint}</p>{/if}
+						{/if}
+
+						{#if s.sendBack}
+							<p class="nwait">
+								Asked for: {[...s.sendBack.items, ...s.sendBack.uploads.map((u: string) => `attach ${u}`)].join(', ') ||
+									s.sendBack.note}
+							</p>
+						{/if}
+						{#if s.files.length}
+							<div class="clr-files">
+								{#each s.files as f (f.id)}
+									<a href="/admin/offboarding/{e.id}/file/{f.id}" target="_blank" rel="noreferrer">📎 {f.label}</a>
+								{/each}
+							</div>
+						{/if}
+						{#if s.key === 'payroll' && s.status !== 'done'}
+							<p class="muted tiny" style="margin:6px 0 0">
+								F&amp;F figures:
+								{hrStep?.status === 'done'
+									? 'handed over by HR — payroll checks and corrects them.'
+									: 'not handed over yet — payroll can fill them in themselves, or fill them under F&F first.'}
+								<a href="#fnf" onclick={(ev) => jump(ev, 'fnf')}>Go to F&amp;F</a>
+							</p>
+						{/if}
+
+						{#if e.status !== 'completed'}
+							<div class="btn-row clr-actions">
+								{#if s.status === 'waiting'}
+									<button class="btn grad small" type="button" disabled={!data.isHr} onpointerenter={() => prefetch(s.key)} onfocus={() => prefetch(s.key)} onclick={() => openReview(s.key)}>
+										Review &amp; send
+									</button>
+								{:else if s.status === 'active'}
+									<button class="btn ghost small" type="button" disabled={!data.isHr} onpointerenter={() => prefetch(s.key)} onfocus={() => prefetch(s.key)} onclick={() => openReview(s.key)}>
+										Review reminder
+									</button>
+									{#if s.link}
+										<button class="btn ghost small" type="button" onclick={() => copy(s.link!, `link-${s.key}`)}>
+											{copied === `link-${s.key}` ? 'Copied ✓' : 'Copy link'}
+										</button>
+									{/if}
+								{:else if s.status === 'done' && data.isHr}
+									<button class="btn ghost small" type="button" onclick={() => openReview(s.key, false, 'back')}>
+										Send back — something missing
+									</button>
+								{/if}
+								{#if s.status === 'blocked'}
+									<a class="btn small" href="#mail-settings" onclick={(ev) => jump(ev, 'mail-settings', tabFor(s.key))}>Add the email in Mail settings</a>
+								{:else if s.status === 'skipped'}
+									<a class="btn ghost small" href="#mail-settings" onclick={(ev) => jump(ev, 'mail-settings', tabFor(s.key))}>Include it in Mail settings</a>
+								{:else if s.status !== 'done'}
+									<a class="clr-link" href="#mail-settings" onclick={(ev) => jump(ev, 'mail-settings', tabFor(s.key))}>Change recipients</a>
+								{/if}
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		</section>
+
+		<!-- 07. HR's step: F&F, leave and loans -->
+		<section class="card" id="fnf" class:jump-flash={flash === 'fnf'}>
+			<div class="sec-head">
+				<span class="section-num">{STEP_NUM.hr}</span>
 				<div>
 					<h2>F&amp;F, leave &amp; loans</h2>
 					<p class="muted">
-						HR's step in the chain. Fill in the settlement and the leave position, then hand it to
-						payroll — you review their mail before it goes. They get it prefilled with every exit
-						document attached, can correct any figure and record loan recovery, and their sign-off is final.
+						HR's step — fill it in whenever you have the figures; nothing waits on it. "Save &amp; hand to
+						payroll" marks it done and opens payroll's mail if it has not gone yet. Payroll sees these
+						figures prefilled, can correct any of them and record loan recovery, and their sign-off is final.
 					</p>
 				</div>
 				{#if form?.handedToPayroll}
-					<span class="saved">Payroll mail ready ✓</span>
+					<span class="saved">Handed to payroll ✓</span>
 				{:else if form?.fnfSaved}
 					<span class="saved">Saved ✓</span>
 				{/if}
@@ -942,7 +1181,9 @@
 					'fnf',
 					'payroll',
 					'Saving the F&F and handing it to payroll…',
-					(b) => b?.getAttribute('name') === 'handToPayroll',
+					// Payroll's mail may have gone already — steps are independent —
+					// and then there is nothing new to review.
+					(b) => b?.getAttribute('name') === 'handToPayroll' && !['active', 'done', 'skipped'].includes(payrollStep?.status ?? ''),
 					(d) => !!d?.handedToPayroll
 				)}
 			>
@@ -985,7 +1226,7 @@
 						</div>
 						{#if hrStep?.status === 'done'}
 							<p class="muted tiny" style="margin:10px 0 0">
-								With payroll since {stamp(data.flow.hrDoneAt)}. Changes saved here show on their page
+								Handed to payroll {stamp(data.flow.hrDoneAt)}. Changes saved here show on their page
 								until they sign.
 							</p>
 						{/if}
@@ -1016,27 +1257,19 @@
 							{sending['fnf'] ? 'Saving…' : 'Save'}
 						</button>
 						{#if !data.payrollSigned && hrStep?.status !== 'done'}
-							<button
-								class="btn teal"
-								name="handToPayroll"
-								value="1"
-								disabled={sending['fnf'] || hrStep?.status !== 'active'}
-							>
+							<button class="btn teal" name="handToPayroll" value="1" disabled={sending['fnf']}>
 								Save &amp; hand to payroll
 							</button>
-							{#if hrStep?.status !== 'active'}
-								<span class="muted tiny">Opens once the clearances before it are signed.</span>
-							{/if}
 						{/if}
 					</div>
 				</fieldset>
 			</form>
 		</section>
 
-		<!-- 5b. Exit letters -->
-		<section class="card">
+		<!-- 08a. Exit letters: what the letters print -->
+		<section class="card" id="letters" class:jump-flash={flash === 'letters'}>
 			<div class="sec-head">
-				<span class="section-num">05b</span>
+				<span class="section-num">{STEP_NUM.letters}a</span>
 				<div>
 					<h2>Exit letters</h2>
 					<p class="muted">
@@ -1111,15 +1344,16 @@
 			</form>
 		</section>
 
-		<!-- 6. Release to the employee -->
-		<section class="card" id="release">
+		<!-- 08b. Release to the employee -->
+		<section class="card" id="release" class:jump-flash={flash === 'release'}>
 			<div class="sec-head">
-				<span class="section-num">06</span>
+				<span class="section-num">{STEP_NUM.letters}b</span>
 				<div>
 					<h2>Release to the employee</h2>
 					<p class="muted">
-						The last step. The letters ticked here go to {e.personalEmail} with their handover link —
-						automatically, the set number of days after payroll signs off, or now by hand.
+						The letters ticked here go to {e.personalEmail} with their handover link — automatically, the
+						set number of days after payroll signs off once every clearance is in, or by hand whenever
+						you choose.
 					</p>
 					{#if !e.refNo}
 						<p class="map-err">
@@ -1170,7 +1404,8 @@
 						{:else if data.flow.scheduledAt}
 							Scheduled for <b>{stamp(data.flow.scheduledAt)}</b>.
 						{:else}
-							Will be scheduled {data.flow.releaseAfterDays} days after payroll signs off.
+							Will be scheduled {data.flow.releaseAfterDays} days after payroll signs off, once every
+							clearance is signed.
 						{/if}
 					</p>
 
@@ -1273,15 +1508,15 @@
 			{#if form?.handoverSent}<p class="ok">Sent to {e.personalEmail}. Exit closed.</p>{/if}
 		</section>
 
-		<!-- 7. Mail settings: who each step of the chain emails -->
-		<section class="card" id="mail-settings">
+		<!-- Mail settings: who each step emails -->
+		<section class="card" id="mail-settings" class:jump-flash={flash === 'mail-settings'}>
 			<div class="sec-head">
-				<span class="section-num">07</span>
 				<div>
 					<h2>Mail settings</h2>
 					<p class="muted">
-						Who each step of the chain emails — any number of To and Cc addresses, one per line. The
-						name and designation prefill the approver's page and print on the No Dues certificate.
+						Who each step emails — any number of To and Cc addresses, one per line. The name and
+						designation prefill the approver's page and print on the No Dues certificate. Each tab
+						carries its step's number from the map.
 					</p>
 				</div>
 				{#if form?.routingSaved}
@@ -1295,7 +1530,21 @@
 			<form method="POST" action="?/saveRouting" use:enhance={track('routing')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
 					<div class="rtabs" role="tablist" aria-label="Mail steps">
-						{#each ROUTING_KEYS as k, i (k)}
+						<button
+							type="button"
+							role="tab"
+							class="rtab"
+							class:on={routeTab === 'itBlock'}
+							aria-selected={routeTab === 'itBlock'}
+							onclick={() => (routeTab = 'itBlock')}
+						>
+							<span class="route-n">{Number(STEP_NUM.itblock)}</span>
+							<span>IT — block access</span>
+							{#if !data.itMailRecipients.to.length}
+								<span class="rdot" title="No To address — this mail cannot go until one is added"></span>
+							{/if}
+						</button>
+						{#each ROUTING_KEYS as k (k)}
 							{@const skipped = k === 'salesforce' && !salesforceOn}
 							<button
 								type="button"
@@ -1306,24 +1555,13 @@
 								aria-selected={routeTab === k}
 								onclick={() => (routeTab = k)}
 							>
-								<span class="route-n">{i + 1}</span>
+								<span class="route-n">{Number(STEP_NUM[k])}</span>
 								<span>{ROUTING_LABELS[k]}</span>
-								{#if !skipped && !data.routing[k].to.length}
-									<span class="rdot" title="No To address — this step is held until one is added"></span>
+								{#if !skipped && !data.routing[k].to.length && k !== 'hr'}
+									<span class="rdot" title="No To address — this mail cannot go until one is added"></span>
 								{/if}
 							</button>
 						{/each}
-						<button
-							type="button"
-							role="tab"
-							class="rtab"
-							class:on={routeTab === 'itBlock'}
-							aria-selected={routeTab === 'itBlock'}
-							onclick={() => (routeTab = 'itBlock')}
-						>
-							<span class="route-n">IT</span>
-							<span>Block access</span>
-						</button>
 						<button
 							type="button"
 							role="tab"
@@ -1435,7 +1673,7 @@
 
 	<!-- ─────────────── Right rail: live documents + closure ─────────────── -->
 	<aside class="rail">
-		<section class="card">
+		<section class="card" id="live-docs" class:jump-flash={flash === 'live-docs'}>
 			<div class="eyebrow" style="margin-bottom:12px">Live documents</div>
 			<p class="muted tiny" style="margin:0 0 14px">
 				Generated fresh on every download, so a clearance signed a minute ago is already in the PDF —
@@ -1495,7 +1733,7 @@
 			</div>
 		</section>
 
-		<section class="card">
+		<section class="card" id="closure" class:jump-flash={flash === 'closure'}>
 			<div class="eyebrow" style="margin-bottom:12px">Exit closure checklist</div>
 			<form method="POST" action="?/saveClosure" use:enhance={track('closure')}>
 				<fieldset class="rbac" disabled={!data.isHr}>
@@ -1695,7 +1933,14 @@
 		<div class="rv-actions">
 			<p class="rv-foot">
 				The link in the mail is created when you press Send. Wrong address?
-				<a href="#mail-settings" onclick={() => (review = null)}>Mail settings</a>
+				<a
+					href="#mail-settings"
+					onclick={(ev) => {
+						const tab = review ? tabFor(review.step) : undefined;
+						review = null;
+						jump(ev, 'mail-settings', tab);
+					}}>Mail settings</a
+				>
 			</p>
 			<button class="btn ghost" type="button" onclick={() => (review = null)} disabled={sending['review']}>
 				{review.previewOnly ? 'Close' : 'Cancel'}
@@ -2072,28 +2317,12 @@
 	.rv-actions form {
 		display: contents;
 	}
-	.nact.go {
-		padding: 3px 10px;
-		border-radius: 999px;
-		background: var(--ae-azure);
-		color: #fff;
-	}
-	.nact.quiet {
-		color: var(--ae-muted);
-		display: block;
-	}
 	.nwait {
+		display: block;
 		margin-top: 3px;
 		font-size: 11px;
 		color: var(--ae-amber);
 		line-height: 1.4;
-	}
-	.nfile {
-		display: block;
-		margin-top: 3px;
-		font-size: 11px;
-		color: var(--ae-azure);
-		text-decoration: none;
 	}
 	.up-head {
 		display: flex;
@@ -2193,14 +2422,19 @@
 		}
 	}
 
-	/* ── The exit-chain map ─────────────────────────────────────────── */
+	/* ── The workflow map ───────────────────────────────────────────── */
 	.flowmap {
 		position: sticky;
 		top: 18px;
 		min-width: 0;
 	}
 	.mapcard {
+		display: block;
 		padding: 16px 14px 14px;
+		/* Sticky, so it must fit the screen: a long map scrolls inside itself. */
+		max-height: calc(100vh - 36px);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	.map-head {
 		display: flex;
@@ -2241,10 +2475,31 @@
 	}
 	.node {
 		position: relative;
+		padding-bottom: 10px;
+	}
+	/* The whole step is the link. The negative margin keeps the dot on the
+	   connector line while the padding gives the hover a little room. */
+	.nlink {
 		display: grid;
 		grid-template-columns: 26px minmax(0, 1fr);
 		gap: 10px;
-		padding-bottom: 16px;
+		margin: -4px -6px;
+		padding: 4px 6px 6px;
+		border-radius: 10px;
+		color: inherit;
+		text-decoration: none;
+		transition: background 0.15s ease;
+	}
+	.nlink:hover {
+		background: var(--ae-sub-bg);
+	}
+	.nlink:focus-visible {
+		outline: 2px solid var(--ae-azure);
+		outline-offset: 1px;
+	}
+	.node.here .nlink {
+		background: rgba(var(--ae-azure-rgb), 0.1);
+		box-shadow: inset 2px 0 0 var(--ae-azure);
 	}
 	/* The connector to the next node: solid once this step is done. */
 	.node:not(:last-child)::before {
@@ -2307,6 +2562,7 @@
 		}
 	}
 	.nbody {
+		display: block;
 		min-width: 0;
 		padding-top: 3px;
 	}
@@ -2319,11 +2575,12 @@
 		gap: 6px;
 		flex-wrap: wrap;
 	}
-	.node.waiting .nlabel,
+	/* Only a skipped step reads as off: a waiting one can be started any time. */
 	.node.skipped .nlabel {
 		color: var(--ae-muted);
 	}
 	.nto {
+		display: block;
 		font-size: 10.5px;
 		font-family: var(--ae-font-mono);
 		color: var(--ae-text-2);
@@ -2333,6 +2590,7 @@
 		margin-top: 2px;
 	}
 	.ndetail {
+		display: block;
 		font-size: 11px;
 		color: var(--ae-muted);
 		margin-top: 2px;
@@ -2340,11 +2598,6 @@
 	}
 	.node.blocked .ndetail {
 		color: var(--ae-ember);
-	}
-	.nacts {
-		display: flex;
-		gap: 10px;
-		margin-top: 5px;
 	}
 	.nact {
 		display: inline-block;
@@ -2358,9 +2611,6 @@
 		color: var(--ae-azure);
 		cursor: pointer;
 		text-decoration: none;
-	}
-	.nacts .nact {
-		margin-top: 0;
 	}
 	.nact:disabled {
 		opacity: 0.5;
@@ -2382,13 +2632,152 @@
 	.map-ok {
 		color: var(--ae-verdant);
 	}
-	.map-settings {
-		display: block;
-		margin-top: 6px;
-		font-size: 11px;
-		font-weight: 700;
+	.map-jump {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-top: 8px;
+		padding-top: 10px;
+		border-top: 1px solid var(--ae-line-soft);
+	}
+	.map-jump .tiny-eyebrow {
+		margin-bottom: 4px;
+	}
+	.map-jump a {
+		font-size: 11.5px;
+		font-weight: 600;
 		color: var(--ae-text-2);
 		text-decoration: none;
+		padding: 3px 6px;
+		margin: 0 -6px;
+		border-radius: 6px;
+	}
+	.map-jump a:hover {
+		background: var(--ae-sub-bg);
+		color: var(--ae-text);
+	}
+	.map-jump a.here {
+		color: var(--ae-azure);
+	}
+
+	/* ── Jumping from the map ───────────────────────────────────────── */
+	/* Lands each section clear of the top edge rather than flush against it. */
+	.main [id],
+	.rail [id] {
+		scroll-margin-top: 18px;
+	}
+	/* A brief outline on the section just jumped to, so the eye finds it. */
+	.jump-flash {
+		animation: jump-flash 1.5s ease-out;
+	}
+	@keyframes jump-flash {
+		0%,
+		35% {
+			outline: 2px solid var(--ae-azure);
+			outline-offset: 3px;
+		}
+		100% {
+			outline: 2px solid transparent;
+			outline-offset: 6px;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.jump-flash {
+			animation-duration: 0.01s;
+			outline: 2px solid var(--ae-azure);
+			outline-offset: 3px;
+		}
+	}
+
+	/* ── Key–value lines (recipients, sent, signed) ──────────────────── */
+	.kv {
+		display: grid;
+		grid-template-columns: max-content minmax(0, 1fr);
+		gap: 5px 14px;
+		margin: 0 0 12px;
+		font-size: 12.5px;
+	}
+	.kv dt {
+		color: var(--ae-muted);
+		font-weight: 600;
+	}
+	.kv dd {
+		margin: 0;
+		color: var(--ae-text);
+		overflow-wrap: anywhere;
+	}
+
+	/* ── Clearance mails ────────────────────────────────────────────── */
+	.clrs {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.clr {
+		padding: 14px 16px;
+		border: 1px solid var(--ae-line);
+		border-left: 3px solid var(--ae-line);
+		border-radius: 12px;
+		background: var(--ae-sub-bg);
+	}
+	.clr.done {
+		border-left-color: var(--ae-verdant);
+	}
+	.clr.active {
+		border-left-color: var(--ae-amber);
+	}
+	.clr.blocked {
+		border-left-color: var(--ae-ember);
+	}
+	.clr.skipped {
+		opacity: 0.7;
+		border-left-style: dashed;
+	}
+	.clr-head {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		margin-bottom: 10px;
+	}
+	.clr-title {
+		flex: 1;
+		min-width: 0;
+	}
+	.clr-title h3 {
+		margin: 0 0 2px;
+		font-size: 14px;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.clr-detail {
+		margin: 0;
+		font-size: 12px;
+		color: var(--ae-muted);
+	}
+	.clr.blocked .clr-detail {
+		color: var(--ae-ember);
+	}
+	.clr-files {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		margin-top: 6px;
+		font-size: 12px;
+	}
+	.clr-files a,
+	.clr-link {
+		color: var(--ae-azure);
+		text-decoration: none;
+		font-weight: 600;
+	}
+	.clr-actions {
+		margin-top: 10px;
+	}
+	.clr-link {
+		font-size: 12px;
+		margin-left: auto;
 	}
 
 	/* ── Release & mail settings ────────────────────────────────────── */
@@ -2527,6 +2916,9 @@
 		.rail,
 		.flowmap {
 			position: static;
+		}
+		.mapcard {
+			max-height: none;
 		}
 	}
 	.sec-head {

@@ -678,13 +678,19 @@ export function defaultReleaseLetters(track: string | null | undefined): ExitLet
 	return track === 'intern' ? ['internship_bonafide'] : ['relieving_sales'];
 }
 
-// ── The exit chain ───────────────────────────────────────────────────────────
-// The order the offboarding mails go out in. Each step starts only when the one
-// before it is done, so nobody is asked to sign before the person upstream of
-// them has: the reporting manager, then IT, then Salesforce (only when ticked),
-// then HR fills the F&F and leave, then payroll reviews it — with every document
-// attached — corrects anything, records loans and signs, and finally the
-// selected letters go to the employee on the cadence HR set.
+// ── The exit workflow ────────────────────────────────────────────────────────
+// The offboarding steps, in the order the exit page lists them. The page opens
+// with two mails HR sends outside this list — the IT "block system access" mail
+// and the employee's exit-forms link — and then these: the clearance mails
+// (reporting manager, IT, Salesforce when ticked, payroll), HR's F&F and leave,
+// and the letters to the employee.
+//
+// The order is presentation only (HR decision, Nov 2026): every step is
+// independent. Any clearance mail can go at any time, in any order, before or
+// after the employee's forms are in; payroll can be mailed before HR has filled
+// the F&F (they fill it in themselves then). The one thing still held back is
+// the automatic release — the letters wait until every clearance is signed,
+// though HR can release by hand at any point.
 //
 // `dept` ties a mail step to the ExitClearance row it sends; `hr` and `letters`
 // are HR's own steps and send no clearance.
@@ -700,15 +706,19 @@ export const FLOW_STEPS: {
 	{ key: 'manager', label: 'Reporting manager', hint: 'Knowledge transfer sign-off', dept: 'manager' },
 	{ key: 'it', label: 'IT team', hint: 'Assets, logins and access', dept: 'it' },
 	{ key: 'salesforce', label: 'Salesforce team', hint: 'Sales tools and leads', dept: 'salesforce', optional: true },
+	{ key: 'payroll', label: 'Payroll', hint: 'F&F figures, loans, payslips, sign-off', dept: 'payroll' },
 	{ key: 'hr', label: 'HR — F&F & leave', hint: 'Settlement and leave filled in' },
-	{ key: 'payroll', label: 'Payroll', hint: 'Reviews, loans, signs off', dept: 'payroll' },
 	{ key: 'letters', label: 'Letters to employee', hint: 'Sent on the set cadence' }
 ];
+
+/** The clearance mails other than payroll's — the departments whose sign-off
+ *  the exit is "cleared" on. */
+export const DEPT_FLOW_STEPS: FlowStepKey[] = ['manager', 'it', 'salesforce'];
 
 /** Who each mail step goes to. Set per exit at the bottom of the exit page,
  *  starting from the saved defaults. The manager has no default — it differs
  *  for every employee. */
-export const ROUTING_KEYS = ['manager', 'it', 'salesforce', 'hr', 'payroll'] as const;
+export const ROUTING_KEYS = ['manager', 'it', 'salesforce', 'payroll', 'hr'] as const;
 export type RoutingKey = (typeof ROUTING_KEYS)[number];
 
 export const ROUTING_LABELS: Record<RoutingKey, string> = {

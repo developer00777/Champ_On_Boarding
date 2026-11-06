@@ -37,7 +37,7 @@ import {
 	serviceMonths
 } from '$lib/server/offboarding/exit';
 import { sendExitAlert } from '$lib/server/offboarding/mail';
-import { advanceFlow, flowSteps } from '$lib/server/offboarding/flow';
+import { flowSteps, openClearances, syncFlow } from '$lib/server/offboarding/flow';
 import {
 	ACCEPTED_EXIT_MIMES,
 	ACCEPTED_IMAGE_MIMES,
@@ -521,33 +521,26 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 
-		// An exit on the chain moves itself on: this signature readies the next
-		// step's mail for HR to review and send (or hands the F&F to HR, or
-		// schedules the release).
-		// Exits from before the chain keep the old rule — every clearance in,
+		// An exit on the workflow brings itself in step: its status, HR's F&F
+		// nudge once the departments are in, and the release once everyone is.
+		// The steps are independent, so a signature readies no other mail — HR
+		// is told what is still open instead.
+		// Exits from before the workflow keep the old rule — every clearance in,
 		// so the exit is cleared — and never pull a completed exit backwards.
 		const onChain = !!(exit as unknown as { flow?: { startedAt?: Date | null } }).flow?.startedAt;
 		const all = await ExitClearance.find({ exitId: exit._id }).select('status').lean();
 		const progress = clearanceProgress(all.map((a) => ({ status: String(a.status) })));
 		let next: string | null = null;
 		if (onChain) {
-			await advanceFlow(String(exit._id));
+			await syncFlow(String(exit._id));
 			const [fresh, rows] = await Promise.all([
 				Exit.findById(exit._id).lean(),
 				ExitClearance.find({ exitId: exit._id }).lean()
 			]);
-			const step = fresh
-				? flowSteps(fresh as Record<string, unknown>, rows as Record<string, unknown>[]).find(
-						(s) => s.status === 'active' || s.status === 'blocked'
-					)
-				: null;
-			next = !step
-				? null
-				: step.status === 'blocked'
-					? `Next: ${step.label} — no email set yet. Add it in Mail settings on the exit page.`
-					: step.ready
-						? `Next: the ${step.label} mail to ${step.to} is ready — review it on the exit page and send it.`
-						: `Next: ${step.label}.`;
+			const open = fresh
+				? openClearances(flowSteps(fresh as Record<string, unknown>, rows as Record<string, unknown>[]))
+				: [];
+			next = open.length ? `Still open: ${open.join(', ')}.` : 'Every clearance is now signed.';
 		} else if (progress.allDone && ['clearances', 'submitted'].includes(exit.status)) {
 			await Exit.findByIdAndUpdate(exit._id, { status: 'cleared' });
 		}
@@ -577,7 +570,7 @@ export const actions: Actions = {
 					...(clearance.department === 'payroll' ? [`Net F&F payable: ${get('netAmount')}.`] : []),
 					`Verdict: ${verdict === 'no_dues' ? 'No dues outstanding' : 'Dues outstanding'}.`,
 					onChain
-						? (next ?? 'The exit chain is complete.')
+						? (next ?? 'Every clearance is now signed.')
 						: progress.allDone
 							? 'Every requested clearance is now in — the exit is ready for full and final settlement.'
 							: `${progress.done} of ${progress.total} clearances signed.`
