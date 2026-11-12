@@ -302,6 +302,41 @@
 	const docsAsked = $derived(e.requestedFields.filter((r: { field: string; label: string }) => r.field.startsWith('upload.')));
 	const canAskDocs = $derived(data.isHr && e.status !== 'initiated' && e.status !== 'completed');
 
+	/** Why Send is greyed out, said next to it rather than left to guess. */
+	const sendBlockedWhy = $derived.by(() => {
+		const d = review?.draft;
+		if (!d) return '';
+		if (detailIssues.length)
+			return `To send, fill in ${detailIssues.map((x) => x.label.toLowerCase()).join(', ')} at the top — or press Save to keep what you have typed and send later.`;
+		if (!d.sendable) return d.why ?? 'This mail cannot be sent right now.';
+		return '';
+	});
+
+	/** The dialog's Save: keeps the details and recipients, sends nothing, and
+	 *  reloads the draft so the preview and Send reflect what was saved. */
+	let reviewSavedAt = $state(0);
+	function saveReviewed() {
+		sending['reviewSave'] = true;
+		return async ({ result, update }: { result: { type: string }; update: (o?: { reset?: boolean }) => Promise<void> }) => {
+			await update({ reset: false });
+			sending['reviewSave'] = false;
+			if (result.type === 'success' && review) {
+				const at = Date.now();
+				reviewSavedAt = at;
+				setTimeout(() => {
+					if (reviewSavedAt === at) reviewSavedAt = 0;
+				}, 2500);
+				// A desk's To is this exit's own setting now, so a send uses it
+				// without posting it. A mail to the employee keeps HR's To, which
+				// is not saved (it goes to the personal email otherwise).
+				if (!review.draft?.details?.some((x) => x.field === 'personalEmail')) edit.toTouched = false;
+				draftCache.clear();
+				review.query = null;
+				await fetchDraft();
+			}
+		};
+	}
+
 	function sendReviewed() {
 		sending['review'] = true;
 		return async ({ result, update }: { result: { type: string }; update: (o?: { reset?: boolean }) => Promise<void> }) => {
@@ -2064,7 +2099,10 @@
 			</div>
 		{/if}
 
-		{#if form?.message && !sending['review'] && review.draft}<p class="error" style="margin:0 20px 10px">{form.message}</p>{/if}
+		{#if form?.message && !sending['review'] && !sending['reviewSave'] && review.draft}<p class="error" style="margin:0 20px 10px">{form.message}</p>{/if}
+		{#if !review.previewOnly && review.draft && data.isHr && sendBlockedWhy}
+			<p class="rv-blocked">{sendBlockedWhy}</p>
+		{/if}
 		<div class="rv-actions">
 			<p class="rv-foot">
 				The link in the mail is created when you press Send. Wrong address?
@@ -2080,6 +2118,24 @@
 			<button class="btn ghost" type="button" onclick={() => (review = null)} disabled={sending['review']}>
 				{review.previewOnly ? 'Close' : 'Cancel'}
 			</button>
+			{#if !review.previewOnly && review.draft && data.isHr && review.step !== 'hr'}
+				<!-- Keeps the details (and, for a desk's mail, its To / Cc) without sending. -->
+				<form method="POST" action="?/saveReviewDraft" use:enhance={saveReviewed}>
+					<input type="hidden" name="step" value={review.mode === 'docs' ? 'docs' : review.step} />
+					{#each review.draft.details ?? [] as x (x.field)}
+						<input type="hidden" name="detail.{x.field}" value={edit.details[x.field] ?? ''} />
+					{/each}
+					{#if edit.toTouched}<input type="hidden" name="mail.to" value={edit.to} />{/if}
+					{#if edit.touched}<input type="hidden" name="mail.cc" value={edit.cc} />{/if}
+					<button
+						class="btn ghost"
+						title="Save the details and recipients without sending"
+						disabled={sending['reviewSave'] || sending['review']}
+					>
+						{sending['reviewSave'] ? 'Saving…' : reviewSavedAt ? 'Saved ✓' : 'Save'}
+					</button>
+				</form>
+			{/if}
 			{#if !review.previewOnly}
 				<form
 					method="POST"
@@ -2343,6 +2399,11 @@
 	}
 	.rv-dfield.wrong .rv-in {
 		border-color: rgb(242 177 92 / 0.7);
+	}
+	.rv-blocked {
+		margin: 0 20px 8px;
+		font-size: 12px;
+		color: var(--ae-ember);
 	}
 	.rv-msg {
 		margin: 10px 20px 0;

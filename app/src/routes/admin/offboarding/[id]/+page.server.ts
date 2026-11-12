@@ -169,6 +169,64 @@ async function takeReviewForm(
 	actor: string,
 	ip: string
 ): Promise<{ exit: Record<string, any>; edits: MailEdits | null } | { error: string }> {
+	const saved = await saveReviewDetails(exitId, exitIn, form, key, actor, ip);
+	if ('error' in saved) return saved;
+	const { exit } = saved;
+	const bad = detailsProblem(checkMailDetails(exit, key));
+	if (bad) return { error: bad };
+
+	const addresses = (name: string) => addressList(form, name);
+	const edits: MailEdits = {};
+	if (form.has('mail.to')) {
+		const to = addresses('mail.to');
+		if (!to.length) return { error: 'Add at least one address to send it to.' };
+		const wrong = to.filter((a) => !isValidEmail(a));
+		if (wrong.length) return { error: `Not a valid address: ${wrong.join(', ')}.` };
+		edits.to = to;
+	}
+	if (form.has('mail.cc')) {
+		const cc = addresses('mail.cc');
+		const wrong = cc.filter((a) => !isValidEmail(a));
+		if (wrong.length) return { error: `Not a valid address in Cc: ${wrong.join(', ')}.` };
+		edits.cc = cc;
+	}
+	if (form.has('mail.subject')) {
+		const subject = String(form.get('mail.subject') ?? '').trim().slice(0, 250);
+		if (!subject) return { error: 'The subject cannot be empty.' };
+		edits.subject = subject;
+	}
+	if (form.has('mail.message')) {
+		const paras = String(form.get('mail.message') ?? '')
+			.replace(/\r/g, '')
+			.split(/\n\s*\n/)
+			.map((x) => x.trim())
+			.filter(Boolean)
+			.slice(0, 20);
+		if (!paras.length) return { error: 'The message cannot be empty.' };
+		edits.intro = paras;
+	}
+	return { exit, edits: Object.keys(edits).length ? edits : null };
+}
+
+/** Addresses typed in a To or Cc box: commas, semicolons or spaces between. */
+function addressList(form: FormData, name: string): string[] {
+	return String(form.get(name) ?? '')
+		.split(/[\s,;]+/)
+		.map((a) => a.trim().toLowerCase())
+		.filter(Boolean);
+}
+
+/** Saves the `detail.*` fields of the review dialog to the exit, like
+ *  Particulars — what is filled in, never a blank over a stored value. Used
+ *  before a send (which then checks them) and by the dialog's Save. */
+async function saveReviewDetails(
+	exitId: string,
+	exitIn: Record<string, unknown>,
+	form: FormData,
+	key: string,
+	actor: string,
+	ip: string
+): Promise<{ exit: Record<string, any> } | { error: string }> {
 	let exit = exitIn as Record<string, any>;
 	const patch: Record<string, string> = {};
 	for (const field of (MAIL_DETAILS[key] ?? []) as ExitDetailField[]) {
@@ -202,44 +260,7 @@ async function takeReviewForm(
 			});
 		exit = { ...exit, ...patch };
 	}
-	const bad = detailsProblem(checkMailDetails(exit, key));
-	if (bad) return { error: bad };
-
-	const addresses = (name: string) =>
-		String(form.get(name) ?? '')
-			.split(/[\s,;]+/)
-			.map((a) => a.trim().toLowerCase())
-			.filter(Boolean);
-	const edits: MailEdits = {};
-	if (form.has('mail.to')) {
-		const to = addresses('mail.to');
-		if (!to.length) return { error: 'Add at least one address to send it to.' };
-		const wrong = to.filter((a) => !isValidEmail(a));
-		if (wrong.length) return { error: `Not a valid address: ${wrong.join(', ')}.` };
-		edits.to = to;
-	}
-	if (form.has('mail.cc')) {
-		const cc = addresses('mail.cc');
-		const wrong = cc.filter((a) => !isValidEmail(a));
-		if (wrong.length) return { error: `Not a valid address in Cc: ${wrong.join(', ')}.` };
-		edits.cc = cc;
-	}
-	if (form.has('mail.subject')) {
-		const subject = String(form.get('mail.subject') ?? '').trim().slice(0, 250);
-		if (!subject) return { error: 'The subject cannot be empty.' };
-		edits.subject = subject;
-	}
-	if (form.has('mail.message')) {
-		const paras = String(form.get('mail.message') ?? '')
-			.replace(/\r/g, '')
-			.split(/\n\s*\n/)
-			.map((x) => x.trim())
-			.filter(Boolean)
-			.slice(0, 20);
-		if (!paras.length) return { error: 'The message cannot be empty.' };
-		edits.intro = paras;
-	}
-	return { exit, edits: Object.keys(edits).length ? edits : null };
+	return { exit };
 }
 
 /** What HR still fills on the F&F card: the statutory follow-ups. The
@@ -1131,6 +1152,59 @@ export const actions: Actions = {
 		// Salesforce switched on or off changes what the release waits for.
 		await syncFlow(params.id);
 		return { routingSaved: true, routingDefaulted: asDefault, itDefaultSkipped };
+	},
+
+	/** The review dialog's Save: keeps what HR typed without sending. The
+	 *  employee details go to the exit (as on Particulars, blanks allowed — only
+	 *  a send insists on them), and a changed To / Cc goes to this exit's Mail
+	 *  settings for that step. A mail to the employee has no recipients of its
+	 *  own to keep: it goes to the personal email, saved with the details. The
+	 *  subject and message belong to one send and are not kept. */
+	saveReviewDraft: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		if (row.exit.status === 'completed') return no(409, 'This exit is closed — reopen it first.');
+		const form = await request.formData();
+		const step = String(form.get('step') ?? '');
+		const detailKey = step === 'letters' ? lettersDetailKey(row.exit as never) : step;
+		const saved = await saveReviewDetails(params.id, row.exit as never, form, detailKey, locals.admin!.email, getClientAddress());
+		if ('error' in saved) return no(400, saved.error);
+
+		const isItBlock = step === 'itblock';
+		const routeKey = (ROUTING_KEYS as readonly string[]).includes(step) ? step : null;
+		if ((isItBlock || routeKey) && (form.has('mail.to') || form.has('mail.cc'))) {
+			const patch: Record<string, unknown> = {};
+			const wrong: string[] = [];
+			let to: string[] | null = null;
+			if (form.has('mail.to')) {
+				to = addressList(form, 'mail.to');
+				wrong.push(...to.filter((a) => !isValidEmail(a)));
+				if (!to.length) return no(400, 'Add at least one address in To — a mail with none would go nowhere.');
+			}
+			const cc = form.has('mail.cc') ? addressList(form, 'mail.cc') : null;
+			if (cc) wrong.push(...cc.filter((a) => !isValidEmail(a)));
+			if (wrong.length) return no(400, `Not a valid address: ${wrong.join(', ')}.`);
+			const ccOut = (list: string[]) => [...new Set(list)].filter((a) => !(to ?? []).includes(a));
+			if (isItBlock) {
+				if (to) patch['routing.itBlock.to'] = [...new Set(to)];
+				if (cc) patch['routing.itBlock.cc'] = ccOut(cc);
+			} else {
+				if (to) patch[`routing.${routeKey}.email`] = [...new Set(to)].join(', ');
+				if (cc) patch[`routing.${routeKey}.cc`] = ccOut(cc);
+			}
+			await Exit.findByIdAndUpdate(params.id, patch);
+			await audit({
+				candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+				actor: locals.admin!.email,
+				action: 'exit_routing_saved',
+				field: `this exit (${step}, from the mail dialog)`,
+				newValue: `${to ? `to ${to.join(' ')}` : ''}${cc ? ` cc ${cc.join(' ') || '—'}` : ''}`.trim(),
+				ip: getClientAddress()
+			});
+		}
+		return { reviewSaved: true };
 	},
 
 	/** SOP step 5 — the "block the system access" mail to the IT desk. */
