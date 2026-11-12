@@ -16,12 +16,21 @@ import { baseUrl } from '$lib/server/base-url';
 import { brandBySlug } from '$lib/shared/brands';
 import { EXIT_UPLOAD_DOCS, FLOW_STEPS, UPLOAD_REQUEST_PREFIX, type FlowStepKey } from '$lib/shared/offboarding';
 import { exitCompany } from '$lib/server/offboarding/exit';
-import { draftStep } from '$lib/server/offboarding/flow';
+import { draftStep, lettersDetailKey } from '$lib/server/offboarding/flow';
 import { buildExitFormsMail, buildItExitMail } from '$lib/server/offboarding/mail';
+import { checkMailDetails } from '$lib/shared/exit-mail-details';
 
 export const config = { runtime: 'nodejs24.x' };
 
 const clean = (v: string) => v.trim().slice(0, 300);
+
+/** Adds the employee details this mail prints, each checked for a blank or a
+ *  placeholder. They do not change `sendable`: HR fills a flagged one in the
+ *  dialog, and the send saves it first (and checks again) before mailing. */
+const withDetails = <T extends object>(d: T, exit: Record<string, unknown>, key: string) => ({
+	...d,
+	details: checkMailDetails(exit, key)
+});
 
 export const GET: RequestHandler = async ({ params, locals, url }) => {
 	if (!locals.admin) error(401, 'Not authenticated');
@@ -36,9 +45,16 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 					uploads: q.getAll('upload').map(clean).filter(Boolean)
 				}
 			: null;
-		const draft = await draftStep(params.id, params.step as FlowStepKey, back);
+		const [draft, exit] = await Promise.all([
+			draftStep(params.id, params.step as FlowStepKey, back),
+			Exit.findById(params.id).lean().catch(() => null)
+		]);
 		if ('error' in draft) error(404, draft.error);
-		return json(draft, { headers: { 'Cache-Control': 'private, no-store' } });
+		if (!exit) error(404, 'Offboarding record not found');
+		const detailKey = params.step === 'letters' ? lettersDetailKey(exit as never) : params.step;
+		return json(withDetails(draft, exit as Record<string, unknown>, detailKey), {
+			headers: { 'Cache-Control': 'private, no-store' }
+		});
 	}
 
 	const exit = await Exit.findById(params.id).lean().catch(() => null);
@@ -56,15 +72,16 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 			url: `${baseUrl()}/x/«secure link created when you press Send»`
 		});
 		const closed = exit.status === 'completed';
-		return json({
+		return json(withDetails({
 			...mail,
 			key: 'forms',
 			label: 'Employee exit forms',
 			reminder: false,
-			sendable: !closed && !!exit.personalEmail,
-			why: closed ? 'This exit is closed — reopen it first.' : exit.personalEmail ? null : 'No personal email on the exit.',
+			// A missing personal email is asked for in the dialog (details).
+			sendable: !closed,
+			why: closed ? 'This exit is closed — reopen it first.' : null,
 			attachments: []
-		});
+		}, exit, 'forms'));
 	}
 
 	if (params.step === 'docs') {
@@ -89,7 +106,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 					: !docs.length
 						? 'Tick at least one document.'
 						: null;
-		return json({
+		return json(withDetails({
 			...mail,
 			key: 'docs',
 			label: 'Ask the employee for documents',
@@ -97,7 +114,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 			sendable: !why,
 			why,
 			attachments: []
-		});
+		}, exit, 'docs'));
 	}
 
 	if (params.step === 'itblock') {
@@ -111,19 +128,20 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 			to: exit.routing?.itBlock?.to ?? null,
 			cc: exit.routing?.itBlock?.cc ?? null
 		});
-		return json({
+		return json(withDetails({
 			to: mail.to,
 			cc: mail.cc,
 			subject: mail.subject,
 			html: mail.html,
 			text: mail.text,
+			intro: mail.intro,
 			key: 'itblock',
 			label: 'IT — block system access',
 			reminder: !!exit.itAccessRevokedMailSentAt,
-			sendable: true,
-			why: mail.missing.length ? `Blank in the table: ${mail.missing.join(', ')}.` : null,
+			sendable: !!mail.to.length,
+			why: mail.to.length ? null : 'No IT address set — add it in Mail settings.',
 			attachments: []
-		});
+		}, exit, 'itblock'));
 	}
 
 	error(404, 'That step does not send a mail');

@@ -29,6 +29,8 @@ import { baseUrl } from '$lib/server/base-url';
 import { isValidEmail, isValidMobile, titleCase } from '$lib/shared/validation';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import { TRACKS, type Track } from '$lib/shared/matrix';
+import { MAIL_DETAILS, checkMailDetails, detailsProblem, type ExitDetailField } from '$lib/shared/exit-mail-details';
+import type { MailEdits } from '$lib/server/offboarding/mail';
 import {
 	CLEARANCE_DEPT_LABELS,
 	CLOSURE_CHECKLIST_KEYS,
@@ -68,6 +70,7 @@ import { EXIT_DOC_BY_KEY, availableDocs } from '$lib/server/offboarding/document
 import {
 	flowSteps,
 	getRoutingDefaults,
+	lettersDetailKey,
 	mailStep,
 	releaseLetterKeys,
 	releaseLetters,
@@ -149,6 +152,95 @@ const PARTICULAR_FIELDS = {
 	// Printed on the exit letters; may be left blank until they are released.
 	refNo: (v: string) => v
 } as const;
+
+/** The review dialog's own fields, read when any offboarding mail is sent.
+ *
+ *  Two separate things, deliberately: the employee details the mail prints
+ *  (`detail.*` — saved to the exit like Particulars, then checked, so a blank
+ *  or a placeholder such as "demo" or "0000" stops the send), and HR's edits
+ *  to this one mail (`mail.to`, `mail.cc`, `mail.subject`, `mail.message`),
+ *  which change nothing in Mail settings. A send from anywhere without these
+ *  fields still has its details checked. */
+async function takeReviewForm(
+	exitId: string,
+	exitIn: Record<string, unknown>,
+	form: FormData,
+	key: string,
+	actor: string,
+	ip: string
+): Promise<{ exit: Record<string, any>; edits: MailEdits | null } | { error: string }> {
+	let exit = exitIn as Record<string, any>;
+	const patch: Record<string, string> = {};
+	for (const field of (MAIL_DETAILS[key] ?? []) as ExitDetailField[]) {
+		const raw = form.get(`detail.${field}`);
+		if (raw === null) continue;
+		let v = String(raw).trim();
+		if (field === 'lwd') v = isoToDDMMYYYY(v) || v;
+		else if (v && field in PARTICULAR_FIELDS) v = PARTICULAR_FIELDS[field as keyof typeof PARTICULAR_FIELDS](v);
+		if (field === 'personalEmail' && v && !isValidEmail(v)) return { error: 'Enter a valid personal email address.' };
+		if (field === 'refNo' && v && (await Exit.exists({ refNo: v, _id: { $ne: exitId } })))
+			return { error: `Reference number ${v} is already used by another offboarding.` };
+		const current =
+			field === 'department'
+				? String(exit.department || exit.division || '')
+				: field === 'refNo'
+					? String(exit.refNo || exit.letters?.refNo || '')
+					: String(exit[field] ?? '');
+		if (v && v !== current) patch[field] = v;
+	}
+	if (Object.keys(patch).length) {
+		await Exit.findByIdAndUpdate(exitId, patch);
+		for (const [field, value] of Object.entries(patch))
+			await audit({
+				candidateId: exit.candidateId ? String(exit.candidateId) : null,
+				actor,
+				action: 'exit_particulars_set',
+				field,
+				oldValue: (exit[field] as string | null) ?? null,
+				newValue: value,
+				ip
+			});
+		exit = { ...exit, ...patch };
+	}
+	const bad = detailsProblem(checkMailDetails(exit, key));
+	if (bad) return { error: bad };
+
+	const addresses = (name: string) =>
+		String(form.get(name) ?? '')
+			.split(/[\s,;]+/)
+			.map((a) => a.trim().toLowerCase())
+			.filter(Boolean);
+	const edits: MailEdits = {};
+	if (form.has('mail.to')) {
+		const to = addresses('mail.to');
+		if (!to.length) return { error: 'Add at least one address to send it to.' };
+		const wrong = to.filter((a) => !isValidEmail(a));
+		if (wrong.length) return { error: `Not a valid address: ${wrong.join(', ')}.` };
+		edits.to = to;
+	}
+	if (form.has('mail.cc')) {
+		const cc = addresses('mail.cc');
+		const wrong = cc.filter((a) => !isValidEmail(a));
+		if (wrong.length) return { error: `Not a valid address in Cc: ${wrong.join(', ')}.` };
+		edits.cc = cc;
+	}
+	if (form.has('mail.subject')) {
+		const subject = String(form.get('mail.subject') ?? '').trim().slice(0, 250);
+		if (!subject) return { error: 'The subject cannot be empty.' };
+		edits.subject = subject;
+	}
+	if (form.has('mail.message')) {
+		const paras = String(form.get('mail.message') ?? '')
+			.replace(/\r/g, '')
+			.split(/\n\s*\n/)
+			.map((x) => x.trim())
+			.filter(Boolean)
+			.slice(0, 20);
+		if (!paras.length) return { error: 'The message cannot be empty.' };
+		edits.intro = paras;
+	}
+	return { exit, edits: Object.keys(edits).length ? edits : null };
+}
 
 /** What HR still fills on the F&F card: the statutory follow-ups. The
  *  settlement figures are payroll's and arrive from their clearance page — see
@@ -454,8 +546,9 @@ export const actions: Actions = {
 		}
 		const errors: string[] = [];
 		if (!patch.fullName) errors.push('Employee name is required.');
-		if (!patch.personalEmail) errors.push('Personal email is required.');
-		else if (!isValidEmail(patch.personalEmail)) errors.push('Enter a valid personal email address.');
+		// Optional, like the reference number: the mails that go to it ask for
+		// it before they send.
+		if (patch.personalEmail && !isValidEmail(patch.personalEmail)) errors.push('Enter a valid personal email address.');
 		if (patch.personalMobile && !isValidMobile(patch.personalMobile))
 			errors.push('Mobile number must be 10 digits starting 6-9.');
 		// Optional until the letters go out — releaseLetters() insists on it then.
@@ -576,14 +669,17 @@ export const actions: Actions = {
 
 	/** SOP step 5 — mint (or re-mint) the employee's exit-forms link and email
 	 *  it. Re-sending revokes the previous link, so a forwarded old URL dies. */
-	sendFormsLink: async ({ params, locals, getClientAddress }) => {
+	sendFormsLink: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit, company } = row;
-		if (exit.status === 'completed')
+		const { company } = row;
+		if (row.exit.status === 'completed')
 			return no(409, 'This exit is closed - reopen it before sending a new link.');
+		const review = await takeReviewForm(params.id, row.exit as never, await request.formData(), 'forms', locals.admin!.email, getClientAddress());
+		if ('error' in review) return no(400, review.error);
+		const { exit, edits } = review;
 
 		const brand = brandBySlug(company?.brandSlug ?? undefined);
 		const token = await createExitToken(params.id, 'forms');
@@ -597,7 +693,8 @@ export const actions: Actions = {
 				signoff: exit.routing?.signoff ?? null,
 				lwd: exit.lwd ?? null,
 				brand,
-				url
+				url,
+				edits
 			});
 		} catch (e) {
 			console.error('[exit] forms link send failed:', e);
@@ -671,6 +768,9 @@ export const actions: Actions = {
 		const fields = [...new Set(form.getAll('field').map((f) => String(f)).filter(Boolean))];
 		if (!fields.length) return no(400, 'Tick at least one item to send back.', 'changes');
 		const shared = clip(form.get('note'), 500) || null;
+		// The employee's name and address have to be real before it is mailed.
+		const badDetails = detailsProblem(checkMailDetails(exit as never, 'docs'));
+		if (badDetails) return no(400, `${badDetails} Correct them under Particulars.`, 'changes');
 
 		const now = new Date();
 		const log = ((exit as unknown as { requestLog?: { field: string }[] }).requestLog ?? []) as { field: string }[];
@@ -771,7 +871,8 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const key = String((await request.formData()).get('step') ?? '') as FlowStepKey;
+		const form = await request.formData();
+		const key = String(form.get('step') ?? '') as FlowStepKey;
 		const def = FLOW_STEPS.find((s) => s.key === key && s.dept);
 		if (!def) return no(400, 'That step does not send a mail.');
 		const clearances = await ExitClearance.find({ exitId: params.id }).lean();
@@ -788,8 +889,10 @@ export const actions: Actions = {
 						? `The ${def.label} is not part of this exit — switch it on in Mail settings.`
 						: `Add the ${def.label} email in Mail settings first.`
 			);
+		const review = await takeReviewForm(params.id, row.exit as never, form, key, locals.admin!.email, getClientAddress());
+		if ('error' in review) return no(400, review.error);
 		const current = clearances.find((c) => c.department === def.dept);
-		const res = await mailStep(params.id, key, { reminder: current?.status === 'sent' });
+		const res = await mailStep(params.id, key, { reminder: current?.status === 'sent', edits: review.edits });
 		if ('error' in res) return no(400, res.error);
 		await syncFlow(params.id);
 		await audit({
@@ -821,7 +924,9 @@ export const actions: Actions = {
 			items: form.getAll('item').map(clean).filter((i) => allowed.has(i)),
 			uploads: form.getAll('upload').map(clean).filter(Boolean).slice(0, 5)
 		};
-		const res = await sendBackStep(params.id, key, back, locals.admin!.email);
+		const review = await takeReviewForm(params.id, row.exit as never, form, key, locals.admin!.email, getClientAddress());
+		if ('error' in review) return no(400, review.error);
+		const res = await sendBackStep(params.id, key, back, locals.admin!.email, review.edits);
 		if ('error' in res) return no(400, res.error);
 		await audit({
 			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
@@ -843,11 +948,14 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit, company } = row;
-		if (exit.status === 'completed') return no(409, 'This exit is closed. Reopen it before asking for documents.');
-		if (exit.status === 'initiated') return no(409, 'Send the employee their forms link first.');
+		const { company } = row;
+		if (row.exit.status === 'completed') return no(409, 'This exit is closed. Reopen it before asking for documents.');
+		if (row.exit.status === 'initiated') return no(409, 'Send the employee their forms link first.');
 
 		const form = await request.formData();
+		const review = await takeReviewForm(params.id, row.exit as never, form, 'docs', locals.admin!.email, getClientAddress());
+		if ('error' in review) return no(400, review.error);
+		const { exit, edits } = review;
 		const known = new Set<string>(EXIT_UPLOAD_DOCS.map((d) => d.docType));
 		const docs = [...new Set(form.getAll('doc').map(String))].filter((d) => known.has(d));
 		if (!docs.length) return no(400, 'Tick at least one document.');
@@ -869,7 +977,8 @@ export const actions: Actions = {
 				lwd: exit.lwd ?? null,
 				brand: brandBySlug(company?.brandSlug ?? undefined),
 				url: `${baseUrl()}/x/${token}`,
-				changesRequested: requested
+				changesRequested: requested,
+				edits
 			});
 		} catch (err) {
 			console.error('[exit] document request send failed:', err);
@@ -1025,12 +1134,15 @@ export const actions: Actions = {
 	},
 
 	/** SOP step 5 — the "block the system access" mail to the IT desk. */
-	sendItBlockMail: async ({ params, locals, getClientAddress }) => {
+	sendItBlockMail: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const { exit, company } = row;
+		const { company } = row;
+		const review = await takeReviewForm(params.id, row.exit as never, await request.formData(), 'itblock', locals.admin!.email, getClientAddress());
+		if ('error' in review) return no(400, review.error);
+		const { exit, edits } = review;
 
 		try {
 			await sendItExitMail({
@@ -1041,7 +1153,8 @@ export const actions: Actions = {
 				lwd: exit.lwd ?? null,
 				team: exit.department ?? exit.division ?? null,
 				to: exit.routing?.itBlock?.to ?? null,
-				cc: exit.routing?.itBlock?.cc ?? null
+				cc: exit.routing?.itBlock?.cc ?? null,
+				edits
 			});
 		} catch (e) {
 			console.error('[exit] IT block mail failed:', e);
@@ -1177,12 +1290,21 @@ export const actions: Actions = {
 
 	/** Releases now: the selected letters and the handover link go to the
 	 *  employee, and the exit closes — what the cadence would do on its date. */
-	sendHandover: async ({ params, locals, getClientAddress }) => {
+	sendHandover: async ({ params, request, locals, getClientAddress }) => {
 		const forbidden = requireHr(locals);
 		if (forbidden) return forbidden;
 		const row = await getExit(params.id);
 		if (!row) return no(404, 'Offboarding record not found.');
-		const res = await releaseLetters(params.id, locals.admin!.email);
+		const review = await takeReviewForm(
+			params.id,
+			row.exit as never,
+			await request.formData(),
+			lettersDetailKey(row.exit as never),
+			locals.admin!.email,
+			getClientAddress()
+		);
+		if ('error' in review) return no(400, review.error, 'handover');
+		const res = await releaseLetters(params.id, locals.admin!.email, review.edits);
 		if ('error' in res) return no(400, res.error, 'handover');
 		await audit({
 			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,

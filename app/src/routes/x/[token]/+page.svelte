@@ -171,7 +171,7 @@
 				<p>
 					Thank you, {e.fullName.split(' ')[0]}. Everything you submitted has been received and is
 					being processed. Your relieving letter, experience letter and final settlement will be
-					emailed to <b>{e.personalEmail}</b> once your full and final settlement is complete —
+					emailed to <b>{e.personalEmail || 'your personal email'}</b> once your full and final settlement is complete —
 					usually within 30 to 45 days of your last working day.
 				</p>
 				{#if data.documents.length}

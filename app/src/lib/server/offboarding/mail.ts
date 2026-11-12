@@ -159,6 +159,27 @@ export interface MailDraft {
 	text: string;
 }
 
+/** HR's edits to one mail in the review dialog. */
+export interface MailEdits {
+	to?: string[];
+	cc?: string[];
+	subject?: string;
+	/** The opening paragraphs, one per entry. */
+	intro?: string[];
+}
+
+/** Applies HR's recipients and subject over a composed mail, and hands back
+ *  the opening it used so the dialog can prefill its message box. */
+function withEdits<T extends MailDraft>(edits: MailEdits | null | undefined, intro: string[], d: T): T & { intro: string[] } {
+	return {
+		...d,
+		to: edits?.to?.length ? edits.to : d.to,
+		cc: edits?.cc ?? d.cc,
+		subject: edits?.subject?.trim() || d.subject,
+		intro
+	};
+}
+
 function textBody(lines: string[], signoffName: string, signoffDesignation: string, legalName: string): string {
 	return [...lines, '', 'Regards,', signoffName, signoffDesignation, legalName].join('\n');
 }
@@ -166,10 +187,13 @@ function textBody(lines: string[], signoffName: string, signoffDesignation: stri
 // ── 1. Exit-forms invitation ─────────────────────────────────────────────────
 
 export async function buildExitFormsMail(opts: {
+	/** HR's changes in the review dialog: recipients, subject and the
+	 *  opening message. Anything left out keeps the composed default. */
+	edits?: MailEdits | null;
 	/** This exit's own sign-off, from its mail settings card; blank parts
 	 *  fall back to Settings. */
 	signoff?: ExitSignoff | null;
-	to: string;
+	to: string | null;
 	employeeName: string;
 	lwd: string | null;
 	brand: BrandTheme;
@@ -187,7 +211,7 @@ export async function buildExitFormsMail(opts: {
 	// finished their forms long ago, so the mail asks for uploads, not edits.
 	const uploadsOnly = isRework && opts.changesRequested!.every((c) => c.field.startsWith(UPLOAD_REQUEST_PREFIX));
 
-	const intro = uploadsOnly
+	const defaultIntro = uploadsOnly
 		? [
 				`Hello ${opts.employeeName},`,
 				'To complete your exit we need the document(s) listed below from you.',
@@ -225,6 +249,7 @@ export async function buildExitFormsMail(opts: {
 				.join('')}</ul>`
 		: '';
 
+	const intro = opts.edits?.intro?.length ? opts.edits.intro : defaultIntro;
 	const html = shell({
 		brand: opts.brand,
 		heading: uploadsOnly
@@ -273,8 +298,8 @@ export async function buildExitFormsMail(opts: {
 		opts.brand.legalName
 	);
 
-	return {
-		to: [opts.to],
+	return withEdits(opts.edits, intro, {
+		to: opts.to ? [opts.to] : [],
 		cc: s.hrCc,
 		subject: uploadsOnly
 			? `Document needed for your exit — ${opts.brand.name}`
@@ -283,13 +308,13 @@ export async function buildExitFormsMail(opts: {
 			: `Your exit formalities — ${opts.brand.name}`,
 		html,
 		text
-	} satisfies MailDraft;
+	} satisfies MailDraft);
 }
 
 export async function sendExitFormsMail(opts: Parameters<typeof buildExitFormsMail>[0] & { exitId: string }) {
 	const d = await buildExitFormsMail(opts);
 	const isRework = !!opts.changesRequested?.length;
-	await sendBrandedMail(d.to[0], d.subject, d.text, opts.brand, undefined, 'exit', undefined, {
+	await sendBrandedMail(d.to, d.subject, d.text, opts.brand, undefined, 'exit', undefined, {
 		cc: d.cc.length ? d.cc : undefined,
 		tagPurpose: isRework ? 'exit_changes' : 'exit_forms',
 		html: d.html
@@ -308,6 +333,9 @@ export function prettyField(path: string): string {
 // ── 2. Clearance request ─────────────────────────────────────────────────────
 
 export async function buildClearanceMail(opts: {
+	/** HR's changes in the review dialog: recipients, subject and the
+	 *  opening message. Anything left out keeps the composed default. */
+	edits?: MailEdits | null;
 	/** This exit's own sign-off, from its mail settings card; blank parts
 	 *  fall back to Settings. */
 	signoff?: ExitSignoff | null;
@@ -355,7 +383,7 @@ export async function buildClearanceMail(opts: {
 			.join('')}
 	</table>`;
 
-	const intro = back
+	const defaultIntro = back
 		? [
 				`Hello${opts.approverName ? ` ${opts.approverName}` : ''},`,
 				`Thank you for signing the ${deptLabel} clearance for ${opts.employeeName}. HR needs a little more before the exit can close.`,
@@ -378,6 +406,7 @@ export async function buildClearanceMail(opts: {
 			</ul>`
 		: '';
 
+	const intro = opts.edits?.intro?.length ? opts.edits.intro : defaultIntro;
 	const html = shell({
 		brand: opts.brand,
 		heading: back
@@ -417,7 +446,7 @@ export async function buildClearanceMail(opts: {
 		opts.brand.legalName
 	);
 
-	return {
+	return withEdits(opts.edits, intro, {
 		to: opts.to,
 		cc: opts.cc ?? [],
 		subject: back
@@ -425,7 +454,7 @@ export async function buildClearanceMail(opts: {
 			: `${opts.reminder ? 'Reminder: ' : ''}Exit clearance needed — ${opts.employeeName} (${opts.employeeId})`,
 		html,
 		text
-	} satisfies MailDraft;
+	} satisfies MailDraft);
 }
 
 export async function sendClearanceMail(opts: Parameters<typeof buildClearanceMail>[0]) {
@@ -445,6 +474,9 @@ const IT_COLUMNS = ['Employee ID', 'Employee Name', 'LWD', 'Team'] as const;
  *  the same four-column table IT already works from. Split build/send like
  *  it-setup-mail.ts so HR's preview and the actual send cannot drift. */
 export async function buildItExitMail(opts: {
+	/** HR's changes in the review dialog: recipients, subject and the
+	 *  opening message. Anything left out keeps the composed default. */
+	edits?: MailEdits | null;
 	/** This exit's own sign-off, from its mail settings card; blank parts
 	 *  fall back to Settings. */
 	signoff?: ExitSignoff | null;
@@ -477,11 +509,12 @@ export async function buildItExitMail(opts: {
 		<tr>${td}</tr>
 	</table>`;
 
-	const intro = [
+	const defaultIntro = [
 		'Hello IT Team,',
 		'Requesting you to block the system access for the below employee.'
 	];
 
+	const intro = opts.edits?.intro?.length ? opts.edits.intro : defaultIntro;
 	const html = shell({
 		brand: opts.brand,
 		heading: 'Block system access — employee exit',
@@ -504,7 +537,7 @@ export async function buildItExitMail(opts: {
 		opts.brand.legalName
 	);
 
-	return {
+	return withEdits(opts.edits, intro, {
 		to: opts.to?.length ? opts.to : s.itTo,
 		cc: opts.cc ?? s.itCc,
 		subject: `Block system access — ${opts.employeeName} (${opts.employeeId})`,
@@ -512,7 +545,7 @@ export async function buildItExitMail(opts: {
 		text,
 		fields: IT_COLUMNS.map((label, i) => ({ label, value: cells[i] ?? '' })),
 		missing: IT_COLUMNS.filter((_, i) => !cells[i]).map((c) => c)
-	};
+	});
 }
 
 export async function sendItExitMail(opts: Parameters<typeof buildItExitMail>[0]) {
@@ -533,10 +566,13 @@ export async function sendItExitMail(opts: Parameters<typeof buildItExitMail>[0]
 // ── 4. Final handover mail ───────────────────────────────────────────────────
 
 export async function buildHandoverMail(opts: {
+	/** HR's changes in the review dialog: recipients, subject and the
+	 *  opening message. Anything left out keeps the composed default. */
+	edits?: MailEdits | null;
 	/** This exit's own sign-off, from its mail settings card; blank parts
 	 *  fall back to Settings. */
 	signoff?: ExitSignoff | null;
-	to: string;
+	to: string | null;
 	employeeName: string;
 	brand: BrandTheme;
 	url: string;
@@ -548,7 +584,7 @@ export async function buildHandoverMail(opts: {
 	const s = await getExitMailSettings();
 	const sign = signoffFor(s, opts.signoff);
 
-	const intro = [
+	const defaultIntro = [
 		`Hello ${opts.employeeName},`,
 		'Your full and final settlement and exit documentation are now complete. Thank you for your contribution to ' +
 			'the organisation — we wish you every success ahead.',
@@ -579,6 +615,7 @@ export async function buildHandoverMail(opts: {
 			</ul>`
 		: '';
 
+	const intro = opts.edits?.intro?.length ? opts.edits.intro : defaultIntro;
 	const html = shell({
 		brand: opts.brand,
 		heading: 'Your exit documents are ready',
@@ -609,18 +646,18 @@ export async function buildHandoverMail(opts: {
 		opts.brand.legalName
 	);
 
-	return {
-		to: [opts.to],
+	return withEdits(opts.edits, intro, {
+		to: opts.to ? [opts.to] : [],
 		cc: s.hrCc,
 		subject: `Your exit documents & final settlement — ${opts.brand.name}`,
 		html,
 		text
-	} satisfies MailDraft;
+	} satisfies MailDraft);
 }
 
 export async function sendHandoverMail(opts: Parameters<typeof buildHandoverMail>[0]) {
 	const d = await buildHandoverMail(opts);
-	await sendBrandedMail(d.to[0], d.subject, d.text, opts.brand, opts.attachments, 'exit', undefined, {
+	await sendBrandedMail(d.to, d.subject, d.text, opts.brand, opts.attachments, 'exit', undefined, {
 		cc: d.cc.length ? d.cc : undefined,
 		tagPurpose: 'exit_handover',
 		html: d.html

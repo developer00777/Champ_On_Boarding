@@ -127,8 +127,8 @@ export const actions: Actions = {
 		const errors: string[] = [];
 		if (!employeeId) errors.push('Employee ID is required.');
 		if (!fullName) errors.push('Employee name is required.');
-		if (!personalEmail) errors.push('Personal email is required.');
-		else if (!isValidEmail(personalEmail)) errors.push('Enter a valid personal email address.');
+		// Optional: it can be added later, any time, on the exit page.
+		if (personalEmail && !isValidEmail(personalEmail)) errors.push('Enter a valid personal email address.');
 		if (personalMobile && !isValidMobile(personalMobile))
 			errors.push('Mobile number must be 10 digits starting 6-9.');
 		if (!resignationDate) errors.push('Date of resignation is required.');
@@ -179,7 +179,7 @@ export const actions: Actions = {
 			candidateId: match?.candidate?._id ?? null,
 			employeeId,
 			fullName,
-			personalEmail,
+			personalEmail: personalEmail || null,
 			resignationDate,
 			lwd: lwd || null,
 			separationType,

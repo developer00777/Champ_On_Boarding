@@ -26,6 +26,8 @@
 		routeTo
 	} from '$lib/shared/offboarding';
 	import { TRACKS, TRACK_LABELS, type Track } from '$lib/shared/matrix';
+	import { looksLikePlaceholder } from '$lib/shared/exit-mail-details';
+	import { toIsoDate } from '$lib/shared/dates';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
@@ -93,6 +95,11 @@
 		sendable: boolean;
 		why: string | null;
 		attachments: { name: string; href: string }[];
+		/** The opening paragraphs, which HR can rewrite. */
+		intro?: string[];
+		/** The employee details this mail prints, each checked for a blank or
+		 *  a placeholder ("demo", "0000"…). Separate from Mail settings. */
+		details?: { field: string; label: string; value: string; problem: 'missing' | 'placeholder' | null }[];
 	}
 	/** Which form action sends each previewable mail. */
 	const SEND_ACTION: Record<string, string> = {
@@ -120,6 +127,56 @@
 	} | null>(null);
 	let reviewSent = $state('');
 	let compose = $state({ items: [] as string[], uploads: [''] as string[], note: '', docs: [] as string[] });
+
+	/** HR's edits in the dialog: this one mail's recipients, subject and
+	 *  opening message (Mail settings stay as they are), and the employee
+	 *  details the mail prints, which are saved to the exit on send. Seeded from
+	 *  the draft; once HR has typed, a re-built draft (a re-request changing as
+	 *  they tick) no longer overwrites what they wrote. */
+	let edit = $state({
+		to: '',
+		cc: '',
+		subject: '',
+		message: '',
+		details: {} as Record<string, string>,
+		seeded: false,
+		touched: false,
+		/** HR typed in To itself. Until then To is not posted, so the server
+		 *  sends to the default — for a mail to the employee, the personal
+		 *  email as just saved from the details box. */
+		toTouched: false
+	});
+	function seedEdits(d: MailDraft) {
+		if (edit.seeded && edit.touched) return;
+		const fresh: Record<string, string> = Object.fromEntries(
+			(d.details ?? []).map((x) => [x.field, x.field === 'lwd' ? toIsoDate(x.value) || x.value : x.value])
+		);
+		// Details are saved only on send, so what HR typed survives a re-built draft.
+		const details = edit.seeded ? { ...fresh, ...edit.details } : fresh;
+		edit = {
+			// A mail to the employee goes to their personal email (see mirrorTo).
+			to: 'personalEmail' in details ? details.personalEmail.trim() : d.to.join(', '),
+			cc: d.cc.join(', '),
+			subject: d.subject,
+			message: (d.intro ?? []).join('\n\n'),
+			details,
+			seeded: true,
+			touched: false,
+			toTouched: false
+		};
+	}
+	/** The personal email may be missing when the exit was opened; typed in the
+	 *  details box, it becomes this mail's To as well, unless HR has changed To. */
+	function mirrorTo(field: string, value: string) {
+		if (field === 'personalEmail' && !edit.toTouched) edit.to = value.trim();
+	}
+	/** Details that still stop the send, as HR types. */
+	const detailIssues = $derived(
+		(review?.draft?.details ?? []).filter((x) => {
+			const v = (edit.details[x.field] ?? '').trim();
+			return !v || looksLikePlaceholder(v);
+		})
+	);
 	const reviewStep = $derived(review ? data.steps.find((s) => s.key === review!.step) : undefined);
 	/** The dialog's title before the draft arrives, so it never reads "Loading…". */
 	const OTHER_LABELS: Record<string, string> = {
@@ -184,6 +241,7 @@
 			if (review === r && r.query === query) {
 				review.draft = draft;
 				review.error = '';
+				seedEdits(draft);
 			}
 		} catch (err) {
 			if (review === r) review.error = err instanceof Error ? err.message : 'Could not build the preview.';
@@ -192,6 +250,7 @@
 
 	async function openReview(step: string, previewOnly = false, mode: ComposeMode = null, stage: string | null = null) {
 		compose = { items: [], uploads: [''], note: '', docs: [] };
+		edit = { to: '', cc: '', subject: '', message: '', details: {}, seeded: false, touched: false, toTouched: false };
 		review = { step, previewOnly, mode, draft: null, error: '', stage, query: null };
 		if (!stage) await fetchDraft();
 	}
@@ -251,7 +310,7 @@
 			if (result.type === 'success' && review?.draft) {
 				reviewSent = `${
 					review.mode === 'back' ? 'Sent back' : review.mode === 'docs' ? 'Asked' : review.draft.reminder ? 'Reminder sent' : 'Sent'
-				} to ${review.draft.to.join(', ')} ✓`;
+				} to ${edit.to || review.draft.to.join(', ')} ✓`;
 				review = null;
 				setTimeout(() => (reviewSent = ''), 6000);
 			}
@@ -664,7 +723,10 @@
 					<div class="fgrid">
 						<label class="f"><span>Reference no.</span><input name="refNo" value={e.refNo ?? ''} placeholder="Needed before the letters are released" /></label>
 						<label class="f"><span>Employee name</span><input name="fullName" value={e.fullName} /></label>
-						<label class="f"><span>Personal email</span><input name="personalEmail" type="email" value={e.personalEmail} /></label>
+						<label class="f">
+							<span>Personal email{#if !e.personalEmail}<em class="computed needed">needed for the exit forms</em>{/if}</span>
+							<input name="personalEmail" type="email" value={e.personalEmail ?? ''} placeholder="Not added yet — their own address, not work" />
+						</label>
 						<label class="f"><span>Personal mobile</span><input name="personalMobile" value={e.personalMobile ?? ''} /></label>
 						<label class="f"><span>Designation</span><input name="designation" value={e.designation ?? ''} /></label>
 						<label class="f"><span>Department</span><input name="department" value={e.department ?? ''} /></label>
@@ -785,6 +847,13 @@
 						Formalities — plus Gratuity Form I when it applies. Independent of every other step: the
 						clearance mails do not wait for it.
 					</p>
+					{#if !e.personalEmail}
+						<p class="map-err">
+							No personal email yet — the link is mailed to it. Add it under
+							<a href="#particulars" onclick={(ev) => jump(ev, 'particulars')}>Employment particulars</a>, or in the
+							send dialog.
+						</p>
+					{/if}
 				</div>
 			</div>
 
@@ -1351,14 +1420,20 @@
 				<div>
 					<h2>Release to the employee</h2>
 					<p class="muted">
-						The letters ticked here go to {e.personalEmail} with their handover link — automatically, the
+						The letters ticked here go to {e.personalEmail || 'their personal email'} with their handover link — automatically, the
 						set number of days after payroll signs off once every clearance is in, or by hand whenever
 						you choose.
 					</p>
 					{#if !e.refNo}
 						<p class="map-err">
-							No reference number yet — add it under Particulars before the letters go out; they
-							print it at the top.
+							No reference number yet — add it under Particulars any time, or in the release dialog; the letters
+							print it at the top, so they wait for it.
+						</p>
+					{/if}
+					{#if !e.personalEmail}
+						<p class="map-err">
+							No personal email yet — add it under Particulars any time, or in the release dialog; the release
+							is mailed to it, so it waits for it.
 						</p>
 					{/if}
 				</div>
@@ -1897,19 +1972,61 @@
 			</div>
 		{:else}
 			{@const d = review.draft}
+			{@const editable = !review.previewOnly && data.isHr}
+			<div class="rv-scroll">
+			{#if d.details?.length && !review.previewOnly}
+				<!-- What the mail says about the employee — not Mail settings. A
+				     blank or a placeholder ("demo", "0000"…) has to be filled here
+				     before it can go; whatever is typed is saved to the exit. -->
+				<div class="rv-details" class:bad={detailIssues.length > 0}>
+					<div class="tiny-eyebrow">
+						{detailIssues.length
+							? `Fill in before sending — ${detailIssues.map((x) => x.label).join(', ')}`
+							: 'Details this mail prints'}
+					</div>
+					<div class="rv-dgrid">
+						{#each d.details as x (x.field)}
+							{@const v = edit.details[x.field] ?? ''}
+							{@const wrong = !v.trim() || looksLikePlaceholder(v)}
+							<label class="rv-dfield" class:wrong>
+								<span>{x.label}{#if wrong}<em>{v.trim() ? ' — looks like a placeholder' : ' — missing'}</em>{/if}</span>
+								<input
+									class="rv-in"
+									type={x.field === 'lwd' ? 'date' : x.field === 'personalEmail' ? 'email' : 'text'}
+									bind:value={edit.details[x.field]}
+									oninput={(ev) => mirrorTo(x.field, ev.currentTarget.value)}
+									disabled={!editable}
+								/>
+							</label>
+						{/each}
+					</div>
+				</div>
+			{/if}
 			<dl class="rv-meta">
 				<dt>To</dt>
 				<dd>
-					{#if d.to.length}
+					{#if editable}
+						<input class="rv-in" aria-label="To" placeholder="name@company.com, another@company.com" bind:value={edit.to} oninput={() => (edit.touched = edit.toTouched = true)} />
+					{:else if d.to.length}
 						<span class="rv-chips">{#each d.to as a (a)}<span class="rv-chip">{a}</span>{/each}</span>
 					{:else}<span class="rv-none">No address set</span>{/if}
 				</dd>
-				{#if d.cc.length}
+				{#if editable || d.cc.length}
 					<dt>Cc</dt>
-					<dd><span class="rv-chips">{#each d.cc as a (a)}<span class="rv-chip soft">{a}</span>{/each}</span></dd>
+					<dd>
+						{#if editable}
+							<input class="rv-in" aria-label="Cc" placeholder="Optional" bind:value={edit.cc} oninput={() => (edit.touched = true)} />
+						{:else}
+							<span class="rv-chips">{#each d.cc as a (a)}<span class="rv-chip soft">{a}</span>{/each}</span>
+						{/if}
+					</dd>
 				{/if}
 				<dt>Subject</dt>
-				<dd><b>{d.subject}</b></dd>
+				<dd>
+					{#if editable}
+						<input class="rv-in" aria-label="Subject" bind:value={edit.subject} oninput={() => (edit.touched = true)} />
+					{:else}<b>{d.subject}</b>{/if}
+				</dd>
 				<dt>Attached</dt>
 				<dd>
 					{#if d.attachments.length}
@@ -1924,6 +2041,24 @@
 				</dd>
 			</dl>
 			{#if d.why}<p class="rv-why">{d.why}</p>{/if}
+			{#if editable && d.intro?.length}
+				<details class="rv-msg" open={edit.touched}>
+					<summary>Edit the message{edit.touched ? ' · edited' : ''}</summary>
+					<textarea
+						class="rv-in"
+						rows="6"
+						aria-label="Message"
+						bind:value={edit.message}
+						oninput={() => (edit.touched = true)}
+					></textarea>
+					<p class="muted tiny">
+						Your wording replaces the opening paragraphs (leave a blank line between paragraphs). The details
+						table, the button with their secure link and the sign-off stay as below. The preview shows the
+						original wording.
+					</p>
+				</details>
+			{/if}
+			</div>
 			<div class="rv-frame">
 				<iframe class="rv-body" title="Mail body" sandbox="" srcdoc={d.html}></iframe>
 			</div>
@@ -1958,7 +2093,19 @@
 						{#each compose.docs as d (d)}<input type="hidden" name="doc" value={d} />{/each}
 						<input type="hidden" name="note" value={compose.note} />
 					{/if}
-					<button class="btn grad" disabled={!data.isHr || !review.draft?.sendable || sending['review']}>
+					{#each review.draft?.details ?? [] as x (x.field)}
+						<input type="hidden" name="detail.{x.field}" value={edit.details[x.field] ?? ''} />
+					{/each}
+					{#if edit.toTouched}<input type="hidden" name="mail.to" value={edit.to} />{/if}
+					{#if edit.touched}
+						<input type="hidden" name="mail.cc" value={edit.cc} />
+						<input type="hidden" name="mail.subject" value={edit.subject} />
+						{#if review.draft?.intro?.length}<input type="hidden" name="mail.message" value={edit.message} />{/if}
+					{/if}
+					<button
+						class="btn grad"
+						disabled={!data.isHr || !review.draft?.sendable || detailIssues.length > 0 || sending['review']}
+					>
 						{sending['review']
 							? 'Sending…'
 							: review.mode === 'back'
@@ -2156,9 +2303,62 @@
 		background: rgb(242 177 92 / 0.1);
 		color: var(--ae-text-2);
 	}
+	/* Editable part of the dialog: scrolls on its own so the preview below
+	   always keeps some room. */
+	.rv-scroll {
+		flex: none;
+		max-height: 46%;
+		overflow-y: auto;
+	}
+	.rv-meta dd .rv-in {
+		padding: 5px 8px;
+	}
+	.rv-details {
+		margin: 12px 20px 0;
+		padding: 10px 12px;
+		border-radius: 10px;
+		border: 1px solid var(--ae-line);
+	}
+	.rv-details.bad {
+		border-color: rgb(242 177 92 / 0.45);
+		background: rgb(242 177 92 / 0.08);
+	}
+	.rv-dgrid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+		gap: 8px 10px;
+		margin-top: 7px;
+	}
+	.rv-dfield {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin: 0;
+		font-size: 12px;
+		color: var(--ae-text-2);
+	}
+	.rv-dfield em {
+		font-style: normal;
+		color: rgb(242 177 92);
+	}
+	.rv-dfield.wrong .rv-in {
+		border-color: rgb(242 177 92 / 0.7);
+	}
+	.rv-msg {
+		margin: 10px 20px 0;
+		font-size: 12.5px;
+	}
+	.rv-msg summary {
+		cursor: pointer;
+		color: var(--ae-text-2);
+		margin-bottom: 6px;
+	}
+	.rv-msg .tiny {
+		margin: 4px 0 0;
+	}
 	.rv-frame {
 		flex: 1;
-		min-height: 0;
+		min-height: 160px;
 		margin: 12px 20px 0;
 		padding: 10px;
 		border-radius: 12px;
@@ -2975,6 +3175,9 @@
 		font-size: 10px;
 		color: var(--ae-muted);
 		margin-left: 5px;
+	}
+	.computed.needed {
+		color: var(--ae-ember);
 	}
 	.check {
 		display: flex;

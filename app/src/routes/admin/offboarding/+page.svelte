@@ -94,8 +94,8 @@
 					<input name="fullName" required placeholder="Full name as per records" />
 				</label>
 				<label class="f">
-					<span>Personal email <b class="req">*</b></span>
-					<input name="personalEmail" type="email" required placeholder="their own address, not work" />
+					<span>Personal email</span>
+					<input name="personalEmail" type="email" placeholder="optional — can be added later" />
 				</label>
 				<label class="f">
 					<span>Personal mobile</span>

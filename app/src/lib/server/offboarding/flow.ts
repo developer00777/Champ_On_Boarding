@@ -44,8 +44,10 @@ import {
 	sendClearanceMail,
 	sendExitAlert,
 	sendHandoverMail,
-	type MailDraft
+	type MailDraft,
+	type MailEdits
 } from './mail';
+import { checkMailDetails, detailsProblem } from '$lib/shared/exit-mail-details';
 
 type Lean = Record<string, any>;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -174,6 +176,12 @@ export function releaseLetterKeys(exit: Lean): string[] {
 
 /** Pure: the state of every step, from the exit and its clearance rows. Each
  *  step is read on its own — no step's state depends on another's. */
+/** Which details the final release needs: with letters in it, their
+ *  reference number too (see MAIL_DETAILS). */
+export function lettersDetailKey(exit: Lean): 'letters' | 'handover' {
+	return releaseLetterKeys(exit).length ? 'letters' : 'handover';
+}
+
 export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 	const byDept = new Map(clearances.map((c) => [String(c.department), c]));
 	return FLOW_STEPS.map((def) => {
@@ -502,13 +510,16 @@ export async function draftStep(
 export async function mailStep(
 	exitId: string,
 	key: FlowStepKey,
-	opts: { reminder?: boolean } = {}
+	opts: { reminder?: boolean; edits?: MailEdits | null } = {}
 ): Promise<{ ok: true } | { error: string }> {
 	const def = FLOW_STEPS.find((d) => d.key === key);
 	if (!def?.dept) return { error: 'That step does not send a clearance.' };
 	const dept = def.dept as ClearanceDept;
 	const exit = await Exit.findById(exitId).lean<Lean>();
 	if (!exit) return { error: 'Exit not found.' };
+	// The employee details this mail prints must be real before it goes.
+	const badDetails = detailsProblem(checkMailDetails(exit, key));
+	if (badDetails) return { error: badDetails };
 	const route = (exit.routing?.[key as RoutingKey] ?? {}) as Lean;
 	const to = routeTo(route);
 	if (!to.length) return { error: `Add the ${def.label} email in Mail settings first.` };
@@ -571,7 +582,8 @@ export async function mailStep(
 			...stepMailOpts(exit, key, dept, !!opts.reminder, asSendBack(existing?.sendBack)),
 			brand,
 			url,
-			attachments
+			attachments,
+			edits: opts.edits
 		});
 	} catch (e) {
 		console.error(`[exit-flow] ${key} mail failed for exit=${exitId}:`, e);
@@ -599,7 +611,8 @@ export async function sendBackStep(
 	exitId: string,
 	key: FlowStepKey,
 	back: SendBack,
-	by: string
+	by: string,
+	edits: MailEdits | null = null
 ): Promise<{ ok: true } | { error: string }> {
 	const def = FLOW_STEPS.find((d) => d.key === key);
 	if (!def?.dept) return { error: 'That step has no approver to send back to.' };
@@ -624,7 +637,7 @@ export async function sendBackStep(
 	if (def.dept === 'payroll')
 		await Exit.findByIdAndUpdate(exitId, { 'fnf.submittedByPayrollAt': null, 'flow.scheduledAt': null });
 
-	const res = await mailStep(exitId, key);
+	const res = await mailStep(exitId, key, { edits });
 	// Either way the step is open again, so a scheduled release is withdrawn.
 	await syncFlow(exitId);
 	if ('error' in res) {
@@ -730,7 +743,9 @@ export async function scheduleRelease(exitId: string, opts: { reset?: boolean } 
  *  press can never both send. */
 export async function releaseLetters(
 	exitId: string,
-	actor: string
+	actor: string,
+	/** HR's edits from the review dialog; a scheduled release has none. */
+	edits: MailEdits | null = null
 ): Promise<{ ok: true; url: string } | { error: string }> {
 	const exit = await Exit.findOneAndUpdate(
 		{ _id: exitId, 'flow.releasedAt': null, status: { $ne: 'completed' } },
@@ -749,6 +764,10 @@ export async function releaseLetters(
 		// A scheduled release stays due and goes on the first tick after HR adds it.
 		if (keys.length && !String(exit.refNo ?? exit.letters?.refNo ?? '').trim())
 			throw new Error('Add the reference number under Particulars — it is printed on the letters being released.');
+		// Same for the details the mail and letters print: a scheduled release
+		// stays due until HR fills them in.
+		const badDetails = detailsProblem(checkMailDetails(exit, lettersDetailKey(exit)));
+		if (badDetails) throw new Error(badDetails);
 
 		const input = await loadPdfInput(exitId);
 		if (!input) throw new Error('Exit not found.');
@@ -775,7 +794,8 @@ export async function releaseLetters(
 				...keys.map((k) => EXIT_DOC_BY_KEY.get(k as never)?.label ?? k),
 				...new Set(files.map((f) => fileLabel.get(f.docType) ?? f.label ?? f.docType))
 			],
-			attachments
+			attachments,
+			edits
 		});
 
 		await Exit.findByIdAndUpdate(exitId, {

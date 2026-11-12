@@ -732,7 +732,10 @@ const exitSchema = new Schema(
 		refNo: { type: String, default: null, index: true },
 		/** Personal (non-company) address — company mail is revoked on LWD, so
 		 *  every exit link and the final document handover must go here. */
-		personalEmail: { type: String, required: true, index: true },
+		// Optional (HR decision, Nov 2026): HR may not have it when the exit is
+		// opened. It can be added any time — on Particulars, or in the dialog of
+		// a mail that goes to it, which asks for it before sending.
+		personalEmail: { type: String, default: null, index: true },
 		personalMobile: { type: String, default: null },
 		resignationDate: { type: String, required: true },
 		/** Confirmed Last Working Day. Set by HR at resignation approval (SOP
