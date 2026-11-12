@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { TRACK_LABELS, isHrFiledTrack, type Track } from '$lib/shared/matrix';
+	import type { LinkDelivery } from '$lib/shared/link-delivery';
 	import GlassSelect from '$lib/components/GlassSelect.svelte';
 
 	let { data, form } = $props();
@@ -14,8 +15,30 @@
 	let inviteTrack = $state<string>(data.tracks[0] ?? '');
 	// svelte-ignore state_referenced_locally
 	let inviteCompany = $state<string>(data.companies[0]?.id ?? '');
-	/** Admin track: no link goes out — HR files the record by hand. */
+	/** Admin track: HR picks, person by person, how the link reaches them —
+	 *  or files the record by hand with no link at all. Email is optional. */
 	const hrFiled = $derived(isHrFiledTrack(inviteTrack));
+	let delivery = $state<LinkDelivery>('copy');
+	const DELIVERY_OPTIONS: { value: LinkDelivery; label: string; note: string }[] = [
+		{
+			value: 'copy',
+			label: 'Copy link',
+			note: 'The link is shown here for you to copy and send them yourself, e.g. on WhatsApp. Nothing is sent from the portal.'
+		},
+		{
+			value: 'email',
+			label: 'Email link',
+			note: 'The link is emailed to the address above. Nothing goes on WhatsApp.'
+		},
+		{
+			value: 'none',
+			label: 'No link',
+			note: 'No link is created and nothing is sent. You fill in their details and upload their documents on the candidate page.'
+		}
+	];
+	const submitLabel = $derived(
+		!hrFiled || delivery === 'email' ? 'Generate & email' : delivery === 'copy' ? 'Generate link' : 'Create record'
+	);
 
 	const statusMeta: Record<string, { label: string; cls: string }> = {
 		created: { label: 'Link sent', cls: '' },
@@ -328,8 +351,8 @@
 						<input id="candidateName" name="candidateName" placeholder="As on offer letter" />
 					</div>
 					<div>
-						<label for="email">Candidate email</label>
-						<input id="email" name="email" type="email" placeholder="name@email.com" required />
+						<label for="email">Candidate email{hrFiled && delivery !== 'email' ? ' (optional)' : ''}</label>
+						<input id="email" name="email" type="email" placeholder="name@email.com" required={!hrFiled || delivery === 'email'} />
 					</div>
 					<div>
 						<label for="candidateMobile">Mobile (WhatsApp)</label>
@@ -357,20 +380,33 @@
 							options={data.companies.map((c: { id: string; name: string }) => ({ value: c.id, label: c.name }))}
 						/>
 					</div>
-					<button class="btn">{hrFiled ? 'Create record' : 'Generate & email'} {@render glyph('arrow')}</button>
+					<button class="btn">{submitLabel} {@render glyph('arrow')}</button>
 				</div>
 				{#if hrFiled}
-					<p class="hr-filed-note">
-						Admin track — no onboarding link, email or WhatsApp is sent. You fill in their details and
-						upload their documents on the candidate page, then approve as usual.
-					</p>
+					<fieldset class="delivery">
+						<legend>Admin track — how should they get their link?</legend>
+						<div class="delivery-opts">
+							{#each DELIVERY_OPTIONS as o (o.value)}
+								<label class="delivery-opt" class:on={delivery === o.value}>
+									<input type="radio" name="delivery" value={o.value} bind:group={delivery} />
+									{o.label}
+								</label>
+							{/each}
+						</div>
+						<p class="hr-filed-note">
+							{DELIVERY_OPTIONS.find((o) => o.value === delivery)?.note}
+							Email is optional unless you email the link; without one, add their name. Nothing on this
+							track is mandatory, and you can fill in details or upload documents on the candidate page
+							either way.
+						</p>
+					</fieldset>
 				{/if}
 			</form>
 			{#if form?.message}<p class="error">{form.message}</p>{/if}
 			{#if form?.hrFiled}
 				<div class="linkbox">
 					<div style="font-size:12.5px;color:var(--ae-text-2);margin-bottom:9px">
-						Record created for <strong style="color:var(--ae-text);font-weight:500">{form.email}</strong> — nothing was sent to them.
+						Record created for <strong style="color:var(--ae-text);font-weight:500">{form.name || form.email}</strong> — no link, nothing was sent to them.
 					</div>
 					<a class="teal-pill-btn" href="/admin/candidates/{form.candidateId}">Open record to fill in details</a>
 				</div>
@@ -378,12 +414,17 @@
 			{#if form?.link}
 				<div class="linkbox">
 					<div style="font-size:12.5px;color:var(--ae-text-2);margin-bottom:9px">
-						Link created and emailed to <strong style="color:var(--ae-text);font-weight:500">{form.email}</strong>
+						{#if form.delivery === 'copy'}
+							Link created for <strong style="color:var(--ae-text);font-weight:500">{form.name || form.email}</strong> — nothing was sent. Copy it and send it to them yourself.
+						{:else}
+							Link created and emailed to <strong style="color:var(--ae-text);font-weight:500">{form.email}</strong>
+						{/if}
 					</div>
 					<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
 						<code class="linkcode">{form.link}</code>
 						<button type="button" class="teal-pill-btn" onclick={() => copyLink(form.link)}>Copy link</button>
 						<a class="teal-pill-btn" href={form.waUrl} target="_blank" rel="noopener">Share on WhatsApp</a>
+						{#if form.candidateId}<a class="teal-pill-btn" href="/admin/candidates/{form.candidateId}">Open record</a>{/if}
 					</div>
 				</div>
 			{/if}
@@ -567,6 +608,44 @@
 		margin: 10px 0 0;
 		font-size: 12.5px;
 		color: var(--ae-text-2);
+	}
+	.delivery {
+		border: 0;
+		margin: 16px 0 0;
+		padding: 0;
+		min-width: 0;
+	}
+	.delivery legend {
+		font-size: 12.5px;
+		color: var(--ae-text-2);
+		margin-bottom: 8px;
+		padding: 0;
+	}
+	.delivery-opts {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.delivery-opt {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		margin: 0;
+		padding: 7px 13px;
+		border: 1px solid var(--ae-line-strong);
+		border-radius: 8px;
+		background: var(--ae-input-bg);
+		font-size: 13px;
+		color: var(--ae-text-2);
+		cursor: pointer;
+	}
+	.delivery-opt.on {
+		border-color: rgba(var(--ae-ember-rgb), 0.55);
+		color: var(--ae-text);
+	}
+	.delivery-opt input {
+		margin: 0;
+		accent-color: var(--ae-ember);
 	}
 	.panel-link {
 		display: inline-flex;

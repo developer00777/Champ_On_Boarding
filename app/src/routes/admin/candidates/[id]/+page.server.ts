@@ -104,14 +104,28 @@ function isHrFilingApprover(locals: App.Locals, track: string | null | undefined
 	return isHrFiledTrack(track) && requireApprover(locals) === null;
 }
 
-/** Refuses the actions that would send the person to their onboarding link. */
-function refuseForHrFiled(track: string | null | undefined) {
-	return isHrFiledTrack(track)
-		? fail(409, {
-				message:
-					'Admin-track records have no onboarding link — HR fills in the details and uploads the documents on this page.'
-			})
-		: null;
+/** Whether HR can mail this person a request that sends them back to their
+ *  onboarding link (upload, re-upload, confirm a detail). Always on other
+ *  tracks. An Admin-track record may have no email and no link — both are
+ *  HR's call there — and such a request needs both. */
+async function canMailToLink(candidate: { _id: unknown; track?: string | null; email?: string | null }) {
+	if (!isHrFiledTrack(candidate.track)) return true;
+	if (!candidate.email) return false;
+	return !!(await LinkToken.exists({
+		candidateId: candidate._id,
+		revoked: false,
+		expiresAt: { $gt: new Date() }
+	}));
+}
+
+/** Refuses a link request on an Admin-track record with no email or no live link. */
+async function refuseLinkRequest(candidate: { _id: unknown; track?: string | null; email?: string | null }) {
+	if (await canMailToLink(candidate)) return null;
+	return fail(409, {
+		message: candidate.email
+			? 'This Admin-track record has no live onboarding link to send them back to. Generate one at the top of the page first, or upload the document here yourself.'
+			: 'There is no email on this Admin-track record to send the request to. Copy their link from the top of the page and send it yourself, or upload the document here.'
+	});
 }
 
 /** Signed in, whatever the role. Only the OCR cross-check uses this: see the
@@ -129,7 +143,9 @@ function reviewFlags(candidate: Record<string, unknown>, aadhaarPlain: string | 
 		if (typeof v === 'string') fields[k] = v;
 	}
 	fields.aadhaarNo = aadhaarPlain ?? '';
-	return validateMasterSheet(fields, requirePrevEmployment).map((e) => e.message);
+	// Admin track: a blank is never a flag, only a malformed value.
+	const allOptional = isHrFiledTrack(candidate.track as string);
+	return validateMasterSheet(fields, requirePrevEmployment, allOptional).map((e) => e.message);
 }
 
 // Every candidate-submitted profile field HR can correct after the fact.
@@ -332,8 +348,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			: null;
 
 	return {
-		/** Admin track: HR files this record by hand; no onboarding link. */
+		/** Admin track: nothing mandatory, HR may file it by hand, and the link
+		 *  (if any) is emailed or copied at HR's choice. */
 		hrFiled: isHrFiledTrack(candidate.track),
+		/** Upload / re-upload / confirm requests mail the person back to their
+		 *  link — on an Admin record that needs an email and a live link. */
+		linkRequests: !isHrFiledTrack(candidate.track) || (!!candidate.email && !!onboardingLink),
 		candidate: {
 			id: String(candidate._id),
 			email: candidate.email,
@@ -565,7 +585,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			const hrFiling = isHrFilingApprover(locals, candidate.track);
 			return {
 				edit: hrFiling || at(lv['candidate.edit'], 'act'),
-				link: at(lv['candidate.link'], 'act'),
+				link: hrFiling || at(lv['candidate.link'], 'act'),
 				uan: at(lv['empid.uan'], 'act'),
 				delete: at(lv['candidate.delete'], 'approve'),
 				upload: at(lv['offer.upload'], 'act'),
@@ -926,7 +946,7 @@ export const actions: Actions = {
 			return fail(400, { welcomeFieldsError: true, message: "The manager's email is not a valid address." });
 		// The personal address in this box is the usual slip — and the welcome
 		// mail would then land in the inbox the official one is meant to replace.
-		if (officialEmail && officialEmail === row.candidate.email.toLowerCase())
+		if (officialEmail && officialEmail === row.candidate.email?.toLowerCase())
 			return fail(400, {
 				welcomeFieldsError: true,
 				message: 'That is the personal email the onboarding link went to. Enter the company mailbox IT created.'
@@ -1018,7 +1038,7 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
-		const noLink = refuseForHrFiled(row.candidate.track);
+		const noLink = await refuseLinkRequest(row.candidate);
 		if (noLink) return noLink;
 		const form = await request.formData();
 		const docId = String(form.get('docId') ?? '');
@@ -1101,7 +1121,7 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
-		const noLink = refuseForHrFiled(row.candidate.track);
+		const noLink = await refuseLinkRequest(row.candidate);
 		if (noLink) return noLink;
 		const form = await request.formData();
 		const docType = String(form.get('docType') ?? '');
@@ -1185,7 +1205,7 @@ export const actions: Actions = {
 		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
-		const noLink = refuseForHrFiled(row.candidate.track);
+		const noLink = await refuseLinkRequest(row.candidate);
 		if (noLink) return noLink;
 		const form = await request.formData();
 		const field = String(form.get('field') ?? '');
@@ -1343,12 +1363,14 @@ ${brandSignoff(brand)}`,
 	// new one is handed out. Unlike `revoke`, this does not touch candidate.status
 	// — the candidate is still expected to complete onboarding, just via a new URL.
 	regenerateLink: async ({ params, locals, getClientAddress }) => {
-		const forbidden = await requireCap(locals, 'candidate.link');
-		if (forbidden) return forbidden;
 		const row = await getCandidate(params.id);
 		if (!row) return fail(404);
-		const noLink = refuseForHrFiled(row.candidate.track);
-		if (noLink) return noLink;
+		// Handing an Admin hire their link is part of filing the record, so any
+		// approver may, like filling in details (isHrFilingApprover).
+		if (!isHrFilingApprover(locals, row.candidate.track)) {
+			const forbidden = await requireCap(locals, 'candidate.link');
+			if (forbidden) return forbidden;
+		}
 		if (['revoked', 'complete'].includes(row.candidate.status))
 			return fail(409, { message: `Cannot regenerate a link for a ${row.candidate.status} candidate.` });
 
@@ -1363,6 +1385,79 @@ ${brandSignoff(brand)}`,
 			ip: getClientAddress()
 		});
 		return { linkRegenerated: true, newLink: `${base}/c/${token}` };
+	},
+
+	/** Admin track: emails the person their onboarding link — the current one,
+	 *  extended, or a new one if they have none (ensureLiveLinkToken). HR's
+	 *  choice per person; the other way is copying the link from the page. */
+	emailLink: async ({ params, locals, getClientAddress }) => {
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (!isHrFilingApprover(locals, row.candidate.track)) {
+			const forbidden = await requireCap(locals, 'candidate.link');
+			if (forbidden) return forbidden;
+		}
+		const { candidate } = row;
+		if (!candidate.email)
+			return fail(400, { message: 'There is no email on this record. Add one first, or copy the link and send it yourself.' });
+		if (['approved', 'complete'].includes(candidate.status))
+			return fail(409, { message: 'This record is already approved — there is nothing left for them to fill in.' });
+		const token = await ensureLiveLinkToken(params.id);
+		if (!token) return fail(409, { message: 'This record is revoked — regenerate the link before sending it.' });
+
+		const link = `${baseUrl()}/c/${token}`;
+		const brand = brandBySlug(row.company?.brandSlug ?? undefined);
+		await sendBrandedMail(
+			candidate.email,
+			`Your ${brand.name} onboarding link`,
+			`Hello${candidate.fullName ? ' ' + candidate.fullName : ''},\n\n` +
+				`Welcome aboard! Please complete your onboarding here (the link expires in 7 days):\n\n${link}\n\n` +
+				`Keep your Aadhaar card, PAN card, bank passbook and education documents handy — ` +
+				`photograph them on a flat surface in good light.\n\n${brandSignoff(brand)}`,
+			brand,
+			undefined,
+			'onboarding',
+			params.id
+		);
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'link_emailed',
+			newValue: candidate.email,
+			ip: getClientAddress()
+		});
+		return { linkEmailed: candidate.email };
+	},
+
+	/** Adds an email to an Admin-track record created without one. Only adds:
+	 *  an email already on record is an identity key other records hang off
+	 *  (see PROFILE_FIELDS), so it is never changed here. */
+	addEmail: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireApprover(locals);
+		if (forbidden) return forbidden;
+		const row = await getCandidate(params.id);
+		if (!row) return fail(404);
+		if (row.candidate.email) return fail(409, { message: 'This record already has an email.' });
+		const email = String((await request.formData()).get('email') ?? '').trim().toLowerCase();
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+			return fail(400, { message: 'Enter a valid email address.', addEmailError: true });
+		const clash = await Candidate.findOne({
+			_id: { $ne: row.candidate._id },
+			email,
+			companyId: row.candidate.companyId,
+			status: { $nin: ['revoked', 'complete'] }
+		}).lean();
+		if (clash)
+			return fail(409, { message: `${email} is already on another active record for this company.`, addEmailError: true });
+		await Candidate.findByIdAndUpdate(params.id, { email });
+		await audit({
+			candidateId: params.id,
+			actor: locals.admin!.email,
+			action: 'email_added',
+			newValue: email,
+			ip: getClientAddress()
+		});
+		return { emailAdded: email };
 	},
 
 	/** Moves the candidate to another entity — the late "they are joining X, not
@@ -1669,6 +1764,9 @@ ${brandSignoff(brand)}`,
 		const form = await request.formData();
 		const fields = profileFormToUpdate(form);
 		const errors = validateProfileEdit(fields, row.candidate);
+		// With no email on record the name is all that identifies the person.
+		if (!row.candidate.email && !fields.fullName)
+			errors.push('Full name is required — this record has no email to fall back on');
 		if (errors.length) return fail(400, { message: errors.join('; '), profileEditError: true });
 
 		await Candidate.findByIdAndUpdate(params.id, fields);
@@ -1759,6 +1857,12 @@ ${brandSignoff(brand)}`,
 		if (!row) return fail(404);
 		const { candidate, company } = row;
 
+		// Admin-track records may have no email.
+		if (!candidate.email)
+			return fail(400, {
+				offerLetterError: true,
+				message: 'There is no email on this record. Download the letter and hand it over, then use "Record as sent".'
+			});
 		const draft = await OfferLetter.findOne({ candidateId: params.id });
 		const track = candidate.track as Track;
 		// A directly-uploaded letter is already written, so nothing about the

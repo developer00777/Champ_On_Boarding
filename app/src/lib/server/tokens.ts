@@ -1,6 +1,5 @@
 import { Candidate, LinkToken } from './db/schema';
 import { randomToken, sha256, encrypt, decrypt } from './crypto';
-import { isHrFiledTrack } from '$lib/shared/matrix';
 
 const LINK_DAYS = 7;
 
@@ -31,8 +30,6 @@ export async function createLinkToken(candidateId: string) {
 export async function ensureLiveLinkToken(candidateId: string): Promise<string | null> {
 	const candidate = await Candidate.findById(candidateId).lean();
 	if (!candidate || candidate.status === 'revoked') return null;
-	// Admin-track records are filed by HR and never get a link.
-	if (isHrFiledTrack(candidate.track)) return null;
 
 	const expiresAt = new Date(Date.now() + LINK_DAYS * 86_400_000);
 	const existing = await LinkToken.findOne({ candidateId, revoked: false }).sort({ createdAt: -1 });
@@ -65,9 +62,6 @@ export async function resolveCandidateToken(token: string) {
 
 	const candidate = await Candidate.findById(link.candidateId).lean();
 	if (!candidate || candidate.status === 'revoked') return null;
-	// A link left over from before the record moved to an HR-filed track
-	// stops working: HR owns the record from then on.
-	if (isHrFiledTrack(candidate.track)) return null;
 
 	if (!link.openedAt) {
 		await LinkToken.findByIdAndUpdate(link._id, { openedAt: new Date() });

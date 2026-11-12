@@ -521,7 +521,7 @@
 								{label}
 								{#if autofilled[key]}<span class="autotag">✨ auto-filled</span>{/if}
 							</label>
-							<input id={key} name={key} type={opts.type ?? 'text'} max={opts.max} bind:value={fields[key]} placeholder={opts.placeholder ?? ''} required={opts.required ?? false} class:auto={autofilled[key]} />
+							<input id={key} name={key} type={opts.type ?? 'text'} max={opts.max} bind:value={fields[key]} placeholder={opts.placeholder ?? ''} required={(opts.required ?? false) && !data.candidate.allOptional} class:auto={autofilled[key]} />
 							{#if errors.has(key)}<div class="error">{errors.get(key)}</div>{/if}
 						</div>
 					{/snippet}
@@ -553,7 +553,7 @@
 							{@render field('motherDob', "Mother's DOB", { type: 'date', max: todayIso, required: true })}
 							<div>
 								<label for="religion">Religion</label>
-								<select id="religion" name="religion" bind:value={fields.religion} required>
+								<select id="religion" name="religion" bind:value={fields.religion} required={!data.candidate.allOptional}>
 									<option value="">—</option>
 									{#each RELIGIONS as r}<option value={r}>{r}</option>{/each}
 								</select>
@@ -564,7 +564,7 @@
 									Mother tongue
 									{#if autofilled.motherTongue}<span class="autotag">✨ auto-filled</span>{/if}
 								</label>
-								<input id="motherTongue" name="motherTongue" list="mother-tongues" placeholder="e.g. Tamil" bind:value={fields.motherTongue} required class:auto={autofilled.motherTongue} />
+								<input id="motherTongue" name="motherTongue" list="mother-tongues" placeholder="e.g. Tamil" bind:value={fields.motherTongue} required={!data.candidate.allOptional} class:auto={autofilled.motherTongue} />
 								<datalist id="mother-tongues">
 									{#each MOTHER_TONGUES as t}<option value={t}></option>{/each}
 								</datalist>
@@ -605,7 +605,7 @@
 									Present address
 									{#if autofilled.presentAddress}<span class="autotag">✨ auto-filled</span>{/if}
 								</label>
-								<textarea id="presentAddress" name="presentAddress" rows="2" bind:value={fields.presentAddress} required class:auto={autofilled.presentAddress}></textarea>
+								<textarea id="presentAddress" name="presentAddress" rows="2" bind:value={fields.presentAddress} required={!data.candidate.allOptional} class:auto={autofilled.presentAddress}></textarea>
 								{#if errors.has('presentAddress')}<div class="error">{errors.get('presentAddress')}</div>{/if}
 							</div>
 							{@render field('presentHouseNo', 'House / flat no.', { required: true })}
@@ -624,7 +624,7 @@
 							</div>
 							<div style="grid-column:1 / -1">
 								<label for="permanentAddress">Permanent address</label>
-								<textarea id="permanentAddress" name="permanentAddress" rows="2" bind:value={fields.permanentAddress} required></textarea>
+								<textarea id="permanentAddress" name="permanentAddress" rows="2" bind:value={fields.permanentAddress} required={!data.candidate.allOptional}></textarea>
 								{#if errors.has('permanentAddress')}<div class="error">{errors.get('permanentAddress')}</div>{/if}
 							</div>
 							{@render field('permanentHouseNo', 'House / flat no.', { required: true })}
@@ -645,7 +645,7 @@
 									Aadhaar number
 									{#if autofilled.aadhaarNo}<span class="autotag">✨ auto-filled</span>{/if}
 								</label>
-								<input id="aadhaarNo" name="aadhaarNo" bind:value={fields.aadhaarNo} placeholder={data.candidate.hasAadhaar ? `Saved: ${data.candidate.aadhaarMasked} — leave blank to keep` : '12 digits'} required={!data.candidate.hasAadhaar} class:auto={autofilled.aadhaarNo} />
+								<input id="aadhaarNo" name="aadhaarNo" bind:value={fields.aadhaarNo} placeholder={data.candidate.hasAadhaar ? `Saved: ${data.candidate.aadhaarMasked} — leave blank to keep` : '12 digits'} required={!data.candidate.hasAadhaar && !data.candidate.allOptional} class:auto={autofilled.aadhaarNo} />
 								{#if errors.has('aadhaarNo')}<div class="error">{errors.get('aadhaarNo')}</div>{/if}
 								<div class="lock-hint">
 									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0095A0" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>

@@ -26,6 +26,7 @@
 		normaliseMode
 	} from '$lib/shared/shifts';
 	import { RELIGIONS, MOTHER_TONGUES } from '$lib/shared/demographics';
+	import { waShareUrl } from '$lib/shared/link-delivery';
 
 	let { data, form } = $props();
 
@@ -925,7 +926,7 @@
 			joining: pending ? { text: `${pending} pending`, warn: false } : null
 		} as Record<CandTab, { text: string; warn: boolean } | null>;
 	});
-	const initial = $derived((c.fullName || c.email)[0].toUpperCase());
+	const initial = $derived((c.fullName || c.email || '?')[0].toUpperCase());
 
 	// Journey steps for the left status widget
 	const JOURNEY = [
@@ -1796,7 +1797,7 @@
 			/>
 		</div>
 		<div class="muted" style="margin-top:5px;font-family:var(--ae-font-mono);font-size:11.5px">
-			{c.email} · <span>{TRACK_LABELS[c.track as Track]}</span> · {data.companyName}
+			{c.email || 'No email'} · <span>{TRACK_LABELS[c.track as Track]}</span> · {data.companyName}
 			{#if c.submittedAt}· Submitted {new Date(c.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{/if}
 			{#if c.consentAt}· Consent recorded{/if}
 		</div>
@@ -1808,7 +1809,7 @@
 		     approving is contradictory: already approved/complete, or revoked. -->
 		{#if !['approved', 'complete', 'revoked'].includes(c.status)}
 			<form method="POST" action="?/approve" use:enhance onsubmit={(e) => {
-				if (c.status !== 'submitted' && !confirm(
+				if (!data.hrFiled && c.status !== 'submitted' && !confirm(
 					'This candidate has not submitted their onboarding form yet. Approve anyway?'
 				)) e.preventDefault();
 			}}>
@@ -1878,17 +1879,29 @@
 
 {#if form?.message}<p class="error">{form.message}</p>{/if}
 
-{#if data.hrFiled}
-	<div class="linkbox hr-filed">
-		<div style="font-size:13px;color:var(--ae-text);font-weight:600;margin-bottom:4px">Admin track — filed by HR</div>
-		<div style="font-size:12.5px;color:var(--ae-text-2)">
-			No onboarding link is sent for this record. Fill in their details on the <strong>Details</strong> tab and upload
-			each document under <strong>Documents</strong>, then approve.
-		</div>
-	</div>
-{:else if data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
+{#if data.hrFiled || data.onboardingLink || !['revoked', 'complete'].includes(c.status)}
+	{@const linkOpen = !['approved', 'complete', 'revoked'].includes(c.status)}
 	<div class="linkbox">
-		{#if data.onboardingLink}
+		{#if data.hrFiled}
+			<div style="font-size:13px;color:var(--ae-text);font-weight:600;margin-bottom:4px">Admin track — nothing is mandatory</div>
+			<div style="font-size:12.5px;color:var(--ae-text-2);margin-bottom:10px">
+				You can fill in their details on the <strong>Details</strong> tab and upload documents under
+				<strong>Documents</strong> yourself, send them their link to fill it in, or both. Their link goes out only
+				the way you choose: copy it and send it yourself, or email it{c.email ? '' : ' once their email is added'}.
+			</div>
+			{#if !c.email && linkOpen}
+				<form method="POST" action="?/addEmail" use:enhance class="add-email">
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<label for="add-email">No email on record (optional)</label>
+						<input id="add-email" name="email" type="email" placeholder="name@email.com" required />
+						<button class="teal-pill-btn">Add email</button>
+					</fieldset>
+				</form>
+			{/if}
+		{/if}
+		{#if data.hrFiled && !linkOpen && !data.onboardingLink}
+			<!-- Approved or revoked with no link: nothing left to hand out. -->
+		{:else if data.onboardingLink}
 			{@const link = data.onboardingLink}
 			<div style="font-size:13px;color:var(--ae-text-2);margin-bottom:9px">
 				Onboarding link
@@ -1903,6 +1916,23 @@
 				<code class="linkcode">{link.url}</code>
 				<button type="button" class="teal-pill-btn" onclick={() => copyLink(link.url)}>Copy link</button>
 				<a class="teal-pill-btn" href={link.url} target="_blank" rel="noopener">Open link</a>
+				{#if data.hrFiled && linkOpen}
+					<a
+						class="teal-pill-btn"
+						href={waShareUrl(c.mobile, `Welcome to ${data.brand.name}! Please complete your onboarding here: ${link.url}`)}
+						target="_blank"
+						rel="noopener">Share on WhatsApp</a
+					>
+					{#if c.email}
+						<form method="POST" action="?/emailLink" use:enhance onsubmit={(e) => {
+							if (!confirm(`Email this link to ${c.email}?`)) e.preventDefault();
+						}}>
+							<fieldset class="rbac" disabled={!data.can.link}>
+								<button type="submit" class="teal-pill-btn">Email link</button>
+							</fieldset>
+						</form>
+					{/if}
+				{/if}
 				<form method="POST" action="?/regenerateLink" use:enhance onsubmit={(e) => {
 					if (!confirm('Regenerate this onboarding link? The current link will stop working immediately.')) e.preventDefault();
 				}}>
@@ -1914,17 +1944,34 @@
 		{:else}
 			<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
 				<div style="font-size:13px;color:var(--ae-text-2)">
-					No active onboarding link for this candidate.
+					{data.hrFiled ? 'No onboarding link yet — none is needed if you are filing this record yourself.' : 'No active onboarding link for this candidate.'}
 				</div>
 				<form method="POST" action="?/regenerateLink" use:enhance>
 					<fieldset class="rbac" disabled={!data.can.link}>
-						<button type="submit" class="teal-pill-btn">Generate link</button>
+						<button type="submit" class="teal-pill-btn">{data.hrFiled ? 'Generate link to copy' : 'Generate link'}</button>
 					</fieldset>
 				</form>
+				{#if data.hrFiled && c.email}
+					<form method="POST" action="?/emailLink" use:enhance onsubmit={(e) => {
+						if (!confirm(`Create a link and email it to ${c.email}?`)) e.preventDefault();
+					}}>
+						<fieldset class="rbac" disabled={!data.can.link}>
+							<button type="submit" class="teal-pill-btn">Generate &amp; email link</button>
+						</fieldset>
+					</form>
+				{/if}
 			</div>
 		{/if}
 		{#if form?.linkRegenerated}
-			<p class="saved-chip" style="margin-top:8px">Link regenerated ✓ — the previous link no longer works.</p>
+			<p class="saved-chip" style="margin-top:8px">
+				{data.hrFiled ? 'Link created ✓ — copy it above and send it to them. Any earlier link no longer works.' : 'Link regenerated ✓ — the previous link no longer works.'}
+			</p>
+		{/if}
+		{#if form?.linkEmailed}
+			<p class="saved-chip" style="margin-top:8px">Link emailed to {form.linkEmailed} ✓</p>
+		{/if}
+		{#if form?.emailAdded}
+			<p class="saved-chip" style="margin-top:8px">Email added ✓ — {form.emailAdded}</p>
 		{/if}
 	</div>
 {/if}
@@ -1935,10 +1982,14 @@
 			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
 		</div>
 		<div style="flex:1">
-			<div style="font-weight:800;font-size:15px;color:var(--ae-text)">{data.hrFiled ? 'Filed by HR' : 'Ready for review'}</div>
+			<div style="font-weight:800;font-size:15px;color:var(--ae-text)">
+				{data.hrFiled ? (c.status === 'submitted' ? 'Submitted — ready for review' : 'Filed by HR') : 'Ready for review'}
+			</div>
 			<div style="font-size:12.5px;color:var(--ae-muted);margin-top:2px">
 				{data.hrFiled
-					? `Approve once you have filled in ${c.fullName || c.email}'s details and uploaded their documents. Nothing is sent to them.`
+					? c.status === 'submitted'
+						? `${c.fullName || c.email} submitted their form. Review it, fill in anything missing, and approve. Nothing is sent to them.`
+						: `Approve whenever you are ready — nothing on this record is mandatory. Nothing is sent to them.`
 					: `${c.fullName || c.email} has submitted all documentation. Review below and approve or request changes.`}
 			</div>
 		</div>
@@ -2214,7 +2265,7 @@
 								Upload
 							</button>
 						{/if}
-						{#if data.isApprover && !data.hrFiled && !['approved', 'complete', 'revoked'].includes(c.status)}
+						{#if data.isApprover && data.linkRequests && !['approved', 'complete', 'revoked'].includes(c.status)}
 							<button type="button" class="btn ghost small" onclick={() => (uploadRequestFor = uploadRequestFor === slot.type ? null : slot.type)}>
 								{slot.uploadRequested ? 'Ask again' : 'Request upload'}
 							</button>
@@ -2275,7 +2326,7 @@
 									Replace
 								</button>
 							{/if}
-							{#if data.isApprover && !data.hrFiled && !['approved', 'complete', 'revoked'].includes(c.status)}
+							{#if data.isApprover && data.linkRequests && !['approved', 'complete', 'revoked'].includes(c.status)}
 								<button type="button" class="btn ghost small" onclick={() => (reuploadFor = reuploadFor === doc.id ? null : doc.id)}>
 									{doc.reviewStatus === 'reupload_requested' ? 'Ask again' : 'Ask re-upload'}
 								</button>
@@ -3149,19 +3200,26 @@
 			{#if form?.offerLetterSaved}
 				<p class="saved-chip" style="margin-top:8px">Saved ✓</p>
 			{/if}
-			<form
-				method="POST"
-				action="?/sendOfferLetterEmail"
-				use:enhance
-				style="margin-top:12px"
-				onsubmit={(e) => {
-					if (!confirm(`Send the offer letter to ${c.email}?`)) e.preventDefault();
-				}}
-			>
-				<fieldset class="rbac" disabled={!data.isApprover}>
-					<button class="btn teal">{ol.status === 'sent' ? 'Resend offer letter' : 'Send offer letter'}</button>
-				</fieldset>
-			</form>
+			{#if c.email}
+				<form
+					method="POST"
+					action="?/sendOfferLetterEmail"
+					use:enhance
+					style="margin-top:12px"
+					onsubmit={(e) => {
+						if (!confirm(`Send the offer letter to ${c.email}?`)) e.preventDefault();
+					}}
+				>
+					<fieldset class="rbac" disabled={!data.isApprover}>
+						<button class="btn teal">{ol.status === 'sent' ? 'Resend offer letter' : 'Send offer letter'}</button>
+					</fieldset>
+				</form>
+			{:else}
+				<p class="muted" style="margin-top:12px;font-size:12.5px">
+					No email on this record, so the letter cannot be mailed. Download it and hand it over, then record it as
+					sent — or add their email at the top of the page.
+				</p>
+			{/if}
 			<!-- Sent is a fact about the record, not a reaction to the click that
 			     sent it: the old chip came from `form` and vanished on the next
 			     navigation, so anyone arriving later could not tell whether the
@@ -3546,7 +3604,7 @@
 									})} — waiting for their reply{item.requestNote ? ` · "${item.requestNote}"` : ''}
 								</p>
 							{/if}
-							{#if !data.hrFiled}
+							{#if data.linkRequests}
 							<form method="POST" action="?/requestConfirmation" use:enhance class="cd-form">
 								<fieldset class="rbac" disabled={!data.isApprover}>
 									<input type="hidden" name="field" value={item.confirms} />
@@ -5274,6 +5332,26 @@
 		font-size: 12px;
 		font-weight: 700;
 		color: var(--ae-verdant);
+	}
+	.add-email fieldset {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+		border: 0;
+		margin: 0 0 10px;
+		padding: 0;
+	}
+	.add-email label {
+		margin: 0;
+		font-size: 12.5px;
+		color: var(--ae-text-2);
+	}
+	.add-email input {
+		width: auto;
+		min-width: 220px;
+		padding: 6px 10px;
+		font-size: 12.5px;
 	}
 	.linkbox {
 		margin: 0 0 14px;

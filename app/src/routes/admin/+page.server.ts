@@ -10,6 +10,7 @@ import { brandBySlug } from '$lib/shared/brands';
 import { buildOnboardingLinkAttachments } from '$lib/server/offer-letter/send';
 import { sendOnboardingWelcomeWA } from '$lib/server/whatsapp';
 import { isJoiningDateToday } from '$lib/shared/dates';
+import { LINK_DELIVERIES, waShareUrl, type LinkDelivery } from '$lib/shared/link-delivery';
 
 /** Statuses that mean "candidate still has work to do". */
 const IN_PROGRESS = ['created', 'opened', 'in_progress', 'changes_requested'];
@@ -180,9 +181,29 @@ export const actions: Actions = {
 		const candidateName = String(form.get('candidateName') ?? '').trim();
 		const candidateMobile = String(form.get('candidateMobile') ?? '').trim().replace(/\D/g, '');
 
-		if (!email || !/^\S+@\S+\.\S+$/.test(email))
-			return fail(400, { message: 'A valid candidate email is required.' });
 		if (!TRACKS.includes(track)) return fail(400, { message: 'Pick a track.' });
+		const hrFiled = isHrFiledTrack(track);
+		// Admin track: how the link reaches the person is HR's call, case by
+		// case — mailed to them, copied and sent by HR, or none at all (HR files
+		// the record by hand). Every other track always mails it.
+		const rawDelivery = String(form.get('delivery') ?? '');
+		const delivery: LinkDelivery = hrFiled
+			? (LINK_DELIVERIES as readonly string[]).includes(rawDelivery)
+				? (rawDelivery as LinkDelivery)
+				: 'copy'
+			: 'email';
+
+		// Email is optional on Admin records — some admin staff have none — but
+		// whatever is typed must be valid, and mailing the link needs one.
+		if (email && !/^\S+@\S+\.\S+$/.test(email))
+			return fail(400, { message: 'Enter a valid email address.' });
+		if (!email && !hrFiled) return fail(400, { message: 'A valid candidate email is required.' });
+		if (!email && delivery === 'email')
+			return fail(400, { message: 'Add their email to mail the link, or pick "Copy link" and send it yourself.' });
+		// Without an email the name is the only thing that identifies the record
+		// in every list, mail and file name.
+		if (!email && !candidateName)
+			return fail(400, { message: 'Add their name — with no email it is what identifies the record.' });
 		if (!companyId) return fail(400, { message: 'Pick a company.' });
 
 		const company = await Company.findById(companyId).lean();
@@ -192,60 +213,78 @@ export const actions: Actions = {
 		// A candidate can legitimately be re-linked after their record is revoked
 		// or fully onboarded (rehire, new track), but never while an existing
 		// link for the same email + company is still active — otherwise HR ends
-		// up with silent duplicate records mid-review.
-		const activeDuplicate = await Candidate.findOne({
-			email,
-			companyId,
-			status: { $nin: ['revoked', 'complete'] }
-		}).lean();
+		// up with silent duplicate records mid-review. An Admin record with no
+		// email is matched on mobile instead, when there is one.
+		const sameKey = email ? { email } : candidateMobile ? { mobile: candidateMobile } : null;
+		const activeDuplicate = sameKey
+			? await Candidate.findOne({
+					...sameKey,
+					companyId,
+					status: { $nin: ['revoked', 'complete'] }
+				}).lean()
+			: null;
 		if (activeDuplicate) {
 			return fail(409, {
-				message: `${email} already has an active onboarding link for this company (status: ${activeDuplicate.status}). Revoke it before creating a new one.`
+				message: `${email || `Mobile ${candidateMobile}`} already has an active onboarding record for this company (status: ${activeDuplicate.status}). Revoke it before creating a new one.`
 			});
 		}
 
-		const hrFiled = isHrFiledTrack(track);
 		const candidate = await Candidate.create({
-			email,
+			...(email ? { email } : {}),
 			track,
 			companyId,
 			fullName: candidateName || null,
 			mobile: candidateMobile || null,
-			// An HR-filed record has no link to open, so it starts where HR
+			// A record with no link has nothing to open, so it starts where HR
 			// filling it in leaves it: in progress, not 'link sent'.
-			...(hrFiled ? { status: 'in_progress' } : {}),
+			...(delivery === 'none' ? { status: 'in_progress' } : {}),
 			createdBy: locals.admin!.id
 		});
+		const candidateId = String(candidate._id);
 
 		await PhysicalItem.insertMany(
 			PHYSICAL_ITEM_TYPES.map((p) => ({ candidateId: candidate._id, itemType: p.type }))
 		);
 
-		// Admin track: HR fills in the details and uploads the documents by hand,
-		// so no link token is issued and nothing goes to the person — no email,
-		// no WhatsApp. HR is sent straight to the record to start filing.
-		if (hrFiled) {
+		// No link: no token, and nothing goes to the person. HR is sent straight
+		// to the record to start filing.
+		if (delivery === 'none') {
 			await audit({
-				candidateId: String(candidate._id),
+				candidateId,
 				actor: locals.admin!.email,
 				action: 'record_created_for_hr_filing',
 				field: track,
 				ip: getClientAddress()
 			});
-			return { hrFiled: true as const, candidateId: String(candidate._id), email };
+			return { hrFiled: true as const, candidateId, email: email || null, name: candidateName || null };
 		}
 
-		const token = await createLinkToken(String(candidate._id));
+		const token = await createLinkToken(candidateId);
 		const base = baseUrl();
 		const link = `${base}/c/${token}`;
+		const shareText = `Welcome to ${brand.name}! Please complete your onboarding here (expires in 7 days): ${link}`;
 
 		await audit({
-			candidateId: String(candidate._id),
+			candidateId,
 			actor: locals.admin!.email,
 			action: 'link_generated',
 			field: track,
+			newValue: hrFiled ? (delivery === 'email' ? 'emailed' : 'copied by HR') : undefined,
 			ip: getClientAddress()
 		});
+
+		// Copy: HR sends it themselves (typically on WhatsApp), so nothing is
+		// mailed or messaged from here.
+		if (delivery === 'copy') {
+			return {
+				link,
+				waUrl: waShareUrl(candidateMobile, shareText),
+				email: email || null,
+				name: candidateName || null,
+				candidateId,
+				delivery
+			};
+		}
 
 		// Bundle the offer letter into this same email if a complete draft already
 		// exists for this candidate (e.g. CTC was finalized before the link went
@@ -273,8 +312,9 @@ export const actions: Actions = {
 			String(candidate._id)
 		);
 
-		// Send WhatsApp welcome message via Twilio (best-effort, non-fatal)
-		if (candidateMobile) {
+		// Send WhatsApp welcome message via Twilio (best-effort, non-fatal).
+		// Not for Admin records: there only what HR picked goes out.
+		if (candidateMobile && !hrFiled) {
 			await sendOnboardingWelcomeWA({
 				mobile: candidateMobile,
 				candidateName: candidateName || 'there',
@@ -284,9 +324,13 @@ export const actions: Actions = {
 			});
 		}
 
-		const waText = encodeURIComponent(
-			`Welcome to ${brand.name}! Please complete your onboarding here (expires in 7 days): ${link}`
-		);
-		return { link, waUrl: `https://wa.me/?text=${waText}`, email };
+		return {
+			link,
+			waUrl: waShareUrl(hrFiled ? candidateMobile : '', shareText),
+			email,
+			name: candidateName || null,
+			candidateId,
+			delivery
+		};
 	}
 };

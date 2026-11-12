@@ -14,15 +14,18 @@ export const TRACK_LABELS: Record<Track, string> = {
 	admin: 'Admin'
 };
 
-/** Tracks HR files by hand (HR decision, Nov 2026). Admin staff are never sent
- *  an onboarding link: HR fills in their details and uploads their documents
- *  from the candidate page, then approves the record as usual. Nothing on these
- *  records is mandatory — every document, every profile field (religion
- *  included) and the joining-day items — so approval moves them straight to
- *  complete. Creating one of
- *  these sends no mail or WhatsApp and issues no link token, and every action
- *  that would point the person at a link (regenerate, request upload or
- *  re-upload, confirm a detail) is refused for them. */
+/** Tracks HR files by hand (HR decisions, Nov 2026). HR can fill in an Admin
+ *  hire's details and upload their documents from the candidate page, and
+ *  nothing on these records is mandatory — every document, every profile field
+ *  (religion included), on HR's page and on the person's own form alike, and
+ *  the joining-day items — so approval moves them straight to complete.
+ *
+ *  The onboarding link is HR's call, person by person: email it (only when
+ *  they have an email address — it is optional on these records), copy it and
+ *  send it themselves, or issue none and file the record by hand. Nothing goes
+ *  to the person unless HR picks it: no automatic WhatsApp, and no approval
+ *  mail. Asking for an upload, a re-upload or a confirmation needs both an
+ *  email on record and a live link. */
 export const HR_FILED_TRACKS: Track[] = ['admin'];
 
 export function isHrFiledTrack(track: string | null | undefined): boolean {
@@ -185,7 +188,12 @@ export const TRACK_DOC_OVERRIDES: Partial<Record<Track, Record<string, { mandato
 	// HR decision (Nov 2026): consultants are not put through the IQ, GRIT and
 	// Growth Mindset tests, so their screenshots are optional on the consultant
 	// track at every entity. Every other track still requires them.
-	consultant: { test_results: { mandatory: false } }
+	consultant: { test_results: { mandatory: false } },
+	// HR decision (Nov 2026): an Experienced hire must upload the relieving
+	// letter (or the resignation acceptance email, which the slot already
+	// accepts) and the offer letter from their previous employers. Consultant
+	// and contract share these slots and keep them optional.
+	experienced: { relieving_letter: { mandatory: true }, offer_letter_prev: { mandatory: true } }
 	// Admin (and any other HR-filed track) is handled in slotsForTrack: every
 	// slot is optional there, whatever the entity, so it is not listed here.
 };

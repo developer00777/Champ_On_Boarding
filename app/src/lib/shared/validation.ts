@@ -61,10 +61,17 @@ export interface FieldError {
  *  employment block — callers derive it from isBgvEligible() in matrix.ts
  *  (experienced track at a BGV entity), since those fields feed the BGV
  *  request and a hole here becomes an unusable BGV later. */
-export function validateMasterSheet(f: Record<string, string>, requirePrevEmployment = false): FieldError[] {
+/** `allOptional` is the HR-filed (Admin) track: nothing is mandatory there
+ *  (HR decision, Nov 2026), so blanks pass — but a value that is filled in is
+ *  still checked for format. */
+export function validateMasterSheet(
+	f: Record<string, string>,
+	requirePrevEmployment = false,
+	allOptional = false
+): FieldError[] {
 	const errors: FieldError[] = [];
 	const req = (field: string, label: string) => {
-		if (!f[field]?.trim()) errors.push({ field, message: `${label} is required` });
+		if (!allOptional && !f[field]?.trim()) errors.push({ field, message: `${label} is required` });
 	};
 
 	req('fullName', 'Full name');

@@ -13,6 +13,7 @@ import {
 	CONFIRMABLE_FIELDS,
 	confirmableItemByField,
 	isBgvEligible,
+	isHrFiledTrack,
 	type Track
 } from '$lib/shared/matrix';
 import { brandBySlug } from '$lib/shared/brands';
@@ -46,6 +47,12 @@ const TITLE_CASE_FIELDS = new Set([
 
 /** Read back to the candidate and validated, but never stored: see validation.ts. */
 const TRANSIENT_FIELDS = ['accountNoConfirm'] as const;
+
+/** An Admin-track record may have no email, and then its name is all that
+ *  identifies it — so a blank name from the form does not overwrite it. */
+function keepNameWithoutEmail(candidate: { email?: string | null }, update: Record<string, unknown>) {
+	if (!candidate.email && !String(update.fullName ?? '').trim()) delete update.fullName;
+}
 
 function formToFields(form: FormData): Record<string, string> {
 	const out: Record<string, string> = {};
@@ -85,6 +92,8 @@ export const load: PageServerLoad = async ({ params }) => {
 			// Whether the previous-employment (BGV) section applies: experienced
 			// track at one of the BGV entities. Uses the company's raw brandSlug.
 			bgvEligible: isBgvEligible(candidate.track, company?.brandSlug),
+			// Admin track: nothing on the form is required (HR decision, Nov 2026).
+			allOptional: isHrFiledTrack(candidate.track),
 			trackLabel: TRACK_LABELS[candidate.track as Track],
 			status: candidate.status,
 			consented: !!candidate.consentAt,
@@ -212,6 +221,7 @@ export const actions: Actions = {
 			update.aadhaarNoEncrypted = encrypt(fields.aadhaarNo);
 			update.aadhaarLast4 = fields.aadhaarNo.slice(-4);
 		}
+		keepNameWithoutEmail(candidate, update);
 		if (candidate.status === 'opened') update.status = 'in_progress';
 
 		await Candidate.findByIdAndUpdate(candidate.id, update);
@@ -231,7 +241,11 @@ export const actions: Actions = {
 		const company = await Company.findById(candidate.companyId).lean();
 
 		const fields = formToFields(await request.formData());
-		const errors = validateMasterSheet(fields, isBgvEligible(candidate.track, company?.brandSlug));
+		const errors = validateMasterSheet(
+			fields,
+			isBgvEligible(candidate.track, company?.brandSlug),
+			isHrFiledTrack(candidate.track)
+		);
 		const checklist = await checklistFor(candidate.id, candidate.track as Track, company?.brandSlug);
 		for (const slot of missingMandatory(checklist)) {
 			// Grouped slots collapse to one entry, so name the alternatives rather
@@ -246,8 +260,12 @@ export const actions: Actions = {
 		const update: Record<string, unknown> = { ...fields };
 		delete update.aadhaarNo;
 		for (const f of TRANSIENT_FIELDS) delete update[f];
-		update.aadhaarNoEncrypted = encrypt(fields.aadhaarNo);
-		update.aadhaarLast4 = fields.aadhaarNo.slice(-4);
+		// Blank only where Aadhaar is optional (Admin track): keep what is stored.
+		if (fields.aadhaarNo) {
+			update.aadhaarNoEncrypted = encrypt(fields.aadhaarNo);
+			update.aadhaarLast4 = fields.aadhaarNo.slice(-4);
+		}
+		keepNameWithoutEmail(candidate, update);
 		update.status = 'submitted';
 		update.submittedAt = new Date();
 

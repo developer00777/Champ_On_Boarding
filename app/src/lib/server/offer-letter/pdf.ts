@@ -1754,7 +1754,7 @@ export async function renderOfferLetter(
 	const c = {
 		name: candidate.fullName ?? candidate.email,
 		contact: candidate.mobile ? `+91 ${candidate.mobile}` : '',
-		email: candidate.email
+		email: candidate.email ?? ''
 	};
 
 	if (track === 'intern') {

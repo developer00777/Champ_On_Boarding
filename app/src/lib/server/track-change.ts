@@ -97,9 +97,9 @@ export async function trackImpact(candidate: Lean, company: Lean | null, to: Tra
 
 	// ── HR filing (Admin track) ──────────────────────────────────────────────
 	if (!isHrFiledTrack(from) && isHrFiledTrack(to))
-		notes.push({ tone: 'loss', text: `${toLabel} records are filed by HR: their onboarding link stops working, and you fill in their details and upload their documents on this page from now on.` });
+		notes.push({ tone: 'info', text: `Nothing is mandatory on ${toLabel} records: every document and detail becomes optional, and you can fill in their details and upload their documents on this page. Their onboarding link keeps working.` });
 	if (isHrFiledTrack(from) && !isHrFiledTrack(to))
-		notes.push({ tone: 'todo', text: `${fromLabel} records have no onboarding link. Use "Generate link" on this page to send them one for the ${toLabel} track.` });
+		notes.push({ tone: 'todo', text: `${fromLabel} records may have no onboarding link. If they have none, use "Generate link" on this page to send them one for the ${toLabel} track.` });
 
 	// ── Documents ────────────────────────────────────────────────────────────
 	// Uploads in a slot the new track does not have drop out of the checklist.
@@ -256,6 +256,10 @@ export function resolveTrack(candidate: Lean, raw: string) {
 	if (!TRACKS.includes(raw as Track)) return { error: 'Pick the track to change this candidate to.' } as const;
 	const to = raw as Track;
 	if (to === candidate.track) return { error: `This candidate is already on the ${TRACK_LABELS[to]} track.` } as const;
+	// Only HR-filed (Admin) records may have no email, and every other track
+	// mails the person their link and letters.
+	if (!candidate.email && !isHrFiledTrack(to))
+		return { error: `Add their email first — the ${TRACK_LABELS[to]} track needs one.` } as const;
 	return { to } as const;
 }
 

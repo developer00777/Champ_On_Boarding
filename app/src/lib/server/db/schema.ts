@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import type { Types } from 'mongoose';
+import { isHrFiledTrack } from '../../shared/matrix';
 
 const { model, models } = mongoose;
 
@@ -86,7 +87,16 @@ const candidateSchema = new Schema(
 		fullName: { type: String, index: true },
 		dob: String,
 		gender: String,
-		email: { type: String, required: true, index: true },
+		// Optional on the HR-filed (Admin) track only: some admin staff have no
+		// email address, and HR copies their link to them instead. Every other
+		// track mails the link, so it stays required there.
+		email: {
+			type: String,
+			required(this: { track?: string }) {
+				return !isHrFiledTrack(this.track);
+			},
+			index: true
+		},
 		mobile: String,
 		fatherName: String,
 		fatherMobile: String,
