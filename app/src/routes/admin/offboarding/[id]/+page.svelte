@@ -97,6 +97,8 @@
 		attachments: { name: string; href: string }[];
 		/** The opening paragraphs, which HR can rewrite. */
 		intro?: string[];
+		/** The "Regards," block as composed, which HR can rewrite. */
+		signoff?: { name: string; designation: string; company: string };
 		/** The employee details this mail prints, each checked for a blank or
 		 *  a placeholder ("demo", "0000"…). Separate from Mail settings. */
 		details?: { field: string; label: string; value: string; problem: 'missing' | 'placeholder' | null }[];
@@ -139,6 +141,9 @@
 		subject: '',
 		message: '',
 		details: {} as Record<string, string>,
+		signoff: { name: '', designation: '', company: '' },
+		/** HR changed the "Regards," block; only then is it posted. */
+		signoffTouched: false,
 		seeded: false,
 		touched: false,
 		/** HR typed in To itself. Until then To is not posted, so the server
@@ -160,6 +165,8 @@
 			subject: d.subject,
 			message: (d.intro ?? []).join('\n\n'),
 			details,
+			signoff: { name: d.signoff?.name ?? '', designation: d.signoff?.designation ?? '', company: d.signoff?.company ?? '' },
+			signoffTouched: false,
 			seeded: true,
 			touched: false,
 			toTouched: false
@@ -250,7 +257,18 @@
 
 	async function openReview(step: string, previewOnly = false, mode: ComposeMode = null, stage: string | null = null) {
 		compose = { items: [], uploads: [''], note: '', docs: [] };
-		edit = { to: '', cc: '', subject: '', message: '', details: {}, seeded: false, touched: false, toTouched: false };
+		edit = {
+			to: '',
+			cc: '',
+			subject: '',
+			message: '',
+			details: {},
+			signoff: { name: '', designation: '', company: '' },
+			signoffTouched: false,
+			seeded: false,
+			touched: false,
+			toTouched: false
+		};
 		review = { step, previewOnly, mode, draft: null, error: '', stage, query: null };
 		if (!stage) await fetchDraft();
 	}
@@ -483,7 +501,9 @@
 
 	/** The IT block-access mail: HR's own mail, outside the clearance steps. */
 	const itBlockNode = $derived.by((): { status: NodeStatus; detail: string } => {
-		if (e.itAccessRevokedMailSentAt) return { status: 'done', detail: `Sent ${stamp(e.itAccessRevokedMailSentAt)}` };
+		if (e.itAccessBlockedAt) return { status: 'done', detail: `Blocked · confirmed ${stamp(e.itAccessBlockedAt)}` };
+		if (e.itAccessRevokedMailSentAt)
+			return { status: 'active', detail: `Sent ${stamp(e.itAccessRevokedMailSentAt)} — waiting for IT to confirm` };
 		if (!data.itMailRecipients.to.length) return { status: 'blocked', detail: 'Add the IT address in Mail settings' };
 		return { status: 'waiting', detail: 'Not sent yet — send it any time' };
 	});
@@ -844,8 +864,14 @@
 						own — send it whenever you are ready, before or after any other step.
 					</p>
 				</div>
-				<span class="pill {itBlockNode.status === 'done' ? 'teal' : itBlockNode.status === 'blocked' ? 'red' : ''}">
-					{itBlockNode.status === 'done' ? 'Sent' : itBlockNode.status === 'blocked' ? 'No email' : 'Not sent'}
+				<span class="pill {itBlockNode.status === 'done' ? 'teal' : itBlockNode.status === 'active' ? 'gold' : itBlockNode.status === 'blocked' ? 'red' : ''}">
+					{itBlockNode.status === 'done'
+						? 'Access blocked'
+						: itBlockNode.status === 'active'
+							? 'Awaiting IT'
+							: itBlockNode.status === 'blocked'
+								? 'No email'
+								: 'Not sent'}
 				</span>
 			</div>
 
@@ -859,6 +885,15 @@
 				{#if e.itAccessRevokedMailSentAt}
 					<dt>Sent</dt>
 					<dd>{stamp(e.itAccessRevokedMailSentAt)}</dd>
+					<dt>Blocked</dt>
+					<dd>
+						{#if e.itAccessBlockedAt}
+							<b>Confirmed {stamp(e.itAccessBlockedAt)}</b>{#if e.itAccessBlockedBy} · {e.itAccessBlockedBy}{/if}
+							{#if e.itAccessBlockedNote}<br /><span class="muted">“{e.itAccessBlockedNote}”</span>{/if}
+						{:else}
+							<span class="muted">Not confirmed yet — the mail has a "Confirm access is blocked" button for IT</span>
+						{/if}
+					</dd>
 				{/if}
 			</dl>
 
@@ -867,8 +902,24 @@
 					{e.itAccessRevokedMailSentAt ? 'Review & resend' : 'Review & mail IT to block access'}
 				</button>
 				<a class="btn ghost small" href="#mail-settings" onclick={(ev) => jump(ev, 'mail-settings', 'itBlock')}>Change recipients</a>
+				{#if e.itAccessRevokedMailSentAt && data.isHr}
+					<!-- For when IT confirms by reply or call instead of the button. -->
+					<form
+						method="POST"
+						action="?/markItBlocked"
+						use:enhance={track('itmark')}
+						onsubmit={(ev) => {
+							if (e.itAccessBlockedAt && !confirm('Undo the confirmation that system access is blocked?')) ev.preventDefault();
+						}}
+					>
+						{#if e.itAccessBlockedAt}<input type="hidden" name="undo" value="1" />{/if}
+						<button class="btn ghost small" disabled={sending['itmark']}>
+							{e.itAccessBlockedAt ? 'Undo confirmation' : 'Mark as blocked'}
+						</button>
+					</form>
+				{/if}
 			</div>
-			{#if form?.itMailSent}<p class="ok">IT has been asked to block system access.</p>{/if}
+			{#if form?.itMailSent}<p class="ok">IT has been asked to block system access. They confirm with the button in the mail.</p>{/if}
 		</section>
 
 		<!-- 02. Employee exit forms -->
@@ -1741,7 +1792,7 @@
 					<div class="rpanel" role="tabpanel" hidden={routeTab !== 'signoff'}>
 						<div class="route-h">
 							<span class="route-l">Sign-off on this exit's mails</span>
-							{#if data.signoff.name || data.signoff.designation}<span class="opt">differs from default</span>{/if}
+							{#if data.signoff.name || data.signoff.designation || data.signoff.company}<span class="opt">differs from default</span>{/if}
 						</div>
 						<div class="arow arow-even">
 							<label class="f">
@@ -1757,10 +1808,20 @@
 									value={data.signoff.designation}
 								/>
 							</label>
+							<label class="f">
+								<span>Company line</span>
+								<input
+									name="signoff_company"
+									maxlength="120"
+									placeholder={data.signoffDefaults.company}
+									value={data.signoff.company}
+								/>
+							</label>
 						</div>
 						<p class="muted tiny" style="margin:8px 0 0">
 							Printed under "Regards," on the clearance, IT block-access, exit-forms and handover mails.
-							Left blank, it uses Settings → Offboarding mail; the company line is always the employee's entity.
+							Left blank, the name and designation come from Settings → Offboarding mail and the company
+							line is the employee's entity. Any mail's review dialog can change it for that one mail.
 						</p>
 					</div>
 					<label class="check">
@@ -2093,6 +2154,31 @@
 					</p>
 				</details>
 			{/if}
+			{#if editable && d.signoff}
+				<details class="rv-msg" open={edit.signoffTouched}>
+					<summary>
+						Edit the sign-off{edit.signoffTouched ? ' · edited' : ` · Regards, ${d.signoff.name}`}
+					</summary>
+					<div class="rv-dgrid">
+						<label class="rv-dfield">
+							<span>Name</span>
+							<input class="rv-in" maxlength="120" bind:value={edit.signoff.name} oninput={() => (edit.touched = edit.signoffTouched = true)} />
+						</label>
+						<label class="rv-dfield">
+							<span>Designation</span>
+							<input class="rv-in" maxlength="120" bind:value={edit.signoff.designation} oninput={() => (edit.touched = edit.signoffTouched = true)} />
+						</label>
+						<label class="rv-dfield">
+							<span>Company line</span>
+							<input class="rv-in" maxlength="120" bind:value={edit.signoff.company} oninput={() => (edit.touched = edit.signoffTouched = true)} />
+						</label>
+					</div>
+					<p class="muted tiny">
+						Printed under "Regards,". Send uses it for this mail; Save keeps it for every mail on this exit
+						(Mail settings → Sign-off). The preview shows the saved sign-off.
+					</p>
+				</details>
+			{/if}
 			</div>
 			<div class="rv-frame">
 				<iframe class="rv-body" title="Mail body" sandbox="" srcdoc={d.html}></iframe>
@@ -2127,6 +2213,11 @@
 					{/each}
 					{#if edit.toTouched}<input type="hidden" name="mail.to" value={edit.to} />{/if}
 					{#if edit.touched}<input type="hidden" name="mail.cc" value={edit.cc} />{/if}
+					{#if edit.signoffTouched}
+						<input type="hidden" name="mail.signoffName" value={edit.signoff.name} />
+						<input type="hidden" name="mail.signoffDesignation" value={edit.signoff.designation} />
+						<input type="hidden" name="mail.signoffCompany" value={edit.signoff.company} />
+					{/if}
 					<button
 						class="btn ghost"
 						title="Save the details and recipients without sending"
@@ -2157,6 +2248,11 @@
 						<input type="hidden" name="mail.cc" value={edit.cc} />
 						<input type="hidden" name="mail.subject" value={edit.subject} />
 						{#if review.draft?.intro?.length}<input type="hidden" name="mail.message" value={edit.message} />{/if}
+					{/if}
+					{#if edit.signoffTouched}
+						<input type="hidden" name="mail.signoffName" value={edit.signoff.name} />
+						<input type="hidden" name="mail.signoffDesignation" value={edit.signoff.designation} />
+						<input type="hidden" name="mail.signoffCompany" value={edit.signoff.company} />
 					{/if}
 					<button
 						class="btn grad"

@@ -25,10 +25,12 @@ import {
 const TOKEN_DAYS: Record<ExitTokenPurpose, number> = {
 	forms: 30,
 	clearance: 30,
-	handover: 180
+	handover: 180,
+	// The IT desk's "access is blocked" confirmation, from the block mail.
+	itblock: 30
 };
 
-export type ExitTokenPurpose = 'forms' | 'clearance' | 'handover';
+export type ExitTokenPurpose = 'forms' | 'clearance' | 'handover' | 'itblock';
 
 // ── Tokens ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +87,7 @@ export function exitTokenUrl(row: ExitTokenDoc | null): string | null {
 	const base = baseUrl();
 	if (row.purpose === 'forms') return `${base}/x/${raw}`;
 	if (row.purpose === 'clearance') return `${base}/x/clearance/${raw}`;
+	if (row.purpose === 'itblock') return `${base}/x/it/${raw}`;
 	return `${base}/x/final/${raw}`;
 }
 

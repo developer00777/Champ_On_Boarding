@@ -69,12 +69,18 @@ export async function saveExitMailSettings(value: ExitMailSettings, adminId: str
 export interface ExitSignoff {
 	name?: string | null;
 	designation?: string | null;
+	/** The company line; blank → the entity's legal name. */
+	company?: string | null;
 }
 
-function signoffFor(s: ExitMailSettings, own: ExitSignoff | null | undefined) {
+/** Who "Regards," names: HR's edit for this one mail, else this exit's own
+ *  sign-off, else Settings. `company` null means the brand's legal name. */
+function signoffFor(s: ExitMailSettings, own: ExitSignoff | null | undefined, edits?: MailEdits | null) {
+	const e = edits?.signoff;
 	return {
-		name: own?.name?.trim() || s.signoffName,
-		designation: own?.designation?.trim() || s.signoffDesignation
+		name: e?.name?.trim() || own?.name?.trim() || s.signoffName,
+		designation: e?.designation?.trim() || own?.designation?.trim() || s.signoffDesignation,
+		company: e?.company?.trim() || own?.company?.trim() || null
 	};
 }
 
@@ -92,6 +98,8 @@ interface ShellOpts {
 	note?: { title: string; text: string } | null;
 	signoffName: string;
 	signoffDesignation: string;
+	/** The company line under the designation; blank → the brand's legal name. */
+	signoffCompany?: string | null;
 	footer?: string;
 }
 
@@ -137,7 +145,7 @@ function shell(o: ShellOpts): string {
 			<p style="margin:24px 0 4px;font-size:14.5px">Regards,</p>
 			<p style="margin:0;font-size:14.5px;font-weight:700">${escapeHtml(o.signoffName)}</p>
 			<p style="margin:0;font-size:13px;color:#475467">${escapeHtml(o.signoffDesignation)}</p>
-			<p style="margin:2px 0 0;font-size:13px;color:#475467">${escapeHtml(brand.legalName)}</p>
+			<p style="margin:2px 0 0;font-size:13px;color:#475467">${escapeHtml(o.signoffCompany || brand.legalName)}</p>
 		</div>
 		<div style="background:${brand.colors.ink};padding:13px 26px;text-align:center">
 			<p style="margin:0;font-size:11px;color:#aaa">${escapeHtml(
@@ -157,6 +165,8 @@ export interface MailDraft {
 	subject: string;
 	html: string;
 	text: string;
+	/** The "Regards," block as composed, for the review dialog to prefill. */
+	signoff?: { name: string; designation: string; company: string };
 }
 
 /** HR's edits to one mail in the review dialog. */
@@ -166,6 +176,8 @@ export interface MailEdits {
 	subject?: string;
 	/** The opening paragraphs, one per entry. */
 	intro?: string[];
+	/** The "Regards," block for this one mail. */
+	signoff?: ExitSignoff;
 }
 
 /** Applies HR's recipients and subject over a composed mail, and hands back
@@ -205,7 +217,7 @@ export async function buildExitFormsMail(opts: {
 		| null;
 }) {
 	const s = await getExitMailSettings();
-	const sign = signoffFor(s, opts.signoff);
+	const sign = signoffFor(s, opts.signoff, opts.edits);
 	const isRework = !!opts.changesRequested?.length;
 	// Only documents asked for (no form fields): the employee may well have
 	// finished their forms long ago, so the mail asks for uploads, not edits.
@@ -275,7 +287,8 @@ export async function buildExitFormsMail(opts: {
 						'submission and will come back to you if anything else is needed.'
 				},
 		signoffName: sign.name,
-		signoffDesignation: sign.designation
+		signoffDesignation: sign.designation,
+		signoffCompany: sign.company
 	});
 
 	const text = textBody(
@@ -295,10 +308,11 @@ export async function buildExitFormsMail(opts: {
 		],
 		sign.name,
 		sign.designation,
-		opts.brand.legalName
+		sign.company || opts.brand.legalName
 	);
 
 	return withEdits(opts.edits, intro, {
+		signoff: { name: sign.name, designation: sign.designation, company: sign.company || opts.brand.legalName },
 		to: opts.to ? [opts.to] : [],
 		cc: s.hrCc,
 		subject: uploadsOnly
@@ -359,7 +373,7 @@ export async function buildClearanceMail(opts: {
 	sendBack?: { note: string | null; items: string[]; uploads: string[] } | null;
 }) {
 	const s = await getExitMailSettings();
-	const sign = signoffFor(s, opts.signoff);
+	const sign = signoffFor(s, opts.signoff, opts.edits);
 	const deptLabel = CLEARANCE_DEPT_LABELS[opts.department] ?? opts.department;
 	const back = opts.sendBack && (opts.sendBack.items.length || opts.sendBack.uploads.length || opts.sendBack.note)
 		? opts.sendBack
@@ -426,7 +440,8 @@ export async function buildClearanceMail(opts: {
 				'as it currently stands is attached for reference.'
 		},
 		signoffName: sign.name,
-		signoffDesignation: sign.designation
+		signoffDesignation: sign.designation,
+		signoffCompany: sign.company
 	});
 
 	const text = textBody(
@@ -443,10 +458,11 @@ export async function buildClearanceMail(opts: {
 		],
 		sign.name,
 		sign.designation,
-		opts.brand.legalName
+		sign.company || opts.brand.legalName
 	);
 
 	return withEdits(opts.edits, intro, {
+		signoff: { name: sign.name, designation: sign.designation, company: sign.company || opts.brand.legalName },
 		to: opts.to,
 		cc: opts.cc ?? [],
 		subject: back
@@ -488,9 +504,11 @@ export async function buildItExitMail(opts: {
 	/** This exit's own recipients (its mail settings); unset → the defaults. */
 	to?: string[] | null;
 	cc?: string[] | null;
+	/** The IT desk's "access is blocked" page; the mail's button opens it. */
+	confirmUrl?: string | null;
 }) {
 	const s = await getExitMailSettings();
-	const sign = signoffFor(s, opts.signoff);
+	const sign = signoffFor(s, opts.signoff, opts.edits);
 	const cells = [opts.employeeId, opts.employeeName, opts.lwd ?? '', opts.team ?? ''];
 	const border = '1px solid #d0d5dd';
 	const th = IT_COLUMNS.map(
@@ -520,6 +538,7 @@ export async function buildItExitMail(opts: {
 		heading: 'Block system access — employee exit',
 		intro,
 		bodyHtml: `<div style="overflow-x:auto;margin:6px 0">${table}</div>`,
+		cta: opts.confirmUrl ? { label: 'Confirm access is blocked', url: opts.confirmUrl } : null,
 		note: {
 			title: 'Kindly support and do the needful',
 			text:
@@ -527,17 +546,26 @@ export async function buildItExitMail(opts: {
 				'has been sent for the No Dues Certificate.'
 		},
 		signoffName: sign.name,
-		signoffDesignation: sign.designation
+		signoffDesignation: sign.designation,
+		signoffCompany: sign.company
 	});
 
 	const text = textBody(
-		[...intro, '', ...IT_COLUMNS.map((c, i) => `${c}: ${cells[i] || '—'}`), '', 'Kindly support and do the needful.'],
+		[
+			...intro,
+			'',
+			...IT_COLUMNS.map((c, i) => `${c}: ${cells[i] || '—'}`),
+			'',
+			...(opts.confirmUrl ? ['Once access is blocked, please confirm it here:', opts.confirmUrl, ''] : []),
+			'Kindly support and do the needful.'
+		],
 		sign.name,
 		sign.designation,
-		opts.brand.legalName
+		sign.company || opts.brand.legalName
 	);
 
 	return withEdits(opts.edits, intro, {
+		signoff: { name: sign.name, designation: sign.designation, company: sign.company || opts.brand.legalName },
 		to: opts.to?.length ? opts.to : s.itTo,
 		cc: opts.cc ?? s.itCc,
 		subject: `Block system access — ${opts.employeeName} (${opts.employeeId})`,
@@ -582,7 +610,7 @@ export async function buildHandoverMail(opts: {
 	attachments?: MailAttachment[];
 }) {
 	const s = await getExitMailSettings();
-	const sign = signoffFor(s, opts.signoff);
+	const sign = signoffFor(s, opts.signoff, opts.edits);
 
 	const defaultIntro = [
 		`Hello ${opts.employeeName},`,
@@ -629,7 +657,8 @@ export async function buildHandoverMail(opts: {
 				'your next employer or for tax filing.'
 		},
 		signoffName: sign.name,
-		signoffDesignation: sign.designation
+		signoffDesignation: sign.designation,
+		signoffCompany: sign.company
 	});
 
 	const text = textBody(
@@ -643,10 +672,11 @@ export async function buildHandoverMail(opts: {
 		],
 		sign.name,
 		sign.designation,
-		opts.brand.legalName
+		sign.company || opts.brand.legalName
 	);
 
 	return withEdits(opts.edits, intro, {
+		signoff: { name: sign.name, designation: sign.designation, company: sign.company || opts.brand.legalName },
 		to: opts.to ? [opts.to] : [],
 		cc: s.hrCc,
 		subject: `Your exit documents & final settlement — ${opts.brand.name}`,

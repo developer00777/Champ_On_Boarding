@@ -845,7 +845,9 @@ const exitSchema = new Schema(
 			 *  the sign-off in Settings → Offboarding mail. */
 			signoff: {
 				name: { type: String, default: null },
-				designation: { type: String, default: null }
+				designation: { type: String, default: null },
+				/** The company line under the designation; blank → the entity's legal name. */
+				company: { type: String, default: null }
 			},
 			/** Who the "block system access" mail goes to for this exit. Unset
 			 *  means the saved defaults (exit mail settings). */
@@ -1126,6 +1128,12 @@ const exitSchema = new Schema(
 
 		// ── System-update tracking (SOP step 10) ─────────────────────────────
 		itAccessRevokedMailSentAt: { type: Date, default: null },
+		/** IT's confirmation that system access is blocked — pressed by the IT
+		 *  desk from the button in the block mail, or marked by HR when IT
+		 *  confirms another way. `By` is who: the name IT typed, or HR's login. */
+		itAccessBlockedAt: { type: Date, default: null },
+		itAccessBlockedBy: { type: String, default: null },
+		itAccessBlockedNote: { type: String, default: null },
 		handoverMailSentAt: { type: Date, default: null }
 	},
 	{ timestamps: true }
@@ -1143,10 +1151,11 @@ export const Exit = models.Exit ?? model('Exit', exitSchema);
 //   forms     the employee's exit-documents portal (/x/[token])
 //   clearance a single approver's clearance page (/x/clearance/[token])
 //   handover  the final documents page, ~30-45 days after LWD (/x/final/[token])
+//   itblock   the IT desk's "access is blocked" confirmation (/x/it/[token])
 const exitTokenSchema = new Schema(
 	{
 		exitId: { type: Schema.Types.ObjectId, ref: 'Exit', required: true, index: true },
-		purpose: { type: String, enum: ['forms', 'clearance', 'handover'], required: true },
+		purpose: { type: String, enum: ['forms', 'clearance', 'handover', 'itblock'], required: true },
 		/** Set only on clearance tokens — which ExitClearance row this link is for. */
 		clearanceId: { type: Schema.Types.ObjectId, ref: 'ExitClearance', default: null },
 		tokenHash: { type: String, required: true, unique: true },

@@ -126,9 +126,11 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 			lwd: exit.lwd ?? null,
 			team: exit.department ?? exit.division ?? null,
 			to: exit.routing?.itBlock?.to ?? null,
-			cc: exit.routing?.itBlock?.cc ?? null
+			cc: exit.routing?.itBlock?.cc ?? null,
+			confirmUrl: `${baseUrl()}/x/it/«secure link created when you press Send»`
 		});
 		return json(withDetails({
+			signoff: mail.signoff,
 			to: mail.to,
 			cc: mail.cc,
 			subject: mail.subject,

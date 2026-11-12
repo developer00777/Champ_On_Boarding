@@ -205,7 +205,17 @@ async function takeReviewForm(
 		if (!paras.length) return { error: 'The message cannot be empty.' };
 		edits.intro = paras;
 	}
+	const signoff = signoffFromForm(form);
+	if (signoff) edits.signoff = signoff;
 	return { exit, edits: Object.keys(edits).length ? edits : null };
+}
+
+/** The dialog's "Regards," block, when HR changed it. A blank part falls
+ *  back to this exit's sign-off, then Settings. */
+function signoffFromForm(form: FormData): { name: string; designation: string; company: string } | null {
+	if (!form.has('mail.signoffName')) return null;
+	const get = (k: string) => String(form.get(k) ?? '').trim().slice(0, 120);
+	return { name: get('mail.signoffName'), designation: get('mail.signoffDesignation'), company: get('mail.signoffCompany') };
 }
 
 /** Addresses typed in a To or Cc box: commas, semicolons or spaces between. */
@@ -337,6 +347,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			completedAt: exit.completedAt?.toISOString() ?? null,
 			consentAt: exit.consentAt?.toISOString() ?? null,
 			itAccessRevokedMailSentAt: exit.itAccessRevokedMailSentAt?.toISOString() ?? null,
+			itAccessBlockedAt: exit.itAccessBlockedAt?.toISOString() ?? null,
+			itAccessBlockedBy: exit.itAccessBlockedBy ?? null,
+			itAccessBlockedNote: exit.itAccessBlockedNote ?? null,
 			handoverMailSentAt: exit.handoverMailSentAt?.toISOString() ?? null,
 			requestedFields: (exit.requestedFields ?? []).map(requestedFieldView),
 			/** How many times each field has ever been asked for again. */
@@ -538,9 +551,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		/** This exit's own sign-off (blank = Settings'), and Settings' for the placeholders. */
 		signoff: {
 			name: (e.routing?.signoff?.name as string | null) ?? '',
-			designation: (e.routing?.signoff?.designation as string | null) ?? ''
+			designation: (e.routing?.signoff?.designation as string | null) ?? '',
+			company: (e.routing?.signoff?.company as string | null) ?? ''
 		},
-		signoffDefaults: { name: mailSettings.signoffName, designation: mailSettings.signoffDesignation },
+		signoffDefaults: {
+			name: mailSettings.signoffName,
+			designation: mailSettings.signoffDesignation,
+			company: brand.legalName
+		},
 		isHr: locals.admin?.role === 'super_admin' || locals.admin?.role === 'hr_admin',
 		isSuperAdmin: locals.admin?.role === 'super_admin',
 		/** "Exits: reopen or delete an exit" in Access & org — the reopen action's check. */
@@ -1086,6 +1104,7 @@ export const actions: Actions = {
 		const signoffDesignation = get('signoff_designation').slice(0, 80);
 		patch['routing.signoff.name'] = signoffName || null;
 		patch['routing.signoff.designation'] = signoffDesignation || null;
+		patch['routing.signoff.company'] = get('signoff_company').slice(0, 120) || null;
 		if (errors.length) return no(400, errors.join(' '), 'routing');
 
 		await Exit.findByIdAndUpdate(params.id, patch);
@@ -1204,6 +1223,24 @@ export const actions: Actions = {
 				ip: getClientAddress()
 			});
 		}
+		// The "Regards," block is this exit's own sign-off: every later mail on
+		// it uses what is saved here. A blank part falls back to Settings.
+		const signoff = signoffFromForm(form);
+		if (signoff) {
+			await Exit.findByIdAndUpdate(params.id, {
+				'routing.signoff.name': signoff.name || null,
+				'routing.signoff.designation': signoff.designation || null,
+				'routing.signoff.company': signoff.company || null
+			});
+			await audit({
+				candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+				actor: locals.admin!.email,
+				action: 'exit_signoff_saved',
+				field: 'this exit (from the mail dialog)',
+				newValue: [signoff.name, signoff.designation, signoff.company].filter(Boolean).join(' · ') || 'Settings default',
+				ip: getClientAddress()
+			});
+		}
 		return { reviewSaved: true };
 	},
 
@@ -1217,6 +1254,9 @@ export const actions: Actions = {
 		const review = await takeReviewForm(params.id, row.exit as never, await request.formData(), 'itblock', locals.admin!.email, getClientAddress());
 		if ('error' in review) return no(400, review.error);
 		const { exit, edits } = review;
+		// IT's "access is blocked" button. A re-send mints a new one and the
+		// old link stops working, like every other exit link.
+		const confirmToken = await createExitToken(params.id, 'itblock');
 
 		try {
 			await sendItExitMail({
@@ -1228,6 +1268,7 @@ export const actions: Actions = {
 				team: exit.department ?? exit.division ?? null,
 				to: exit.routing?.itBlock?.to ?? null,
 				cc: exit.routing?.itBlock?.cc ?? null,
+				confirmUrl: `${baseUrl()}/x/it/${confirmToken}`,
 				edits
 			});
 		} catch (e) {
@@ -1244,6 +1285,32 @@ export const actions: Actions = {
 			ip: getClientAddress()
 		});
 		return { itMailSent: true };
+	},
+
+	/** HR marks system access as blocked when IT confirms some other way (a
+	 *  reply, a call) — or undoes a confirmation made by mistake. IT's own
+	 *  button in the block mail does the same from /x/it/[token]. */
+	markItBlocked: async ({ params, request, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		const undo = (await request.formData()).get('undo') === '1';
+		await Exit.findByIdAndUpdate(
+			params.id,
+			undo
+				? { itAccessBlockedAt: null, itAccessBlockedBy: null, itAccessBlockedNote: null }
+				: { itAccessBlockedAt: new Date(), itAccessBlockedBy: `${locals.admin!.email} (marked by HR)`, itAccessBlockedNote: null }
+		);
+		await audit({
+			candidateId: row.exit.candidateId ? String(row.exit.candidateId) : null,
+			actor: locals.admin!.email,
+			action: undo ? 'exit_it_block_unconfirmed' : 'exit_it_block_confirmed',
+			field: row.exit.employeeId,
+			newValue: undo ? null : 'marked by HR',
+			ip: getClientAddress()
+		});
+		return { itBlockMarked: !undo };
 	},
 
 	/** HR's step: the F&F, leave and loan figures, plus the PF and tax
