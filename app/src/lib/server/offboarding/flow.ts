@@ -234,14 +234,24 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 
 		if (def.key === 'hr') {
 			base.to = route?.email || null;
-			if (exit.flow?.hrDoneAt)
+			// HR's step has two halves: the F&F first (handed to payroll), and the
+			// final check once payroll has signed it.
+			if (exit.flow?.fnfApprovedAt)
 				return {
 					...base,
 					status: 'done',
-					doneAt: new Date(exit.flow.hrDoneAt).toISOString(),
-					detail: exit.flow.hrDoneBy ? `Handed to payroll by ${exit.flow.hrDoneBy}` : 'Handed to payroll'
+					doneAt: new Date(exit.flow.fnfApprovedAt).toISOString(),
+					detail: `F&F approved${exit.flow.fnfApprovedBy ? ` by ${exit.flow.fnfApprovedBy}` : ''}`
 				};
-			return { ...base, detail: 'Fill the F&F and leave any time, then hand it to payroll' };
+			if (exit.flow?.hrDoneAt && exit.fnf?.submittedByPayrollAt)
+				return { ...base, status: 'active', detail: 'Payroll has signed — give the F&F its final check' };
+			if (exit.flow?.hrDoneAt)
+				return {
+					...base,
+					status: 'active',
+					detail: `Handed to payroll${exit.flow.hrDoneBy ? ` by ${exit.flow.hrDoneBy}` : ''} — waiting for them to verify and sign`
+				};
+			return { ...base, detail: 'Fill in the F&F first, then hand it to payroll' };
 		}
 
 		// letters
@@ -253,13 +263,15 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 				doneAt: new Date(exit.flow.releasedAt).toISOString(),
 				detail: `Sent${exit.flow.releasedBy ? ` · ${exit.flow.releasedBy}` : ''}`
 			};
+		if (exit.fnf?.submittedByPayrollAt && !exit.flow?.fnfApprovedAt)
+			return { ...base, detail: 'Waiting for HR to approve the F&F' };
 		if (exit.flow?.autoRelease === false)
-			return { ...base, detail: 'Manual — release them whenever you are ready' };
+			return { ...base, detail: 'Manual — release them once the F&F is approved' };
 		if (exit.flow?.scheduledAt)
 			return { ...base, status: 'active', detail: `Scheduled for ${fmt(exit.flow.scheduledAt)}` };
 		return {
 			...base,
-			detail: `${exit.flow?.releaseAfterDays ?? 30} days after payroll signs, once every clearance is in — or release by hand`
+			detail: `${exit.flow?.releaseAfterDays ?? 30} days after payroll signs, once every clearance is in and HR has approved the F&F — or release by hand`
 		};
 	});
 }
@@ -456,7 +468,9 @@ export async function draftStep(
 					? 'Not part of this exit — switch it on in Mail settings.'
 					: !opts.to.length
 						? 'No email set — add it in Mail settings.'
-						: null;
+						: dept === 'payroll' && !exit.flow?.hrDoneAt
+							? 'Fill in the F&F and press "Save & hand to payroll" first — payroll verifies HR’s figures.'
+							: null;
 		return { ...mail, key, label: def.label, reminder, sendable: !why, why, attachments, sendBack: back };
 	}
 
@@ -478,6 +492,8 @@ export async function draftStep(
 		});
 		const blocker = exit.flow?.releasedAt
 			? 'Already sent.'
+			: !exit.flow?.fnfApprovedAt
+				? 'Approve the F&F first — payroll verifies and signs it, then HR gives it a final check under F&F.'
 			: !keys.length && !hrFiles.length
 				? 'Nothing to send — pick at least one letter or upload a handover document.'
 				: null;
@@ -523,6 +539,9 @@ export async function mailStep(
 	const route = (exit.routing?.[key as RoutingKey] ?? {}) as Lean;
 	const to = routeTo(route);
 	if (!to.length) return { error: `Add the ${def.label} email in Mail settings first.` };
+	// HR sets the F&F first; payroll verifies what HR handed over.
+	if (dept === 'payroll' && !exit.flow?.hrDoneAt)
+		return { error: 'Fill in the F&F and hand it to payroll first — payroll verifies HR’s figures.' };
 	// The first To address is the approver on record; the rest are copied in
 	// as recipients of the same mail and can open the same link.
 	const email = to[0];
@@ -635,7 +654,13 @@ export async function sendBackStep(
 	if (!reopened) return { error: `The ${def.label} has not signed yet — there is nothing to send back.` };
 
 	if (def.dept === 'payroll')
-		await Exit.findByIdAndUpdate(exitId, { 'fnf.submittedByPayrollAt': null, 'flow.scheduledAt': null });
+		await Exit.findByIdAndUpdate(exitId, {
+			'fnf.submittedByPayrollAt': null,
+			'flow.scheduledAt': null,
+			// Payroll signs again, so HR's final check is needed again.
+			'flow.fnfApprovedAt': null,
+			'flow.fnfApprovedBy': null
+		});
 
 	const res = await mailStep(exitId, key, { edits });
 	// Either way the step is open again, so a scheduled release is withdrawn.
@@ -701,7 +726,8 @@ export async function scheduleRelease(exitId: string, opts: { reset?: boolean } 
 	const signed = await payrollSignedAt(exitId);
 	const clearances = await ExitClearance.find({ exitId }).lean<Lean[]>();
 	const pending = openClearances(flowSteps(exit, clearances)).length > 0;
-	if (!signed || pending || exit.flow?.autoRelease === false) {
+	// HR's final check of the F&F gates the release (HR decision, Nov 2026).
+	if (!signed || pending || exit.flow?.autoRelease === false || !exit.flow?.fnfApprovedAt) {
 		if (exit.flow?.scheduledAt) await Exit.findByIdAndUpdate(exitId, { 'flow.scheduledAt': null });
 		return;
 	}
@@ -762,6 +788,8 @@ export async function releaseLetters(
 		// Every exit letter opens with the reference number, so it may be left
 		// blank all through the exit but not when a letter actually goes out.
 		// A scheduled release stays due and goes on the first tick after HR adds it.
+		if (!exit.flow?.fnfApprovedAt)
+			throw new Error('Approve the F&F first — HR gives payroll’s signed settlement a final check before the letters go.');
 		if (keys.length && !String(exit.refNo ?? exit.letters?.refNo ?? '').trim())
 			throw new Error('Add the reference number under Particulars — it is printed on the letters being released.');
 		// Same for the details the mail and letters print: a scheduled release

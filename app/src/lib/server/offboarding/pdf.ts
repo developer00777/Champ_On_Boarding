@@ -733,6 +733,8 @@ export async function fnfSummaryPdf(input: ExitPdfInput): Promise<Uint8Array> {
 			{ label: 'Notice pay recovery', value: dash(f.noticePayRecovery) },
 			{ label: 'Asset recovery', value: dash(f.assetRecovery) },
 			{ label: 'Other deductions', value: dash(f.otherDeductions) },
+			// Gratuity only when it applies to this exit.
+			...(e.gratuity?.applicable ? [{ label: 'Gratuity amount', value: dash(f.gratuityAmount) }] : []),
 			{ label: 'Net F&F payable', value: dash(f.netAmount) },
 			{ label: 'Settlement date', value: dash(f.settlementDate) },
 			{ label: 'Approved by', value: dash(f.approvedBy) }

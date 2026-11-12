@@ -21,7 +21,7 @@
 // scheduled release — is offboarding/flow.ts's syncFlow().
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Admin, Exit, ExitClearance, ExitDocument, ExitToken } from '$lib/server/db/schema';
+import { Admin, Exit, ExitClearance, ExitDocument, ExitToken, OfferLetter } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { lacking, mayToday } from '$lib/server/access';
 import { brandBySlug } from '$lib/shared/brands';
@@ -38,6 +38,7 @@ import {
 	FLOW_STEPS,
 	FNF_PAYROLL_DATE_KEYS,
 	FNF_PAYROLL_FIELDS,
+	fnfFieldsFor,
 	HANDOVER_DOCS,
 	LETTER_SALUTATIONS,
 	LETTER_SOURCES,
@@ -63,6 +64,7 @@ import {
 	formStates,
 	gratuityApplicable,
 	liveExitToken,
+	offerSalary,
 	ndcState,
 	serviceLabel
 } from '$lib/server/offboarding/exit';
@@ -273,10 +275,9 @@ async function saveReviewDetails(
 	return { exit };
 }
 
-/** What HR still fills on the F&F card: the statutory follow-ups. The
- *  settlement figures are payroll's and arrive from their clearance page — see
- *  FNF_PAYROLL_FIELDS. Keeping them out of this list is the enforcement: HR
- *  cannot overwrite a figure it did not calculate. */
+/** The statutory follow-ups on the F&F card, which stay HR's to edit even
+ *  after payroll signs. The settlement figures (FNF_PAYROLL_FIELDS) are HR's
+ *  first and payroll's to verify; they lock once payroll signs. */
 const FNF_FIELDS = ['pfDateOfExit', 'pfRemarks', 'taxationRemarks'] as const;
 
 /** Dates in the F&F block are stored DD/MM/YYYY like every other date here, so
@@ -387,7 +388,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				returned: !!a.returned,
 				note: a.note ?? null
 			})),
-			fnf: e.fnf ?? {},
+			// The EPFO date is stored DD/MM/YYYY; its date input needs ISO, or a
+			// later save would blank it.
+			fnf: { ...(e.fnf ?? {}), pfDateOfExitIso: toIsoDate(e.fnf?.pfDateOfExit ?? '') ?? '' },
 			closureChecklist: asBoolRecord(e.closureChecklist)
 		},
 		forms: formStates(e),
@@ -462,6 +465,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		flow: {
 			startedAt: e.flow?.startedAt ? new Date(e.flow.startedAt).toISOString() : null,
 			hrDoneAt: e.flow?.hrDoneAt ? new Date(e.flow.hrDoneAt).toISOString() : null,
+			fnfApprovedAt: e.flow?.fnfApprovedAt ? new Date(e.flow.fnfApprovedAt).toISOString() : null,
+			fnfApprovedBy: (e.flow?.fnfApprovedBy as string | null) ?? null,
 			scheduledAt: e.flow?.scheduledAt ? new Date(e.flow.scheduledAt).toISOString() : null,
 			releasedAt: e.flow?.releasedAt ? new Date(e.flow.releasedAt).toISOString() : null,
 			releasedBy: (e.flow?.releasedBy as string | null) ?? null,
@@ -495,18 +500,30 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		routingDefaults: await getRoutingDefaults(),
 		// HR's settlement form: HR fills it, payroll gets it prefilled and has
 		// the last word. Read-only here once payroll has signed.
-		fnfForm: FNF_PAYROLL_FIELDS.map((f) => {
-			const raw = ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? '';
-			const date = 'date' in f && !!f.date;
-			return {
-				key: f.key,
-				label: f.label,
-				date,
-				money: 'money' in f && !!f.money,
-				value: date ? (toIsoDate(raw) ?? '') : raw,
-				display: raw
-			};
-		}),
+		fnfForm: await (async () => {
+			// Monthly gross and basic start from the offer letter's annexure when
+			// the exit has none yet (exits opened before this, or never saved).
+			const stored = (e.fnf ?? {}) as Record<string, string | null>;
+			const fromOffer =
+				!stored.monthlyGross && !stored.monthlyBasic && exit.candidateId
+					? offerSalary(await OfferLetter.findOne({ candidateId: exit.candidateId }).lean())
+					: { monthlyGross: null, monthlyBasic: null };
+			return fnfFieldsFor(!!e.gratuity?.applicable).map((f) => {
+				const offered = (fromOffer as Record<string, string | null>)[f.key] ?? null;
+				const raw = stored[f.key] || offered || '';
+				const date = 'date' in f && !!f.date;
+				return {
+					key: f.key,
+					label: f.label,
+					date,
+					money: 'money' in f && !!f.money,
+					value: date ? (toIsoDate(raw) ?? '') : raw,
+					display: raw,
+					/** Shown from the offer letter, not saved yet. */
+					fromOffer: !stored[f.key] && !!offered
+				};
+			});
+		})(),
 		payrollSigned: !!e.fnf?.submittedByPayrollAt,
 		ndcState: ndcState(clearances as unknown as Record<string, unknown>[]),
 		employeeFiles: files
@@ -1365,6 +1382,35 @@ export const actions: Actions = {
 		});
 		if (handOver) await syncFlow(params.id);
 		return { fnfSaved: true, handedToPayroll: handOver };
+	},
+
+	/** HR's final check: payroll has verified and signed the F&F, and HR
+	 *  approves it. The relieving letter release (scheduled or by hand) waits
+	 *  for this; sending payroll back clears it. */
+	approveFnf: async ({ params, locals, getClientAddress }) => {
+		const forbidden = requireHr(locals);
+		if (forbidden) return forbidden;
+		const row = await getExit(params.id);
+		if (!row) return no(404, 'Offboarding record not found.');
+		const e = row.exit as unknown as Record<string, any>;
+		if (!e.fnf?.submittedByPayrollAt)
+			return no(409, 'Payroll has not signed the F&F yet — it is approved after they verify it.', 'fnf');
+		if (e.flow?.fnfApprovedAt) return no(409, 'The F&F is already approved.', 'fnf');
+		await Exit.findByIdAndUpdate(params.id, {
+			'flow.fnfApprovedAt': new Date(),
+			'flow.fnfApprovedBy': locals.admin!.email
+		});
+		await audit({
+			candidateId: e.candidateId ? String(e.candidateId) : null,
+			actor: locals.admin!.email,
+			action: 'exit_fnf_approved',
+			field: 'netAmount',
+			newValue: (e.fnf?.netAmount as string | null) ?? null,
+			ip: getClientAddress()
+		});
+		// Schedules the release now that it is allowed (or sends it, if due).
+		await syncFlow(params.id);
+		return { fnfApproved: true };
 	},
 
 	/** The last step: which letters go to the employee, and the cadence — how

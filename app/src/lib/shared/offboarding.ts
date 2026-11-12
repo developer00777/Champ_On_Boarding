@@ -176,17 +176,23 @@ export const NDC_SECTIONS: NdcSection[] = [
 
 export const NDC_SECTION_BY_DEPT = new Map(NDC_SECTIONS.map((s) => [s.dept, s]));
 
-/** The full & final figures, and who supplies them.
+/** The full & final figures, and who supplies them (HR decision, Nov 2026).
  *
- *  HR fills these first — the F&F and the leave position are HR's step in the
- *  exit chain (FLOW_STEPS) — and payroll then gets the whole set prefilled on
- *  their clearance page, where they can correct any of it, record a loan or
- *  advance recovery, and sign. Payroll's save is the last word; HR's card turns
- *  read-only once payroll has signed.
+ *  Typed, never calculated. HR fills them first on the portal and hands them
+ *  to payroll — payroll cannot sign until HR has. Payroll gets the whole set
+ *  prefilled on their clearance page, corrects and verifies it, and signs.
+ *  HR then gives the final check (Approve F&F, or send it back to payroll),
+ *  and only then can the relieving letter be released.
+ *
+ *  Monthly gross and basic are prefilled from the offer letter's compensation
+ *  annexure when the employee was onboarded in the portal. The gratuity
+ *  amount (`gratuity: true`) is only asked when gratuity applies.
  *
  *  `date: true` fields are backed by a date input and stored DD/MM/YYYY like
  *  every other date in this module. */
 export const FNF_PAYROLL_FIELDS = [
+	{ key: 'monthlyGross', label: 'Monthly gross', money: true },
+	{ key: 'monthlyBasic', label: 'Monthly basic', money: true },
 	{ key: 'salaryDueFrom', label: 'Salary due from', date: true },
 	{ key: 'salaryDueTo', label: 'Salary due to', date: true },
 	{ key: 'leaveBalanceDays', label: 'Leave balance (days)' },
@@ -197,12 +203,19 @@ export const FNF_PAYROLL_FIELDS = [
 	{ key: 'loanRecovery', label: 'Loan / advance recovered in F&F', money: true },
 	{ key: 'loanRemarks', label: 'Loan / advance remarks' },
 	{ key: 'otherDeductions', label: 'Other deductions', money: true },
+	{ key: 'gratuityAmount', label: 'Gratuity amount', money: true, gratuity: true },
 	{ key: 'netAmount', label: 'Net F&F payable', money: true },
 	{ key: 'settlementDate', label: 'Settlement date', date: true },
 	{ key: 'approvedBy', label: 'Approved by' }
 ] as const;
 
 export const FNF_PAYROLL_KEYS = FNF_PAYROLL_FIELDS.map((f) => f.key) as readonly string[];
+
+/** The F&F fields this exit asks for: the gratuity amount only when gratuity
+ *  applies. */
+export function fnfFieldsFor(gratuityApplicable: boolean) {
+	return FNF_PAYROLL_FIELDS.filter((f) => !('gratuity' in f && f.gratuity) || gratuityApplicable);
+}
 export const FNF_PAYROLL_DATE_KEYS = new Set(
 	FNF_PAYROLL_FIELDS.filter((f) => 'date' in f && f.date).map((f) => f.key)
 );

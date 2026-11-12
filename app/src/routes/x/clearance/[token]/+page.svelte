@@ -230,6 +230,12 @@
 
 						<section class="pblock">
 							<div class="phead"><span class="pnum">2</span>Full &amp; final settlement</div>
+							{#if data.fnfAwaitingHr}
+								<p class="hint warn">
+									HR has not handed the F&amp;F over yet. They fill in the figures first; once they do, this page
+									shows them for you to verify and sign. You can still look at everything else here.
+								</p>
+							{/if}
 							<p class="hint">
 								{#if data.fnfPrefilled}
 									Prefilled by HR. Check each figure, correct anything that needs it, and record any loan or
@@ -457,10 +463,12 @@
 					{#if data.payroll && !allChecked}
 						<p class="hint warn">Tick every F&amp;F check above before you sign.</p>
 					{/if}
-					<button class="cta" disabled={submitting}>
+					<button class="cta" disabled={submitting || data.fnfAwaitingHr}>
 						{submitting
 							? 'Submitting…'
-							: data.sendBack
+							: data.fnfAwaitingHr
+								? 'Waiting for HR’s F&F'
+								: data.sendBack
 								? 'Update & sign again'
 								: data.payroll
 									? 'Save F&F and sign'

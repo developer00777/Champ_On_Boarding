@@ -1269,9 +1269,9 @@
 						{#if s.key === 'payroll' && s.status !== 'done'}
 							<p class="muted tiny" style="margin:6px 0 0">
 								F&amp;F figures:
-								{hrStep?.status === 'done'
-									? 'handed over by HR — payroll checks and corrects them.'
-									: 'not handed over yet — payroll can fill them in themselves, or fill them under F&F first.'}
+								{data.flow.hrDoneAt
+									? 'handed over by HR — payroll verifies and corrects them, then signs.'
+									: 'not handed over yet — fill them in under F&F and hand them over first; payroll’s mail waits for it.'}
 								<a href="#fnf" onclick={(ev) => jump(ev, 'fnf')}>Go to F&amp;F</a>
 							</p>
 						{/if}
@@ -1317,12 +1317,15 @@
 				<div>
 					<h2>F&amp;F, leave &amp; loans</h2>
 					<p class="muted">
-						HR's step — fill it in whenever you have the figures; nothing waits on it. "Save &amp; hand to
-						payroll" marks it done and opens payroll's mail if it has not gone yet. Payroll sees these
-						figures prefilled, can correct any of them and record loan recovery, and their sign-off is final.
+						HR sets the F&amp;F first: fill in the figures (monthly gross and basic come from the offer letter
+						when there is one) and press "Save &amp; hand to payroll", which opens payroll's mail. Payroll sees
+						them prefilled, corrects and verifies them, and signs. Then you give it the final check —
+						Approve F&amp;F, or send it back — and only then can the relieving letter go.
 					</p>
 				</div>
-				{#if form?.handedToPayroll}
+				{#if form?.fnfApproved}
+					<span class="saved">F&amp;F approved ✓</span>
+				{:else if form?.handedToPayroll}
 					<span class="saved">Handed to payroll ✓</span>
 				{:else if form?.fnfSaved}
 					<span class="saved">Saved ✓</span>
@@ -1365,7 +1368,7 @@
 						<div class="fgrid">
 							{#each data.fnfForm as f (f.key)}
 								<label class="f">
-									<span>{f.label}</span>
+									<span>{f.label}{#if f.fromOffer}<em class="computed">from the offer letter</em>{/if}</span>
 									{#if f.date}
 										<input type="date" name={f.key} value={f.value} />
 									{:else}
@@ -1379,7 +1382,7 @@
 								</label>
 							{/each}
 						</div>
-						{#if hrStep?.status === 'done'}
+						{#if data.flow.hrDoneAt}
 							<p class="muted tiny" style="margin:10px 0 0">
 								Handed to payroll {stamp(data.flow.hrDoneAt)}. Changes saved here show on their page
 								until they sign.
@@ -1411,7 +1414,7 @@
 						<button class="btn" disabled={sending['fnf']}>
 							{sending['fnf'] ? 'Saving…' : 'Save'}
 						</button>
-						{#if !data.payrollSigned && hrStep?.status !== 'done'}
+						{#if !data.payrollSigned && !data.flow.hrDoneAt}
 							<button class="btn teal" name="handToPayroll" value="1" disabled={sending['fnf']}>
 								Save &amp; hand to payroll
 							</button>
@@ -1419,6 +1422,37 @@
 					</div>
 				</fieldset>
 			</form>
+
+			<!-- HR's final check of payroll's signed figures. The release waits for it. -->
+			{#if data.payrollSigned}
+				<div class="fnf-approve" class:ok={!!data.flow.fnfApprovedAt}>
+					{#if data.flow.fnfApprovedAt}
+						<p>
+							<b>F&amp;F approved</b> · {stamp(data.flow.fnfApprovedAt)}{#if data.flow.fnfApprovedBy} · {data.flow.fnfApprovedBy}{/if}.
+							The relieving letter can be released.
+						</p>
+					{:else}
+						<p>
+							<b>Final check.</b> Payroll has verified and signed these figures. Approve them to let the
+							relieving letter go, or send them back to payroll with what needs changing.
+						</p>
+					{/if}
+					{#if data.isHr && e.status !== 'completed'}
+						<div class="row-actions">
+							{#if !data.flow.fnfApprovedAt}
+								<form method="POST" action="?/approveFnf" use:enhance={track('fnfApprove')}>
+									<button class="btn teal" disabled={sending['fnfApprove']}>
+										{sending['fnfApprove'] ? 'Approving…' : 'Approve F&F'}
+									</button>
+								</form>
+							{/if}
+							<button class="btn ghost small" type="button" onclick={() => openReview('payroll', false, 'back')}>
+								Send back to payroll
+							</button>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</section>
 
 		<!-- 08a. Exit letters: what the letters print -->
@@ -3332,6 +3366,24 @@
 		font-size: 10px;
 		color: var(--ae-muted);
 		margin-left: 5px;
+	}
+	.fnf-approve {
+		margin-top: 14px;
+		padding: 12px 14px;
+		border-radius: 10px;
+		border: 1px solid rgb(242 177 92 / 0.45);
+		background: rgb(242 177 92 / 0.08);
+		font-size: 13px;
+	}
+	.fnf-approve.ok {
+		border-color: var(--ae-line);
+		background: none;
+	}
+	.fnf-approve p {
+		margin: 0 0 8px;
+	}
+	.fnf-approve.ok p {
+		margin: 0;
 	}
 	.computed.needed {
 		color: var(--ae-ember);

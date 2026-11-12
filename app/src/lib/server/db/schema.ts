@@ -868,6 +868,11 @@ const exitSchema = new Schema(
 			hrNotifiedAt: { type: Date, default: null },
 			hrDoneAt: { type: Date, default: null },
 			hrDoneBy: { type: String, default: null },
+			/** HR's final check of payroll's signed F&F. The relieving letter
+			 *  release — scheduled or by hand — waits for it, and sending payroll
+			 *  back clears it. */
+			fnfApprovedAt: { type: Date, default: null },
+			fnfApprovedBy: { type: String, default: null },
 			/** Which letters the release sends; unset means the track's default
 			 *  (defaultReleaseLetters). */
 			letterKeys: { type: [String], default: undefined },
@@ -1086,6 +1091,10 @@ const exitSchema = new Schema(
 			submittedByPayrollName: { type: String, default: null },
 			/** FNF_PAYROLL_CHECKS keys payroll ticked when they signed. */
 			payrollChecks: { type: [String], default: [] },
+			/** Monthly salary the F&F is worked from — prefilled from the offer
+			 *  annexure when there is one, else typed by HR. */
+			monthlyGross: { type: String, default: null },
+			monthlyBasic: { type: String, default: null },
 			salaryDueFrom: { type: String, default: null },
 			salaryDueTo: { type: String, default: null },
 			leaveBalanceDays: { type: String, default: null },
@@ -1098,6 +1107,8 @@ const exitSchema = new Schema(
 			loanRecovery: { type: String, default: null },
 			loanRemarks: { type: String, default: null },
 			otherDeductions: { type: String, default: null },
+			/** Only when gratuity applies (4 years 7 months or more). */
+			gratuityAmount: { type: String, default: null },
 			/** Net F&F payable and the date it is/was settled — printed on the
 			 *  final handover page and mailed with the closing documents. */
 			netAmount: { type: String, default: null },

@@ -182,6 +182,18 @@ export async function findOnboardingMatch(employeeId: string, email: string) {
 	return { candidate, offer };
 }
 
+/** Monthly gross and basic from an offer letter's compensation annexure, for
+ *  the F&F to start from. Blank when the offer has no annexure (most tracks
+ *  other than an offer of appointment, and anyone hired before the portal). */
+export function offerSalary(offer: Record<string, unknown> | null | undefined): {
+	monthlyGross: string | null;
+	monthlyBasic: string | null;
+} {
+	const a = (offer?.compensationAnnexure ?? null) as { enabled?: boolean; grossPm?: string; basicPm?: string } | null;
+	if (!a?.enabled) return { monthlyGross: null, monthlyBasic: null };
+	return { monthlyGross: a.grossPm?.trim() || null, monthlyBasic: a.basicPm?.trim() || null };
+}
+
 /** The employment particulars an exit copies off an onboarding record at
  *  creation. Copied rather than joined: an exit document must keep saying what
  *  it said when it was signed, even if the onboarding record is edited later. */
@@ -197,6 +209,8 @@ export function prefillFromOnboarding(
 	return {
 		track: (candidate.track as string | null) ?? null,
 		letters: { salutation },
+		// The F&F starts from the salary on the offer; HR corrects it if it changed.
+		fnf: offerSalary(offer),
 		doj: (offer?.joiningDate as string | null) ?? null,
 		designation: (offer?.jobTitle as string | null) ?? null,
 		department: (candidate.teamName as string | null) ?? (offer?.department as string | null) ?? null,

@@ -22,6 +22,7 @@ import {
 	type ClearanceDept,
 	ASSET_ITEMS,
 	FNF_PAYROLL_FIELDS,
+	fnfFieldsFor,
 	FNF_PAYROLL_DATE_KEYS,
 	FNF_PAYROLL_CHECKS,
 	HANDOVER_DOCS,
@@ -230,8 +231,11 @@ export const load: PageServerLoad = async ({ params }) => {
 		/** HR filled the settlement before handing it over (their step in the
 		 *  exit chain), so payroll is reviewing figures rather than entering them. */
 		fnfPrefilled: !!e.flow?.hrDoneAt,
+		/** HR sets the F&F first (HR decision, Nov 2026): until they hand it
+		 *  over, payroll can look but not sign. */
+		fnfAwaitingHr: dept === 'payroll' && !e.flow?.hrDoneAt,
 		payroll: dept === 'payroll' ? await payrollView(e, params.token) : null,
-		fnfFields: FNF_PAYROLL_FIELDS.map((f) => ({
+		fnfFields: fnfFieldsFor(!!e.gratuity?.applicable).map((f) => ({
 			key: f.key,
 			label: f.label,
 			date: 'date' in f && !!f.date,
@@ -343,6 +347,8 @@ export const actions: Actions = {
 		if (clearance.department === 'payroll') {
 			for (const c of FNF_PAYROLL_CHECKS)
 				if (form.get(`check_${c.key}`) !== 'on') errors.push(`Please confirm you have checked: ${c.label.toLowerCase()}.`);
+			if (!(exit as unknown as { flow?: { hrDoneAt?: Date | null } }).flow?.hrDoneAt)
+				errors.push('HR has not handed the F&F over yet — it can be signed once HR has filled it in. HR has been told.');
 			if (!get('netAmount')) errors.push('Please enter the net F&F payable.');
 			const have = new Set(
 				(
@@ -567,7 +573,12 @@ export const actions: Actions = {
 					...(payslipUploads.length
 						? [`Uploaded: ${payslipUploads.map((u) => HANDOVER_LABEL.get(u.docType) ?? u.docType).join(', ')}.`]
 						: []),
-					...(clearance.department === 'payroll' ? [`Net F&F payable: ${get('netAmount')}.`] : []),
+					...(clearance.department === 'payroll'
+						? [
+								`Net F&F payable: ${get('netAmount')}.`,
+								'Next: give the F&F its final check and press "Approve F&F" on the exit page — the relieving letter waits for it.'
+							]
+						: []),
 					`Verdict: ${verdict === 'no_dues' ? 'No dues outstanding' : 'Dues outstanding'}.`,
 					onChain
 						? (next ?? 'Every clearance is now signed.')
