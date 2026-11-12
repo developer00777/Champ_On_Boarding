@@ -9,7 +9,7 @@
 import { error, fail } from '@sveltejs/kit';
 import { ObjectId } from 'mongodb';
 import type { Actions, PageServerLoad } from './$types';
-import { Admin, Exit, ExitClearance, ExitDocument } from '$lib/server/db/schema';
+import { Admin, Exit, ExitClearance, ExitDocument, OfferLetter } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { isoToDDMMYYYY, toIsoDate } from '$lib/shared/dates';
 import { baseUrl } from '$lib/server/base-url';
@@ -23,6 +23,7 @@ import {
 	ASSET_ITEMS,
 	FNF_PAYROLL_FIELDS,
 	fnfFieldsFor,
+	FNF_HR_KEYS,
 	FNF_PAYROLL_DATE_KEYS,
 	FNF_PAYROLL_CHECKS,
 	HANDOVER_DOCS,
@@ -33,6 +34,7 @@ import {
 	asRecord,
 	clearanceProgress,
 	exitCompany,
+	offerSalary,
 	resolveExitToken,
 	serviceLabel,
 	serviceMonths
@@ -235,18 +237,29 @@ export const load: PageServerLoad = async ({ params }) => {
 		 *  over, payroll can look but not sign. */
 		fnfAwaitingHr: dept === 'payroll' && !e.flow?.hrDoneAt,
 		payroll: dept === 'payroll' ? await payrollView(e, params.token) : null,
-		fnfFields: fnfFieldsFor(!!e.gratuity?.applicable).map((f) => ({
-			key: f.key,
-			label: f.label,
-			date: 'date' in f && !!f.date,
-			money: 'money' in f && !!f.money,
-			// Dates are stored DD/MM/YYYY; a date input needs ISO.
-			value: (() => {
-				const raw = ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? '';
-				if (!raw) return '';
-				return 'date' in f && f.date ? (toIsoDate(raw) ?? '') : raw;
-			})()
-		}))
+		fnfFields: await (async () => {
+			// Monthly gross and basic start from the offer letter's annexure when
+			// the exit has none stored (exits opened before that prefill existed).
+			const stored = (e.fnf ?? {}) as Record<string, string | null>;
+			const offered: Record<string, string | null> =
+				!stored.monthlyGross && !stored.monthlyBasic && e.candidateId
+					? offerSalary(await OfferLetter.findOne({ candidateId: e.candidateId }).lean())
+					: {};
+			return fnfFieldsFor(!!e.gratuity?.applicable).map((f) => {
+				const raw = stored[f.key] || offered[f.key] || '';
+				return {
+					key: f.key,
+					label: f.label,
+					date: 'date' in f && !!f.date,
+					money: 'money' in f && !!f.money,
+					/** HR's part — the period and the leave — handed over prefilled. */
+					hr: FNF_HR_KEYS.has(f.key),
+					fromOffer: !stored[f.key] && !!offered[f.key],
+					// Dates are stored DD/MM/YYYY; a date input needs ISO.
+					value: !raw ? '' : 'date' in f && f.date ? (toIsoDate(raw) ?? '') : raw
+				};
+			});
+		})()
 	};
 };
 

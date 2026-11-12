@@ -232,14 +232,15 @@
 							<div class="phead"><span class="pnum">2</span>Full &amp; final settlement</div>
 							{#if data.fnfAwaitingHr}
 								<p class="hint warn">
-									HR has not handed the F&amp;F over yet. They fill in the figures first; once they do, this page
-									shows them for you to verify and sign. You can still look at everything else here.
+									HR has not handed the F&amp;F over yet. They fill in the settlement period and the leave first;
+									once they do, you can complete the rest here and sign. You can still look at everything else.
 								</p>
 							{/if}
 							<p class="hint">
 								{#if data.fnfPrefilled}
-									Prefilled by HR. Check each figure, correct anything that needs it, and record any loan or
-									salary advance being recovered. What you save is final.
+									HR has filled in the settlement period and the leave (marked “from HR”). Fill in the rest,
+									correct anything that needs it — HR's part included — and record any loan or salary advance
+									being recovered. What you save is final.
 								{:else}
 									Your figures go straight onto the exit record and the settlement statement.
 								{/if}
@@ -247,7 +248,10 @@
 							<div class="fnf-grid">
 								{#each data.fnfFields as f (f.key)}
 									<label class="f" class:wide={f.key === 'loanRemarks'} class:net={f.key === 'netAmount'}>
-										<span>{f.label}{#if f.key === 'netAmount'} <b class="req">*</b>{/if}</span>
+										<span>
+											{f.label}{#if f.key === 'netAmount'} <b class="req">*</b>{/if}
+											{#if f.hr}<em class="src">from HR</em>{:else if f.fromOffer}<em class="src">from the offer letter</em>{/if}
+										</span>
 										{#if f.date}
 											<input type="date" name={f.key} bind:value={fnf[f.key]} />
 										{:else if f.money}
@@ -971,6 +975,16 @@
 	}
 	.pdetails {
 		margin: 12px 0 8px;
+	}
+	.f .src {
+		font-style: normal;
+		font-weight: 500;
+		font-size: 10.5px;
+		margin-left: 6px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		color: var(--brand-primary, #6b4cf6);
+		background: color-mix(in srgb, var(--brand-primary, #6b4cf6) 9%, transparent);
 	}
 	.fnf-grid {
 		display: grid;

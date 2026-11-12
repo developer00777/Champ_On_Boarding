@@ -1317,10 +1317,10 @@
 				<div>
 					<h2>F&amp;F, leave &amp; loans</h2>
 					<p class="muted">
-						HR sets the F&amp;F first: fill in the figures (monthly gross and basic come from the offer letter
-						when there is one) and press "Save &amp; hand to payroll", which opens payroll's mail. Payroll sees
-						them prefilled, corrects and verifies them, and signs. Then you give it the final check —
-						Approve F&amp;F, or send it back — and only then can the relieving letter go.
+						HR's part is only the settlement period and the leave: fill those in and press "Save &amp; hand
+						to payroll", which opens payroll's mail. Payroll fills in the rest of the F&amp;F, can correct your
+						part, verifies it all and signs. Then you give it the final check — Approve F&amp;F, or send it
+						back — and only then can the relieving letter go.
 					</p>
 				</div>
 				{#if form?.fnfApproved}
@@ -1365,23 +1365,29 @@
 							</div>
 						</div>
 					{:else}
+						<!-- HR's part only; every other F&F figure is payroll's. -->
 						<div class="fgrid">
-							{#each data.fnfForm as f (f.key)}
+							{#each data.fnfForm.filter((f) => f.hr) as f (f.key)}
 								<label class="f">
-									<span>{f.label}{#if f.fromOffer}<em class="computed">from the offer letter</em>{/if}</span>
+									<span>{f.label}</span>
 									{#if f.date}
 										<input type="date" name={f.key} value={f.value} />
 									{:else}
 										<input
 											name={f.key}
 											value={f.value}
-											inputmode={f.money ? 'decimal' : undefined}
-											placeholder={f.money ? 'e.g. 1,42,300' : ''}
+											inputmode="decimal"
+											placeholder={f.money ? 'e.g. 12,500 — 0 if none' : 'e.g. 12 or 2.5'}
 										/>
 									{/if}
 								</label>
 							{/each}
 						</div>
+						<p class="muted tiny" style="margin:10px 0 0">
+							Payroll fills in the rest on their page — monthly gross and basic (prefilled from the offer letter
+							when there is one), notice and asset recovery, loans{e.gratuity?.applicable ? ', gratuity' : ''},
+							other deductions, the net payable and the settlement date.
+						</p>
 						{#if data.flow.hrDoneAt}
 							<p class="muted tiny" style="margin:10px 0 0">
 								Handed to payroll {stamp(data.flow.hrDoneAt)}. Changes saved here show on their page
@@ -1390,6 +1396,7 @@
 						{/if}
 					{/if}
 
+					<div class="tiny-eyebrow" style="margin-top:16px">Statutory follow-ups — any time, not needed for the hand-over</div>
 					<div class="subblock">
 						<label class="check">
 							<input type="checkbox" name="pfExitProcessed" checked={e.fnf?.pfExitProcessed} />

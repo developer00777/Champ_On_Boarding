@@ -21,7 +21,7 @@
 // scheduled release — is offboarding/flow.ts's syncFlow().
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { Admin, Exit, ExitClearance, ExitDocument, ExitToken, OfferLetter } from '$lib/server/db/schema';
+import { Admin, Exit, ExitClearance, ExitDocument, ExitToken } from '$lib/server/db/schema';
 import { audit } from '$lib/server/audit';
 import { lacking, mayToday } from '$lib/server/access';
 import { brandBySlug } from '$lib/shared/brands';
@@ -37,7 +37,8 @@ import {
 	EXIT_UPLOAD_DOCS,
 	FLOW_STEPS,
 	FNF_PAYROLL_DATE_KEYS,
-	FNF_PAYROLL_FIELDS,
+	FNF_HR_FIELDS_TO_HAND_OVER,
+	FNF_HR_KEYS,
 	fnfFieldsFor,
 	HANDOVER_DOCS,
 	LETTER_SALUTATIONS,
@@ -64,7 +65,6 @@ import {
 	formStates,
 	gratuityApplicable,
 	liveExitToken,
-	offerSalary,
 	ndcState,
 	serviceLabel
 } from '$lib/server/offboarding/exit';
@@ -276,9 +276,15 @@ async function saveReviewDetails(
 }
 
 /** The statutory follow-ups on the F&F card, which stay HR's to edit even
- *  after payroll signs. The settlement figures (FNF_PAYROLL_FIELDS) are HR's
- *  first and payroll's to verify; they lock once payroll signs. */
+ *  after payroll signs. Of the settlement figures, HR fills only its part
+ *  (FNF_HR_FIELDS_TO_HAND_OVER: the period and the leave) — the rest is
+ *  payroll's — and all of them lock once payroll signs. */
 const FNF_FIELDS = ['pfDateOfExit', 'pfRemarks', 'taxationRemarks'] as const;
+
+/** A day count as HR types it: 12, 2.5, 0. */
+const isDays = (v: string) => /^\d{1,3}(\.\d{1,2})?$/.test(v);
+/** A rupee amount as HR types it: 12500, 12,500, 1,42,300.50, ₹ 5000. */
+const isAmount = (v: string) => /^\d+(\.\d{1,2})?$/.test(v.replace(/[₹,\s]/g, '').replace(/^rs\.?/i, ''));
 
 /** Dates in the F&F block are stored DD/MM/YYYY like every other date here, so
  *  the ones backed by a date input need converting on the way in. */
@@ -500,30 +506,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		routingDefaults: await getRoutingDefaults(),
 		// HR's settlement form: HR fills it, payroll gets it prefilled and has
 		// the last word. Read-only here once payroll has signed.
-		fnfForm: await (async () => {
-			// Monthly gross and basic start from the offer letter's annexure when
-			// the exit has none yet (exits opened before this, or never saved).
-			const stored = (e.fnf ?? {}) as Record<string, string | null>;
-			const fromOffer =
-				!stored.monthlyGross && !stored.monthlyBasic && exit.candidateId
-					? offerSalary(await OfferLetter.findOne({ candidateId: exit.candidateId }).lean())
-					: { monthlyGross: null, monthlyBasic: null };
-			return fnfFieldsFor(!!e.gratuity?.applicable).map((f) => {
-				const offered = (fromOffer as Record<string, string | null>)[f.key] ?? null;
-				const raw = stored[f.key] || offered || '';
-				const date = 'date' in f && !!f.date;
-				return {
-					key: f.key,
-					label: f.label,
-					date,
-					money: 'money' in f && !!f.money,
-					value: date ? (toIsoDate(raw) ?? '') : raw,
-					display: raw,
-					/** Shown from the offer letter, not saved yet. */
-					fromOffer: !stored[f.key] && !!offered
-				};
-			});
-		})(),
+		// Every F&F field, for the read-only view once payroll has signed. Before
+		// that HR edits only its own part (`hr`); the rest is payroll's.
+		fnfForm: fnfFieldsFor(!!e.gratuity?.applicable).map((f) => {
+			const raw = ((e.fnf ?? {}) as Record<string, string | null>)[f.key] ?? '';
+			const date = 'date' in f && !!f.date;
+			return {
+				key: f.key,
+				label: f.label,
+				date,
+				money: 'money' in f && !!f.money,
+				hr: FNF_HR_KEYS.has(f.key),
+				value: date ? (toIsoDate(raw) ?? '') : raw,
+				display: raw
+			};
+		}),
 		payrollSigned: !!e.fnf?.submittedByPayrollAt,
 		ndcState: ndcState(clearances as unknown as Record<string, unknown>[]),
 		employeeFiles: files
@@ -1348,11 +1345,22 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const patch: Record<string, unknown> = {};
 		const payrollSigned = !!e.fnf?.submittedByPayrollAt;
+		const val = (k: string) => String(form.get(k) ?? '').trim();
 		if (!payrollSigned) {
-			for (const f of FNF_PAYROLL_FIELDS) {
-				const raw = String(form.get(f.key) ?? '').trim();
+			// HR's part only — the settlement period and the leave position. The
+			// rest of the F&F is payroll's, filled on their page, and an HR save
+			// never touches it.
+			for (const f of FNF_HR_FIELDS_TO_HAND_OVER) {
+				const raw = val(f.key);
 				patch[`fnf.${f.key}`] = FNF_PAYROLL_DATE_KEYS.has(f.key) ? isoToDDMMYYYY(raw) || null : raw || null;
 			}
+			// Date inputs post ISO dates, so they compare as strings.
+			if (val('salaryDueFrom') && val('salaryDueTo') && val('salaryDueTo') < val('salaryDueFrom'))
+				return no(400, 'Salary due to cannot be before salary due from.', 'fnf');
+			if (val('leaveBalanceDays') && !isDays(val('leaveBalanceDays')))
+				return no(400, `Leave balance should be a number of days, like 12 or 2.5 — not “${val('leaveBalanceDays')}”.`, 'fnf');
+			if (val('leaveEncashmentAmount') && !isAmount(val('leaveEncashmentAmount')))
+				return no(400, `Leave encashment should be an amount, like 12,500 — not “${val('leaveEncashmentAmount')}”.`, 'fnf');
 		}
 		for (const field of FNF_FIELDS) {
 			const raw = String(form.get(field) ?? '').trim();
@@ -1365,8 +1373,9 @@ export const actions: Actions = {
 		const handOver = form.get('handToPayroll') === '1';
 		if (handOver) {
 			if (payrollSigned) return no(409, 'Payroll has already signed — their figures are final.', 'fnf');
-			if (!String(form.get('netAmount') ?? '').trim())
-				return no(400, 'Fill in the net F&F payable before handing it to payroll.', 'fnf');
+			const blank = FNF_HR_FIELDS_TO_HAND_OVER.filter((f) => !val(f.key)).map((f) => f.label.toLowerCase());
+			if (blank.length)
+				return no(400, `Fill in before handing it to payroll: ${blank.join(', ')}. Use 0 where there is nothing to encash.`, 'fnf');
 			patch['flow.hrDoneAt'] = new Date();
 			patch['flow.hrDoneBy'] = locals.admin!.email;
 		}
@@ -1376,8 +1385,10 @@ export const actions: Actions = {
 			candidateId: exit.candidateId ? String(exit.candidateId) : null,
 			actor: locals.admin!.email,
 			action: handOver ? 'exit_fnf_sent_to_payroll' : 'exit_fnf_saved',
-			field: 'netAmount',
-			newValue: String(form.get('netAmount') ?? '') || null,
+			field: 'fnf (HR part)',
+			newValue: payrollSigned
+				? null
+				: `${val('salaryDueFrom') || '—'} to ${val('salaryDueTo') || '—'} · leave ${val('leaveBalanceDays') || '—'} days · encashment ${val('leaveEncashmentAmount') || '—'}`,
 			ip: getClientAddress()
 		});
 		if (handOver) await syncFlow(params.id);

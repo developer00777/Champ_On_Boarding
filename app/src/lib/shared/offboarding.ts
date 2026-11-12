@@ -178,25 +178,25 @@ export const NDC_SECTION_BY_DEPT = new Map(NDC_SECTIONS.map((s) => [s.dept, s]))
 
 /** The full & final figures, and who supplies them (HR decision, Nov 2026).
  *
- *  Typed, never calculated. HR fills them first on the portal and hands them
- *  to payroll — payroll cannot sign until HR has. Payroll gets the whole set
- *  prefilled on their clearance page, corrects and verifies it, and signs.
- *  HR then gives the final check (Approve F&F, or send it back to payroll),
- *  and only then can the relieving letter be released.
+ *  Typed, never calculated. HR fills only its part — the settlement period
+ *  and the leave position (`hr: true`) — and hands it to payroll; payroll
+ *  cannot sign until HR has. Payroll fills everything else on their clearance
+ *  page (monthly gross and basic come prefilled from the offer letter's
+ *  compensation annexure when the employee was onboarded in the portal), can
+ *  correct HR's part, verifies it all and signs. HR then gives the final
+ *  check (Approve F&F, or send it back to payroll), and only then can the
+ *  relieving letter be released.
  *
- *  Monthly gross and basic are prefilled from the offer letter's compensation
- *  annexure when the employee was onboarded in the portal. The gratuity
- *  amount (`gratuity: true`) is only asked when gratuity applies.
- *
+ *  The gratuity amount (`gratuity: true`) is only asked when gratuity applies.
  *  `date: true` fields are backed by a date input and stored DD/MM/YYYY like
  *  every other date in this module. */
 export const FNF_PAYROLL_FIELDS = [
+	{ key: 'salaryDueFrom', label: 'Salary due from', date: true, hr: true },
+	{ key: 'salaryDueTo', label: 'Salary due to', date: true, hr: true },
+	{ key: 'leaveBalanceDays', label: 'Leave balance (days)', hr: true },
+	{ key: 'leaveEncashmentAmount', label: 'Leave encashment', money: true, hr: true },
 	{ key: 'monthlyGross', label: 'Monthly gross', money: true },
 	{ key: 'monthlyBasic', label: 'Monthly basic', money: true },
-	{ key: 'salaryDueFrom', label: 'Salary due from', date: true },
-	{ key: 'salaryDueTo', label: 'Salary due to', date: true },
-	{ key: 'leaveBalanceDays', label: 'Leave balance (days)' },
-	{ key: 'leaveEncashmentAmount', label: 'Leave encashment', money: true },
 	{ key: 'noticePayRecovery', label: 'Notice pay recovery', money: true },
 	{ key: 'assetRecovery', label: 'Asset recovery', money: true },
 	{ key: 'loanOutstanding', label: 'Loan / advance outstanding', money: true },
@@ -208,6 +208,11 @@ export const FNF_PAYROLL_FIELDS = [
 	{ key: 'settlementDate', label: 'Settlement date', date: true },
 	{ key: 'approvedBy', label: 'Approved by' }
 ] as const;
+
+/** HR's part of the F&F: what HR fills and hands to payroll — all of it
+ *  needed before the hand-over. */
+export const FNF_HR_FIELDS_TO_HAND_OVER = FNF_PAYROLL_FIELDS.filter((f) => 'hr' in f && f.hr);
+export const FNF_HR_KEYS = new Set<string>(FNF_HR_FIELDS_TO_HAND_OVER.map((f) => f.key));
 
 export const FNF_PAYROLL_KEYS = FNF_PAYROLL_FIELDS.map((f) => f.key) as readonly string[];
 

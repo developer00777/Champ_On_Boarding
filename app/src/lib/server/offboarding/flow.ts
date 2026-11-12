@@ -251,7 +251,7 @@ export function flowSteps(exit: Lean, clearances: Lean[]): StepState[] {
 					status: 'active',
 					detail: `Handed to payroll${exit.flow.hrDoneBy ? ` by ${exit.flow.hrDoneBy}` : ''} — waiting for them to verify and sign`
 				};
-			return { ...base, detail: 'Fill in the F&F first, then hand it to payroll' };
+			return { ...base, detail: 'Fill in the settlement period and leave, then hand it to payroll' };
 		}
 
 		// letters
@@ -373,8 +373,9 @@ function stepMailOpts(
 						// Payroll can be mailed before HR has filled the F&F: then
 						// they enter the figures rather than check them.
 						(exit.flow?.hrDoneAt
-							? 'HR has filled in the full & final settlement and the leave position. Everything is done on the page ' +
-								'the button below opens — no login, nothing else to open: check and correct the F&F figures, tick '
+							? 'HR has filled in the settlement period and the leave position. Everything is done on the page ' +
+								'the button below opens — no login, nothing else to open: fill in the rest of the F&F (the monthly ' +
+								'salary is prefilled where the offer letter has it), check HR’s part, tick '
 							: 'Everything is done on the page the button below opens — no login, nothing else to open: fill in ' +
 								'the full & final settlement and the leave position, tick ') +
 							'off the F&F checks, upload the last three months’ payslips, and sign.',
@@ -469,7 +470,7 @@ export async function draftStep(
 					: !opts.to.length
 						? 'No email set — add it in Mail settings.'
 						: dept === 'payroll' && !exit.flow?.hrDoneAt
-							? 'Fill in the F&F and press "Save & hand to payroll" first — payroll verifies HR’s figures.'
+							? 'Fill in the settlement period and leave under F&F and press "Save & hand to payroll" first — payroll completes the rest.'
 							: null;
 		return { ...mail, key, label: def.label, reminder, sendable: !why, why, attachments, sendBack: back };
 	}
@@ -541,7 +542,7 @@ export async function mailStep(
 	if (!to.length) return { error: `Add the ${def.label} email in Mail settings first.` };
 	// HR sets the F&F first; payroll verifies what HR handed over.
 	if (dept === 'payroll' && !exit.flow?.hrDoneAt)
-		return { error: 'Fill in the F&F and hand it to payroll first — payroll verifies HR’s figures.' };
+		return { error: 'Fill in the settlement period and leave under F&F and hand it to payroll first — payroll completes the rest.' };
 	// The first To address is the approver on record; the rest are copied in
 	// as recipients of the same mail and can open the same link.
 	const email = to[0];
@@ -697,8 +698,8 @@ async function notifyHrTurn(exit: Lean) {
 			subject: `Clearances signed: F&F and leave for ${exit.fullName}`,
 			lines: [
 				`The departmental clearances for ${exit.fullName} (${exit.employeeId}) are signed.`,
-				'If you have not yet, fill in the full & final settlement and the leave position on the exit page and ' +
-					'hand it to payroll — they get it prefilled, with every exit document attached.'
+				'If you have not yet, fill in the settlement period and the leave position under F&F on the exit page and ' +
+					'hand it to payroll — they complete the rest of the settlement, with every exit document attached.'
 			],
 			brand: brandBySlug(company?.brandSlug ?? undefined),
 			url: `${baseUrl()}/admin/offboarding/${String(exit._id)}`
